@@ -1432,3 +1432,221 @@
 "network.offline.record_hint" = "Este Mac está sin conexión. Los subtítulos en directo necesitan internet; desactívelos para grabar sin ellos.";
 "network.offline.short" = "Sin red";
 "network.offline.recording_banner" = "Este Mac está sin conexión. La grabación continúa y los subtítulos se reanudarán solos cuando vuelva la conexión; el tramo sin conexión puede quedar sin ellos.";
+
+/* City archive: filing a recording’s transcript in a city’s archive, as the signed-in resident. Text only; audio never leaves this Mac. */
+"settings.section.city_name" = "Ciudad";
+"city.settings.subtitle" = "Inicia sesión con tu identidad en una ciudad y la transcripción de una grabación terminada podrá enviarse en tu nombre al archivo de esa ciudad, dentro del evento que le corresponde.";
+
+/* City: signing in. */
+"city.signin.title" = "Iniciar sesión";
+"city.signin.title_format" = "Iniciar sesión en %@";
+"city.signin.address_hint" = "Empieza por la dirección web de la ciudad.";
+"city.signin.address_placeholder" = "Dirección de la ciudad";
+"city.signin.address_label" = "Dirección web de la ciudad";
+"city.signin.continue" = "Continuar";
+"city.signin.requesting" = "Pidiendo un código de inicio de sesión a la ciudad…";
+"city.signin.signing_in" = "Iniciando sesión…";
+"city.signin.step_scan" = "En un dispositivo que ya tenga la sesión iniciada en esta ciudad, abre «Ayuntamiento → Identidad», elige «Vincular un dispositivo nuevo → Escanear» y escanea este código, o pega allí el código copiado.";
+"city.signin.step_check" = "Los dos dispositivos muestran los mismos seis dígitos. Si coinciden, confirma en aquel dispositivo.";
+"city.signin.qr_label" = "Código QR del código de inicio de sesión";
+"city.signin.copy_code" = "Copiar el código";
+"city.signin.code_copied" = "Código de inicio de sesión copiado";
+"city.signin.expires_format" = "Caduca en %@";
+"city.signin.check_label" = "Dígitos de comprobación";
+"city.signin.check_waiting" = "Esperando la confirmación en aquel dispositivo…";
+"city.signin.lapsed_title" = "Este código ya no es válido";
+"city.signin.lapsed_detail" = "Un código de inicio de sesión dura cinco minutos. Pide uno nuevo y vuelve a escanear.";
+"city.signin.new_code" = "Código nuevo";
+"city.signin.no_device" = "¿No tienes otro dispositivo a mano?";
+"city.signin.use_recovery_key" = "Iniciar sesión con la clave de recuperación…";
+"city.signin.change_city" = "Cambiar de ciudad";
+"city.signin.recovery_placeholder" = "Clave de recuperación";
+"city.signin.sign_in" = "Iniciar sesión";
+"city.signin.recovery_hint" = "La clave de recuperación es tu identidad misma en la ciudad. No la escribas en un ordenador compartido.";
+"city.signin.trust" = "Iniciar sesión es confiar a este Mac tu identidad en la ciudad: puede hacer allí, en tu nombre, todo lo que tú puedes hacer. ZuTalk solo la usa para enviar al archivo las transcripciones que asignas a un evento. En el ordenador compartido de un local, cierra la sesión al terminar.";
+
+/* City: signed in. */
+"city.settings.signed_in" = "Sesión iniciada";
+"city.settings.unnamed" = "Residente sin nombre";
+"city.settings.stored_title" = "Dónde se guarda el inicio de sesión";
+"city.settings.stored_detail" = "Solo en este Mac. Al cerrar la sesión se borra de este Mac; tu identidad en la ciudad no se ve afectada.";
+"city.role.resident_format" = "Residente de %@";
+"city.role.founder_format" = "Fundador de %@";
+"city.role.coordinator_format" = "Coordinador de %@";
+"city.role.curator_format" = "Curador de %@";
+"city.role.inviter_format" = "Invitador de %@";
+"city.signout.action" = "Cerrar sesión…";
+"city.signout.button" = "Cerrar sesión";
+"city.signout.confirm_title" = "¿Cerrar sesión en este Mac?";
+"city.signout.confirm_message" = "El inicio de sesión se borra solo de este Mac. Tu identidad en la ciudad y todo lo que ya está en el archivo siguen igual. Después de cerrar la sesión, este Mac ya no puede actuar en tu nombre y las transcripciones que seguían en espera no se enviarán.";
+"city.signout.failed" = "No se pudo cerrar la sesión";
+
+/* City: what is filed, and when. */
+"city.what.title" = "Qué se envía";
+"city.what.subtitle" = "Se vuelve a mostrar antes de cada grabación.";
+"city.what.text" = "Original y traducciones";
+"city.what.text_detail" = "Una por idioma, alineadas en el tiempo.";
+"city.what.always" = "Siempre";
+"city.what.speakers" = "Nombres de los hablantes";
+"city.what.speakers_detail" = "Si está desactivado, solo aparecen como «Hablante 1», «Hablante 2».";
+"city.what.marks" = "Marcas";
+"city.what.marks_detail" = "Solo dónde marcaste, nunca las notas que escribiste.";
+"city.what.audio" = "Audio";
+"city.what.never" = "Nunca";
+"city.when.title" = "Después de grabar";
+"city.when.row" = "Cuándo enviar";
+"city.when.automatic" = "Automáticamente";
+"city.when.ask" = "Preguntarme antes";
+"city.when.automatic_detail" = "Se envía en segundo plano al detener la grabación, sin esperar. Sin red, se envía cuando vuelva la conexión.";
+"city.when.ask_detail" = "Al detener, la grabación solo queda asignada a su evento; no se envía nada hasta que elijas «Enviar al archivo».";
+"city.options.save_failed" = "No se pudo guardar este ajuste";
+
+/* City: what has been filed from this Mac. */
+"city.filings.title" = "Enviado al archivo";
+"city.filings.subtitle" = "Todo lo que has enviado desde este Mac. Puedes retirarlo cuando quieras.";
+"city.filings.empty" = "Todavía no has enviado nada.";
+"city.filing.filed" = "Enviado";
+"city.filing.changed_format" = "Has cambiado %lld frases; el archivo aún tiene las anteriores";
+"city.filing.queued" = "En espera de envío";
+"city.filing.queued_offline" = "En espera: se enviará solo al volver la conexión";
+"city.filing.failed_format" = "No enviado: %@";
+"city.filing.bound" = "Asignado al evento, aún sin enviar";
+"city.filing.withdrawn" = "Retirado";
+
+/* City: actions shared by several surfaces. */
+"city.action.open" = "Abrir";
+"city.action.update" = "Actualizar";
+"city.action.withdraw" = "Retirar…";
+"city.action.retry" = "Reintentar";
+"city.action.file" = "Enviar al archivo";
+"city.action.not_filing" = "No enviar esta";
+"city.action.pick_from_calendar" = "Elegir en el calendario…";
+"city.action.change_event" = "Cambiar de evento…";
+"city.withdraw.confirm_title" = "¿Retirar esta transcripción del archivo?";
+"city.withdraw.confirm_message" = "Desaparece de las páginas del archivo. Aun así, los registros de transcripción ya enviados siguen en el registro de la ciudad y hoy no se pueden borrar de allí.";
+"city.withdraw.button" = "Retirar";
+
+/* City: a topic’s channel. */
+"city.topic.title" = "Archivo";
+"city.topic.subtitle" = "Además del evento en que se grabaron, el canal al que también van las grabaciones de este tema.";
+"city.topic.channel" = "Canal";
+"city.topic.channel_detail_format" = "Canales del archivo de %@ a los que puedes añadir.";
+"city.topic.no_channel" = "Ningún canal";
+"city.topic.new_channel" = "Nuevo canal en el navegador…";
+"city.topic.channel_failed" = "No se pudo guardar el canal";
+
+/* City: the event row on the Record page, and the sentence that says what will be filed. */
+"city.record.title" = "Evento";
+"city.record.detail_format" = "Al terminar, la transcripción se envía al archivo de %@, junto a los materiales de este evento.";
+"city.record.change_hint" = "Cambiar de evento o no enviar esta grabación";
+"city.record.several_format" = "Hay %lld eventos en curso: elige uno. También puedes empezar sin elegir y asignarlo después.";
+"city.record.none_running_detail" = "Ahora no hay ningún evento en curso, así que esta grabación no se enviará. Podrás asignarla después.";
+"city.record.none_chosen_detail" = "Esta grabación no se enviará al archivo. Podrás asignarla después.";
+"city.event.today_format" = "Hoy %@";
+"city.summary.as_languages_format" = "Se envía en nombre de %1$@: transcripciones en %2$@.";
+"city.summary.as_format" = "Se envía en nombre de %@.";
+"city.summary.extras.names_marks" = "Con los nombres de los hablantes y las marcas.";
+"city.summary.extras.names_only" = "Con los nombres de los hablantes, sin las marcas.";
+"city.summary.extras.marks_only" = "Con las marcas, sin los nombres de los hablantes.";
+"city.summary.extras.neither" = "Sin los nombres de los hablantes ni las marcas.";
+"city.summary.channel_format" = "También se añade al canal «%@».";
+"city.summary.audio_stays" = "El audio se queda en este Mac.";
+"city.content.language_format" = "%1$@ %2$lld frases";
+"city.content.speakers_format" = "%lld hablantes";
+"city.content.marks_format" = "%lld marcas";
+
+/* City: choosing an event from the calendar. */
+"city.picker.title" = "¿A qué evento corresponde?";
+"city.picker.search" = "Buscar eventos o lugares";
+"city.picker.filter" = "Mostrar";
+"city.picker.filter_all" = "Todos";
+"city.picker.filter_mine" = "Los míos";
+"city.picker.previous_month" = "Mes anterior";
+"city.picker.next_month" = "Mes siguiente";
+"city.picker.today" = "Hoy";
+"city.picker.yesterday" = "Ayer";
+"city.picker.count_format" = "%lld eventos";
+"city.picker.count_ended_format" = "%lld eventos, todos terminados";
+"city.picker.count_mine_format" = "%lld que organizas";
+"city.picker.month_today_format" = "%1$lld este mes · %2$lld hoy";
+"city.picker.month_day_format" = "%1$lld este mes · %2$lld ese día";
+"city.picker.month_mine_format" = "%lld que organizas este mes";
+"city.picker.group.overlapping" = "Coinciden con esta grabación";
+"city.picker.group.running" = "En curso";
+"city.picker.group.later" = "Más tarde hoy";
+"city.picker.group.ended" = "Terminados";
+"city.picker.group.rest" = "Otros eventos ese día";
+"city.picker.group.mine_other_days" = "Otros que organizas este mes";
+"city.picker.group.other_days" = "Otros días";
+"city.picker.tag_mine" = "Organizas tú";
+"city.picker.tag_residents" = "Solo residentes";
+"city.picker.tag_filed" = "Enviado";
+"city.picker.empty_day" = "No hay eventos ese día.";
+"city.picker.empty_mine" = "Ese día no organizas nada.";
+"city.picker.empty_never" = "La lista de eventos aún no se ha cargado. Conéctate a internet y pulsa Actualizar.";
+"city.picker.refresh" = "Actualizar";
+"city.picker.updated_format" = "Lista de eventos actualizada: %@";
+"city.picker.never_updated" = "Lista de eventos aún sin cargar";
+"city.picker.confirm" = "Usar este evento";
+
+/* City: the destination in the recording bar. */
+"city.bar.hint" = "Ver o cambiar adónde se enviará esta grabación";
+"city.bar.files_to_format" = "Evento: %@";
+"city.bar.not_filing" = "Esta grabación no se enviará";
+"city.bar.not_filing_detail" = "Esta grabación no se enviará al archivo. Puedes elegir un evento en el calendario ahora o enviarla más tarde desde «Compartir…».";
+"city.bar.heading_automatic" = "Se envía al archivo al terminar";
+"city.bar.heading_ask" = "Asignado a un evento · lo envías tú después";
+"city.bar.heading_none" = "No se enviará";
+"city.bar.channel_format" = "Canal «%@»";
+
+/* City: the archive section of a recording’s Share panel. */
+"city.share.title" = "Archivo";
+"city.share.filed" = "Enviado al archivo";
+"city.share.filed_format" = "Enviado al archivo · %@";
+"city.share.fact.event" = "Evento";
+"city.share.fact.channel" = "Canal";
+"city.share.fact.signer" = "Firmado por";
+"city.share.fact.content" = "Contenido";
+"city.share.fact.last" = "Último envío";
+"city.share.last_format" = "%1$@, por %2$@";
+"city.share.changed_format" = "Has cambiado %lld frases; el archivo aún tiene las anteriores.";
+"city.share.changed_detail" = "Al actualizar solo se envían las frases cambiadas.";
+"city.share.update" = "Actualizar el archivo";
+"city.share.open" = "Abrir en el navegador";
+"city.share.withdraw" = "Retirar del archivo…";
+"city.share.public_note" = "Lo que está en el archivo es público y permanece allí, a diferencia del enlace de abajo, que caduca a las 24 horas.";
+"city.share.queued" = "En espera de envío al archivo…";
+"city.share.queued_offline" = "Sin red. Se enviará al archivo automáticamente cuando vuelva la conexión.";
+"city.share.retry_now" = "Reintentar ahora";
+"city.share.failed_format" = "No enviado: %@";
+"city.share.failed_safe" = "La transcripción sigue entera en este Mac: no se ha perdido nada.";
+"city.share.not_filed" = "Esta grabación aún no se ha enviado al archivo.";
+"city.share.withdrawn" = "Esta transcripción se retiró del archivo. Puedes elegir otro evento o enviarla de nuevo.";
+"city.share.pick" = "Elegir evento en el calendario…";
+"city.share.change" = "Cambiar…";
+
+/* City: what is said once filing finishes in the background. */
+"city.notice.filed_format" = "Enviado al archivo · %@";
+"city.notice.ask_format" = "Grabación asignada a «%@»; aún sin enviar.";
+"city.toast.failed" = "No se pudo enviar al archivo";
+"city.toast.failed_format" = "No se pudo enviar al archivo · %@";
+"city.toast.queued" = "En cola: se enviará al archivo en breve.";
+"city.toast.queued_offline" = "Sin red. La transcripción se enviará al archivo automáticamente cuando vuelva la conexión.";
+"city.toast.withdrawn" = "Retirado del archivo";
+"city.bind.failed" = "No se pudo asignar el evento";
+
+/* City: errors. The keys are the stable codes the core reports; each says what to do next. */
+"city.error.offline" = "Este Mac no está conectado a internet. Conéctalo e inténtalo de nuevo.";
+"city.error.server" = "Ahora mismo no se puede contactar con el servidor de la ciudad. Inténtalo dentro de un rato.";
+"city.error.bad_address" = "Eso no parece la dirección de una ciudad. Escríbela tal como te la dio la ciudad: solo el dominio.";
+"city.error.no_city" = "No se encontró ninguna ciudad en esa dirección. Revisa que no haya erratas.";
+"city.error.bad_key" = "Esa clave de recuperación no es correcta. Compárala con la que guardaste y vuelve a escribirla: cuenta cada carácter.";
+"city.error.expired" = "El código de inicio de sesión ha caducado. Pide uno nuevo y vuelve a escanear.";
+"city.error.signed_out" = "Este Mac no tiene la sesión iniciada en ninguna ciudad. Inicia sesión en Configuración › Ciudad y vuelve a intentarlo.";
+"city.error.unbound" = "Esta grabación aún no está asignada a ningún evento. Elige primero un evento y luego envíala.";
+"city.error.not_allowed" = "Este evento solo acepta material de sus organizadores y relatores. Pide a un organizador que te añada en «Relatores» del evento y vuelve a intentarlo.";
+"city.error.not_allowed_named_format" = "Este evento solo acepta material de sus organizadores y relatores. Pide a un organizador que te añada (%@) en «Relatores» del evento y vuelve a intentarlo.";
+"city.error.no_transcript" = "Esta grabación aún no tiene transcripción. Cuando termine la transcripción, abre «Compartir…» en la grabación y vuelve a intentarlo.";
+"city.error.refused" = "La ciudad no aceptó esta transcripción. Inténtalo una vez más; si la vuelve a rechazar, dile a un coordinador de la ciudad de qué evento se trata.";
+"city.error.busy" = "Esta grabación ya se está enviando. Espera a que termine y vuelve a intentarlo.";
+"city.error.generic" = "Algo falló al comunicarse con la ciudad. Inténtalo de nuevo en un momento.";

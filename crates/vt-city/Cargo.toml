@@ -1,0 +1,31 @@
+[package]
+name = "vt-city"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "vt_city"
+
+[dependencies]
+reqwest = { workspace = true }
+serde.workspace = true
+# `float_roundtrip`: a record's name is a hash over its numbers as JavaScript
+# prints them, so a float parsed one unit off is a record that cannot be verified.
+serde_json = { workspace = true, features = ["raw_value", "float_roundtrip"] }
+thiserror.workspace = true
+aes-gcm = "0.10"
+base64 = "0.22"
+ed25519-dalek = "3"
+hex = "0.4"
+hkdf = "0.13"
+p256 = { version = "0.14", default-features = false, features = ["ecdh"] }
+rand = "0.9"
+ryu-js = "1"
+sha2 = "0.11"
+zeroize = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "io-util", "time"] }

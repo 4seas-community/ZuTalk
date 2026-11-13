@@ -1432,3 +1432,221 @@
 "network.offline.record_hint" = "This Mac is offline. Live captions need the internet; turn them off to record without them.";
 "network.offline.short" = "No network";
 "network.offline.recording_banner" = "This Mac is offline. Recording continues, and captions pick up again on their own once it’s back online; the offline stretch may have none.";
+
+/* City archive: filing a recording’s transcript in a city’s archive, as the signed-in resident. Text only; audio never leaves this Mac. */
+"settings.section.city_name" = "City";
+"city.settings.subtitle" = "Sign in with your identity in a city, and a finished recording’s transcript can be filed in that city’s archive under your name, with the event it belongs to.";
+
+/* City: signing in. */
+"city.signin.title" = "Sign in";
+"city.signin.title_format" = "Sign in to %@";
+"city.signin.address_hint" = "Start with the city’s web address.";
+"city.signin.address_placeholder" = "City address";
+"city.signin.address_label" = "City web address";
+"city.signin.continue" = "Continue";
+"city.signin.requesting" = "Asking the city for a sign-in code…";
+"city.signin.signing_in" = "Signing in…";
+"city.signin.step_scan" = "On a device that’s already signed in to this city, open “City hall → Identity”, choose “Link a new device → Scan”, and scan this code — or paste the copied code there.";
+"city.signin.step_check" = "Both devices show the same six digits. If they match, confirm on that device.";
+"city.signin.qr_label" = "Sign-in code as a QR code";
+"city.signin.copy_code" = "Copy code";
+"city.signin.code_copied" = "Sign-in code copied";
+"city.signin.expires_format" = "Expires in %@";
+"city.signin.check_label" = "Check digits";
+"city.signin.check_waiting" = "Waiting for that device to confirm…";
+"city.signin.lapsed_title" = "This code is no longer valid";
+"city.signin.lapsed_detail" = "A sign-in code lasts five minutes. Get a new one and scan again.";
+"city.signin.new_code" = "New Code";
+"city.signin.no_device" = "No other device at hand?";
+"city.signin.use_recovery_key" = "Sign in with recovery key…";
+"city.signin.change_city" = "Another city";
+"city.signin.recovery_placeholder" = "Recovery key";
+"city.signin.sign_in" = "Sign In";
+"city.signin.recovery_hint" = "The recovery key is your identity in the city itself. Don’t enter it on a shared computer.";
+"city.signin.trust" = "Signing in hands this Mac your identity in the city: it can do anything there that you can, in your name. ZuTalk uses it only to file the transcripts you assign to an event. On a venue’s shared computer, sign out when you’re done.";
+
+/* City: signed in. */
+"city.settings.signed_in" = "Signed in";
+"city.settings.unnamed" = "Unnamed resident";
+"city.settings.stored_title" = "Where the sign-in is kept";
+"city.settings.stored_detail" = "Only on this Mac. Signing out deletes it from this Mac; your identity in the city isn’t affected.";
+"city.role.resident_format" = "Resident of %@";
+"city.role.founder_format" = "Founder of %@";
+"city.role.coordinator_format" = "Coordinator of %@";
+"city.role.curator_format" = "Curator of %@";
+"city.role.inviter_format" = "Inviter in %@";
+"city.signout.action" = "Sign Out…";
+"city.signout.button" = "Sign Out";
+"city.signout.confirm_title" = "Sign out on this Mac?";
+"city.signout.confirm_message" = "The sign-in is removed from this Mac only. Your identity in the city and everything already filed in the archive stay as they are. After signing out, this Mac can no longer act as you, and transcripts still waiting to be filed won’t be sent.";
+"city.signout.failed" = "Couldn’t sign out";
+
+/* City: what is filed, and when. */
+"city.what.title" = "What’s filed";
+"city.what.subtitle" = "Listed again before each recording starts.";
+"city.what.text" = "Original and translations";
+"city.what.text_detail" = "One per language, aligned by time.";
+"city.what.always" = "Always";
+"city.what.speakers" = "Speaker names";
+"city.what.speakers_detail" = "When off, they appear only as “Speaker 1”, “Speaker 2”.";
+"city.what.marks" = "Marks";
+"city.what.marks_detail" = "Only where you marked — never the notes you wrote.";
+"city.what.audio" = "Audio";
+"city.what.never" = "Never";
+"city.when.title" = "After recording";
+"city.when.row" = "When to file";
+"city.when.automatic" = "Automatically";
+"city.when.ask" = "Ask me first";
+"city.when.automatic_detail" = "Filed in the background once you stop — no waiting. Without a network, it’s filed when you’re back online.";
+"city.when.ask_detail" = "Stopping only keeps the recording with its event; nothing is sent until you choose File in Archive.";
+"city.options.save_failed" = "Couldn’t save this setting";
+
+/* City: what has been filed from this Mac. */
+"city.filings.title" = "Filed in the archive";
+"city.filings.subtitle" = "Everything you’ve filed from this Mac. You can withdraw any of it at any time.";
+"city.filings.empty" = "Nothing filed yet.";
+"city.filing.filed" = "Filed";
+"city.filing.changed_format" = "You changed %lld sentences; the archive still has the old ones";
+"city.filing.queued" = "Waiting to be filed";
+"city.filing.queued_offline" = "Waiting — it’s filed automatically once you’re online";
+"city.filing.failed_format" = "Not filed: %@";
+"city.filing.bound" = "Assigned to the event, not filed yet";
+"city.filing.withdrawn" = "Withdrawn";
+
+/* City: actions shared by several surfaces. */
+"city.action.open" = "Open";
+"city.action.update" = "Update";
+"city.action.withdraw" = "Withdraw…";
+"city.action.retry" = "Retry";
+"city.action.file" = "File in Archive";
+"city.action.not_filing" = "Don’t file this one";
+"city.action.pick_from_calendar" = "Choose from calendar…";
+"city.action.change_event" = "Change event…";
+"city.withdraw.confirm_title" = "Withdraw this transcript from the archive?";
+"city.withdraw.confirm_message" = "It disappears from the archive’s pages. The transcript records already filed stay in the city’s log, though, and can’t be deleted from there today.";
+"city.withdraw.button" = "Withdraw";
+
+/* City: a topic’s channel. */
+"city.topic.title" = "Archive";
+"city.topic.subtitle" = "Besides the event it was recorded at, the channel this topic’s recordings also go into.";
+"city.topic.channel" = "Channel";
+"city.topic.channel_detail_format" = "Channels in the %@ archive you can add to.";
+"city.topic.no_channel" = "No channel";
+"city.topic.new_channel" = "New channel in browser…";
+"city.topic.channel_failed" = "Couldn’t save the channel";
+
+/* City: the event row on the Record page, and the sentence that says what will be filed. */
+"city.record.title" = "Event";
+"city.record.detail_format" = "After recording, the transcript is filed in the %@ archive with this event’s materials.";
+"city.record.change_hint" = "Change the event, or don’t file this recording";
+"city.record.several_format" = "%lld events are running right now — choose one. You can also start without choosing and assign it afterwards.";
+"city.record.none_running_detail" = "No event is running right now, so this recording won’t be filed. You can assign it afterwards.";
+"city.record.none_chosen_detail" = "This recording won’t be filed in the archive. You can assign it afterwards.";
+"city.event.today_format" = "Today %@";
+"city.summary.as_languages_format" = "Filed as %1$@: transcripts in %2$@.";
+"city.summary.as_format" = "Filed as %@.";
+"city.summary.extras.names_marks" = "With speaker names and marks.";
+"city.summary.extras.names_only" = "With speaker names, without marks.";
+"city.summary.extras.marks_only" = "With marks, without speaker names.";
+"city.summary.extras.neither" = "Without speaker names or marks.";
+"city.summary.channel_format" = "Also added to the channel “%@”.";
+"city.summary.audio_stays" = "Audio stays on this Mac.";
+"city.content.language_format" = "%1$@ %2$lld sentences";
+"city.content.speakers_format" = "%lld speakers";
+"city.content.marks_format" = "%lld marks";
+
+/* City: choosing an event from the calendar. */
+"city.picker.title" = "Which event is this for?";
+"city.picker.search" = "Search events or places";
+"city.picker.filter" = "Show";
+"city.picker.filter_all" = "All";
+"city.picker.filter_mine" = "Hosted by me";
+"city.picker.previous_month" = "Previous month";
+"city.picker.next_month" = "Next month";
+"city.picker.today" = "Today";
+"city.picker.yesterday" = "Yesterday";
+"city.picker.count_format" = "%lld events";
+"city.picker.count_ended_format" = "%lld events, all ended";
+"city.picker.count_mine_format" = "%lld hosted by you";
+"city.picker.month_today_format" = "%1$lld this month · %2$lld today";
+"city.picker.month_day_format" = "%1$lld this month · %2$lld that day";
+"city.picker.month_mine_format" = "%lld hosted by you this month";
+"city.picker.group.overlapping" = "Overlapping this recording";
+"city.picker.group.running" = "Running now";
+"city.picker.group.later" = "Later today";
+"city.picker.group.ended" = "Ended";
+"city.picker.group.rest" = "Other events that day";
+"city.picker.group.mine_other_days" = "Others you host this month";
+"city.picker.group.other_days" = "On other days";
+"city.picker.tag_mine" = "You host";
+"city.picker.tag_residents" = "Residents only";
+"city.picker.tag_filed" = "Filed";
+"city.picker.empty_day" = "No events on this day.";
+"city.picker.empty_mine" = "Nothing you host on this day.";
+"city.picker.empty_never" = "The event list hasn’t been loaded yet. Connect to the internet, then click Refresh.";
+"city.picker.refresh" = "Refresh";
+"city.picker.updated_format" = "Event list updated: %@";
+"city.picker.never_updated" = "Event list not loaded yet";
+"city.picker.confirm" = "Use This Event";
+
+/* City: the destination in the recording bar. */
+"city.bar.hint" = "Shows where this recording will be filed, and lets you change it";
+"city.bar.files_to_format" = "Filed under %@";
+"city.bar.not_filing" = "This recording won’t be filed";
+"city.bar.not_filing_detail" = "This recording won’t be filed in the archive. You can choose an event from the calendar now, or file it later from the recording’s Share panel.";
+"city.bar.heading_automatic" = "Filed in the archive after recording";
+"city.bar.heading_ask" = "Assigned to an event · you file it afterwards";
+"city.bar.heading_none" = "Not being filed";
+"city.bar.channel_format" = "Channel “%@”";
+
+/* City: the archive section of a recording’s Share panel. */
+"city.share.title" = "Archive";
+"city.share.filed" = "Filed in the archive";
+"city.share.filed_format" = "Filed in the archive · %@";
+"city.share.fact.event" = "Event";
+"city.share.fact.channel" = "Channel";
+"city.share.fact.signer" = "Signed by";
+"city.share.fact.content" = "Contents";
+"city.share.fact.last" = "Last filed";
+"city.share.last_format" = "%1$@, by %2$@";
+"city.share.changed_format" = "You changed %lld sentences; the archive still has the old ones.";
+"city.share.changed_detail" = "Updating sends only the sentences you changed.";
+"city.share.update" = "Update Archive";
+"city.share.open" = "Open in Browser";
+"city.share.withdraw" = "Withdraw from Archive…";
+"city.share.public_note" = "What’s in the archive is public and stays there — unlike the link below, which expires after 24 hours.";
+"city.share.queued" = "Waiting to be filed in the archive…";
+"city.share.queued_offline" = "No network. It’s filed in the archive automatically once you’re back online.";
+"city.share.retry_now" = "Retry Now";
+"city.share.failed_format" = "Not filed: %@";
+"city.share.failed_safe" = "The transcript is all still on this Mac — nothing was lost.";
+"city.share.not_filed" = "This recording hasn’t been filed in the archive.";
+"city.share.withdrawn" = "This transcript was withdrawn from the archive. You can pick another event or file it again.";
+"city.share.pick" = "Choose Event from Calendar…";
+"city.share.change" = "Change…";
+
+/* City: what is said once filing finishes in the background. */
+"city.notice.filed_format" = "Filed in the archive · %@";
+"city.notice.ask_format" = "Recording assigned to “%@” — not filed yet.";
+"city.toast.failed" = "Couldn’t file in the archive";
+"city.toast.failed_format" = "Couldn’t file in the archive · %@";
+"city.toast.queued" = "Queued — it’ll be filed in the archive shortly.";
+"city.toast.queued_offline" = "No network. The transcript is filed in the archive automatically once you’re online.";
+"city.toast.withdrawn" = "Withdrawn from the archive";
+"city.bind.failed" = "Couldn’t assign the event";
+
+/* City: errors. The keys are the stable codes the core reports; each says what to do next. */
+"city.error.offline" = "This Mac isn’t connected to the internet. Connect and try again.";
+"city.error.server" = "The city’s server can’t be reached right now. Try again in a little while.";
+"city.error.bad_address" = "That doesn’t look like a city’s address. Enter it the way the city gave it to you — just the domain.";
+"city.error.no_city" = "No city was found at that address. Check it for typos.";
+"city.error.bad_key" = "That recovery key isn’t right. Check it against the copy you saved and enter it again — every character counts.";
+"city.error.expired" = "The sign-in code expired. Get a new code and scan again.";
+"city.error.signed_out" = "This Mac isn’t signed in to a city. Sign in under Settings › City, then try again.";
+"city.error.unbound" = "This recording isn’t assigned to an event yet. Choose an event first, then file it.";
+"city.error.not_allowed" = "This event only accepts material from its hosts and recorders. Ask a host to add you under the event’s “Recorders”, then retry.";
+"city.error.not_allowed_named_format" = "This event only accepts material from its hosts and recorders. Ask a host to add you (%@) under the event’s “Recorders”, then retry.";
+"city.error.no_transcript" = "This recording has no transcript yet. Once transcription finishes, open the recording’s Share… panel and retry.";
+"city.error.refused" = "The city didn’t accept this transcript. Retry once; if it’s refused again, tell a city coordinator which event it was.";
+"city.error.busy" = "This recording is already being filed. Wait for it to finish, then try again.";
+"city.error.generic" = "Something went wrong talking to the city. Try again in a moment.";

@@ -4,7 +4,7 @@
 # 设计见 docs/architecture/share-links.md 第 4 节。共享只有两条出口:加密链接
 # (crates/vt-ffi/src/link_share.rs)与「发送副本」(同一文件里的 transcript_file,
 # 由 App 的共享面板写成 .md / .srt)。这道门禁把「音频不可共享」从约定变成构建期
-# 事实,分五层:
+# 事实,分六层:
 #   1. 共享模块碰不到音频:不引用 vt_audio、音频解密、PCM 类型;
 #   2. 链接密钥只能现生成:不从密钥库取任何已有的 SessionKey(那是音频的钥匙);
 #   3. 发送副本只走纯文字导出:不走会打包 audio.wav 的 zip 导出;
@@ -12,6 +12,9 @@
 #   5. 设备同步、附近与加密备份(crates/vt-sync,docs/architecture/local-first-sync.md)
 #      在依赖图上够不到 vt-audio 与 vt-crypto,源码里也不碰音频;备份存盘的密钥
 #      只能是它自己现生成的那把。
+#   6. 交到城的档案馆(crates/vt-city、crates/vt-ffi/src/city_api.rs,
+#      docs/architecture/city-archive.md)只签文字记录:不签音频分段、不传文件,
+#      密钥库只取登录的那一把签名钥匙。
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
@@ -161,4 +164,60 @@ while IFS= read -r ref; do
   [[ "$ref" == "BACKUP_KEY_REF" ]] || fail "backup_share.rs 从密钥库取了备份密钥以外的东西: $ref"
 done <<<"$BACKUP_KEY_REFS"
 
-echo "✓ [share] 音频不可共享、不可同步的五层约束成立"
+# ── 第六层:交到城的档案馆只碰文字 ─────────────────────────────────────────
+# docs/architecture/city-archive.md 第 6 节。城的协议里有带音频分段的录音
+# (`tape/part` 加 `/files/` 上传);ZuTalk 这一头不签那种记录、不传文件。
+# 协议库 vt-city 在依赖图上够不到音频解密与 PCM;编排层 city_api.rs 只读
+# 转录事实,密钥库只取登录的那一把签名钥匙。
+CITY_CRATE="$ROOT_DIR/crates/vt-city"
+CITY_MANIFEST="$CITY_CRATE/Cargo.toml"
+[[ -f "$CITY_MANIFEST" ]] || fail "缺少 $CITY_MANIFEST"
+for forbidden in "${FORBIDDEN_CRATES[@]}"; do
+  if grep -Eq "^[[:space:]]*${forbidden}[[:space:]]*=" "$CITY_MANIFEST"; then
+    fail "vt-city 直接依赖了 $forbidden;交到档案馆的协议库必须够不到音频"
+  fi
+done
+if command -v cargo >/dev/null 2>&1; then
+  CITY_TREE="$(cargo tree --quiet --offline --package vt-city --edges normal --prefix none 2>/dev/null \
+    | awk '{print $1}')" || fail "cargo tree 没能列出 vt-city 的依赖"
+  [[ -n "$CITY_TREE" ]] || fail "cargo tree 没能列出 vt-city 的依赖"
+  for forbidden in "${FORBIDDEN_CRATES[@]}"; do
+    if grep -Fxq "$forbidden" <<<"$CITY_TREE"; then
+      fail "vt-city 通过传递依赖引入了 $forbidden;检查中间 crate"
+    fi
+  done
+else
+  echo "  ! 跳过 cargo tree 传递依赖检查(环境无 cargo)" >&2
+fi
+while IFS= read -r file; do
+  if awk '/^#\[cfg\(test\)\]$/{exit} {print}' "$file" | sed 's://.*::' \
+      | grep -En "tape/part|/files/" >/dev/null; then
+    fail "${file#"$ROOT_DIR/"} 签了音频分段或上传了文件;交到档案馆的只有文字"
+  fi
+done < <(find "$CITY_CRATE/src" -type f -name '*.rs' | sort)
+
+CITY_API="$ROOT_DIR/crates/vt-ffi/src/city_api.rs"
+[[ -f "$CITY_API" ]] || fail "缺少 $CITY_API"
+CITY_STRIPPED="$(mktemp)"
+awk '/^#\[cfg\(test\)\]$/{exit} {print}' "$CITY_API" | sed 's://.*::' >"$CITY_STRIPPED"
+if grep -En "vt_audio|decrypt|DecryptReader|encrypted_path|audio_path|audio_key_ref|audio_journal|\.wav|export_session_zip|include_audio|tape/part|/files/" \
+    "$CITY_STRIPPED" >/dev/null; then
+  rm -f "$CITY_STRIPPED"
+  fail "city_api.rs 碰了音频或音频的密钥;交到档案馆的只有文字"
+fi
+CITY_KEY_REFS="$(tr '\n' ' ' <"$CITY_STRIPPED" \
+  | grep -Eo "key_store[[:space:]]*\.[a-z_]+\([[:space:]]*[A-Z_a-z]+" | sed 's/.*(//' | tr -d ' ' | sort -u || true)"
+rm -f "$CITY_STRIPPED"
+[[ -n "$CITY_KEY_REFS" ]] || fail "没能从 city_api.rs 解析出密钥库的调用"
+while IFS= read -r ref; do
+  [[ -n "$ref" ]] || continue
+  [[ "$ref" == "CITY_IDENTITY_KEY_REF" ]] || fail "city_api.rs 从密钥库取了登录钥匙以外的东西: $ref"
+done <<<"$CITY_KEY_REFS"
+
+while IFS= read -r file; do
+  if grep -En "exportSessionZip|includeAudio|audio\.wav|\"wav\"|AVAudioFile|decryptSessionAudio" "$file" >/dev/null; then
+    fail "${file#"$ROOT_DIR/"} 碰了音频导出;档案馆的界面只给文字"
+  fi
+done < <(find "$SWIFT_DIR" -type f -name 'City*.swift' | sort)
+
+echo "✓ [share] 音频不可共享、不可同步、不交档案馆的六层约束成立"

@@ -1432,3 +1432,221 @@
 "network.offline.record_hint" = "Mac เครื่องนี้ออฟไลน์อยู่ คำบรรยายสดต้องใช้อินเทอร์เน็ต ปิดคำบรรยายเพื่อบันทึกอย่างเดียวได้";
 "network.offline.short" = "ไม่มีเครือข่าย";
 "network.offline.recording_banner" = "Mac เครื่องนี้ออฟไลน์อยู่ การบันทึกยังดำเนินต่อไป และคำบรรยายจะกลับมาเองเมื่อออนไลน์อีกครั้ง ช่วงที่ออฟไลน์อาจไม่มีคำบรรยาย";
+
+/* City archive: filing a recording’s transcript in a city’s archive, as the signed-in resident. Text only; audio never leaves this Mac. */
+"settings.section.city_name" = "เมือง";
+"city.settings.subtitle" = "ลงชื่อเข้าด้วยตัวตนของคุณในเมือง แล้วบทถอดความของการบันทึกจะส่งเข้าคลังเอกสารของเมืองในนามของคุณ โดยจัดไว้ใต้กิจกรรมที่ตรงกันได้";
+
+/* City: signing in. */
+"city.signin.title" = "ลงชื่อเข้า";
+"city.signin.title_format" = "ลงชื่อเข้า %@";
+"city.signin.address_hint" = "เริ่มจากใส่ที่อยู่เว็บของเมือง";
+"city.signin.address_placeholder" = "ที่อยู่ของเมือง";
+"city.signin.address_label" = "ที่อยู่เว็บของเมือง";
+"city.signin.continue" = "ดำเนินการต่อ";
+"city.signin.requesting" = "กำลังขอรหัสลงชื่อเข้าจากเมือง…";
+"city.signin.signing_in" = "กำลังลงชื่อเข้า…";
+"city.signin.step_scan" = "บนอุปกรณ์ที่ลงชื่อเข้าเมืองนี้อยู่แล้ว เปิด “ศาลาว่าการ → ตัวตน” เลือก “เชื่อมอุปกรณ์ใหม่ → สแกน” แล้วสแกนโค้ดนี้ หรือวางรหัสที่คัดลอกไว้ก็ได้";
+"city.signin.step_check" = "ทั้งสองเครื่องจะแสดงเลขหกหลักชุดเดียวกัน ถ้าตรงกัน ให้กดยืนยันบนอุปกรณ์เครื่องนั้น";
+"city.signin.qr_label" = "คิวอาร์โค้ดของรหัสลงชื่อเข้า";
+"city.signin.copy_code" = "คัดลอกรหัส";
+"city.signin.code_copied" = "คัดลอกรหัสลงชื่อเข้าแล้ว";
+"city.signin.expires_format" = "หมดอายุใน %@";
+"city.signin.check_label" = "เลขตรวจสอบ";
+"city.signin.check_waiting" = "กำลังรออุปกรณ์เครื่องนั้นยืนยัน…";
+"city.signin.lapsed_title" = "รหัสนี้ใช้ไม่ได้แล้ว";
+"city.signin.lapsed_detail" = "รหัสลงชื่อเข้าใช้ได้ห้านาที ขอรหัสใหม่แล้วสแกนอีกครั้ง";
+"city.signin.new_code" = "ขอรหัสใหม่";
+"city.signin.no_device" = "ไม่มีอุปกรณ์อื่นอยู่ใกล้มือใช่ไหม";
+"city.signin.use_recovery_key" = "ลงชื่อเข้าด้วยคีย์กู้คืน…";
+"city.signin.change_city" = "เปลี่ยนเมือง";
+"city.signin.recovery_placeholder" = "คีย์กู้คืน";
+"city.signin.sign_in" = "ลงชื่อเข้า";
+"city.signin.recovery_hint" = "คีย์กู้คืนคือตัวตนของคุณในเมืองโดยตรง อย่ากรอกบนคอมพิวเตอร์ที่ใช้ร่วมกัน";
+"city.signin.trust" = "การลงชื่อเข้าคือการมอบตัวตนของคุณในเมืองให้ Mac เครื่องนี้ เครื่องนี้จึงทำทุกอย่างที่คุณทำได้ในเมืองในนามของคุณ ZuTalk ใช้ตัวตนนี้เพื่อส่งบทถอดความที่คุณจัดเข้ากิจกรรมเข้าคลังเอกสารเท่านั้น ถ้าเป็นคอมพิวเตอร์ส่วนกลางของสถานที่ ใช้เสร็จแล้วให้ลงชื่อออก";
+
+/* City: signed in. */
+"city.settings.signed_in" = "ลงชื่อเข้าแล้ว";
+"city.settings.unnamed" = "ผู้อยู่อาศัยที่ไม่มีชื่อ";
+"city.settings.stored_title" = "ข้อมูลการลงชื่อเข้าเก็บไว้ที่ไหน";
+"city.settings.stored_detail" = "เก็บไว้บน Mac เครื่องนี้เท่านั้น การลงชื่อออกจะลบออกจาก Mac เครื่องนี้ ตัวตนของคุณในเมืองไม่ได้รับผลกระทบ";
+"city.role.resident_format" = "ชาวเมือง %@";
+"city.role.founder_format" = "ผู้ก่อตั้ง %@";
+"city.role.coordinator_format" = "ผู้ประสานงานของ %@";
+"city.role.curator_format" = "ภัณฑารักษ์ของ %@";
+"city.role.inviter_format" = "ผู้เชิญของ %@";
+"city.signout.action" = "ลงชื่อออก…";
+"city.signout.button" = "ลงชื่อออก";
+"city.signout.confirm_title" = "ลงชื่อออกจาก Mac เครื่องนี้ไหม";
+"city.signout.confirm_message" = "ข้อมูลการลงชื่อเข้าจะถูกลบจาก Mac เครื่องนี้เท่านั้น ตัวตนของคุณในเมืองและสิ่งที่ส่งเข้าคลังเอกสารไปแล้วยังอยู่เหมือนเดิม หลังลงชื่อออก Mac เครื่องนี้จะทำอะไรในนามของคุณไม่ได้อีก และบทถอดความที่รอส่งอยู่ก็จะไม่ถูกส่ง";
+"city.signout.failed" = "ลงชื่อออกไม่สำเร็จ";
+
+/* City: what is filed, and when. */
+"city.what.title" = "ส่งอะไรบ้าง";
+"city.what.subtitle" = "จะแสดงให้ดูอีกครั้งก่อนเริ่มบันทึกทุกครั้ง";
+"city.what.text" = "ต้นฉบับและคำแปล";
+"city.what.text_detail" = "ภาษาละหนึ่งชุด เรียงตรงกันตามเวลา";
+"city.what.always" = "ส่งเสมอ";
+"city.what.speakers" = "ชื่อผู้พูด";
+"city.what.speakers_detail" = "เมื่อปิด จะเขียนเพียง “ผู้พูด 1” “ผู้พูด 2”";
+"city.what.marks" = "เครื่องหมาย";
+"city.what.marks_detail" = "ส่งเฉพาะตำแหน่งที่ทำเครื่องหมาย ไม่ส่งโน้ตที่คุณเขียน";
+"city.what.audio" = "เสียง";
+"city.what.never" = "ไม่ส่ง";
+"city.when.title" = "หลังบันทึกเสร็จ";
+"city.when.row" = "ส่งเมื่อไร";
+"city.when.automatic" = "ส่งอัตโนมัติ";
+"city.when.ask" = "ถามฉันก่อน";
+"city.when.automatic_detail" = "เมื่อหยุดบันทึกจะส่งอยู่เบื้องหลัง ไม่ต้องรอ ถ้าไม่มีเครือข่ายจะส่งเมื่อกลับมาออนไลน์";
+"city.when.ask_detail" = "เมื่อหยุดบันทึกจะจัดไว้กับกิจกรรมเท่านั้น ยังไม่ส่งออกไป จนกว่าคุณจะกด “ส่งเข้าคลังเอกสาร”";
+"city.options.save_failed" = "บันทึกการตั้งค่านี้ไม่สำเร็จ";
+
+/* City: what has been filed from this Mac. */
+"city.filings.title" = "ส่งเข้าคลังเอกสารแล้ว";
+"city.filings.subtitle" = "ทุกอย่างที่คุณส่งจาก Mac เครื่องนี้อยู่ที่นี่ ถอนออกได้ทุกเมื่อ";
+"city.filings.empty" = "ยังไม่ได้ส่งอะไร";
+"city.filing.filed" = "ส่งแล้ว";
+"city.filing.changed_format" = "คุณแก้ไป %lld ประโยค ในคลังเอกสารยังเป็นฉบับเดิม";
+"city.filing.queued" = "รอส่ง";
+"city.filing.queued_offline" = "รอส่ง จะส่งเองเมื่อออนไลน์";
+"city.filing.failed_format" = "ส่งไม่สำเร็จ: %@";
+"city.filing.bound" = "จัดเข้ากิจกรรมแล้ว ยังไม่ได้ส่ง";
+"city.filing.withdrawn" = "ถอนออกแล้ว";
+
+/* City: actions shared by several surfaces. */
+"city.action.open" = "เปิด";
+"city.action.update" = "อัปเดต";
+"city.action.withdraw" = "ถอนออก…";
+"city.action.retry" = "ลองใหม่";
+"city.action.file" = "ส่งเข้าคลังเอกสาร";
+"city.action.not_filing" = "ครั้งนี้ไม่ส่ง";
+"city.action.pick_from_calendar" = "เลือกจากปฏิทิน…";
+"city.action.change_event" = "เปลี่ยนกิจกรรม…";
+"city.withdraw.confirm_title" = "ถอนบทถอดความนี้ออกจากคลังเอกสารไหม";
+"city.withdraw.confirm_message" = "รายการนี้จะหายไปจากหน้าคลังเอกสาร แต่บันทึกบทถอดความที่ส่งไปแล้วยังคงอยู่ในบันทึกของเมือง และตอนนี้ยังลบออกจากที่นั่นไม่ได้";
+"city.withdraw.button" = "ถอนออก";
+
+/* City: a topic’s channel. */
+"city.topic.title" = "คลังเอกสาร";
+"city.topic.subtitle" = "นอกจากกิจกรรมที่บันทึก การบันทึกในหัวข้อนี้จะใส่ไว้ในช่องไหนด้วย";
+"city.topic.channel" = "ช่อง";
+"city.topic.channel_detail_format" = "ช่องในคลังเอกสารของ %@ ที่คุณใส่ของได้";
+"city.topic.no_channel" = "ไม่ใส่ในช่อง";
+"city.topic.new_channel" = "สร้างช่องใหม่ในเบราว์เซอร์…";
+"city.topic.channel_failed" = "บันทึกช่องไม่สำเร็จ";
+
+/* City: the event row on the Record page, and the sentence that says what will be filed. */
+"city.record.title" = "กิจกรรม";
+"city.record.detail_format" = "เมื่อบันทึกเสร็จ บทถอดความจะส่งเข้าคลังเอกสารของ %@ ไว้กับเอกสารของกิจกรรมนี้";
+"city.record.change_hint" = "เปลี่ยนกิจกรรม หรือไม่ส่งการบันทึกครั้งนี้";
+"city.record.several_format" = "ตอนนี้มี %lld กิจกรรมกำลังดำเนินอยู่ เลือกหนึ่งกิจกรรม หรือจะเริ่มโดยไม่เลือกแล้วค่อยจัดทีหลังก็ได้";
+"city.record.none_running_detail" = "ตอนนี้ไม่มีกิจกรรมที่กำลังดำเนินอยู่ ครั้งนี้จึงยังไม่ส่ง บันทึกเสร็จแล้วค่อยจัดเข้ากิจกรรมได้";
+"city.record.none_chosen_detail" = "การบันทึกครั้งนี้จะไม่ส่งเข้าคลังเอกสาร บันทึกเสร็จแล้วค่อยจัดเข้ากิจกรรมได้";
+"city.event.today_format" = "วันนี้ %@";
+"city.summary.as_languages_format" = "ส่งในนามของ %1$@: บทถอดความภาษา %2$@";
+"city.summary.as_format" = "ส่งบทถอดความในนามของ %@";
+"city.summary.extras.names_marks" = "มีชื่อผู้พูดและเครื่องหมาย";
+"city.summary.extras.names_only" = "มีชื่อผู้พูด ไม่มีเครื่องหมาย";
+"city.summary.extras.marks_only" = "มีเครื่องหมาย ไม่มีชื่อผู้พูด";
+"city.summary.extras.neither" = "ไม่มีชื่อผู้พูดและไม่มีเครื่องหมาย";
+"city.summary.channel_format" = "และใส่ไว้ในช่อง “%@” ด้วย";
+"city.summary.audio_stays" = "เสียงอยู่บน Mac เครื่องนี้เท่านั้น";
+"city.content.language_format" = "%1$@ %2$lld ประโยค";
+"city.content.speakers_format" = "ผู้พูด %lld คน";
+"city.content.marks_format" = "เครื่องหมาย %lld จุด";
+
+/* City: choosing an event from the calendar. */
+"city.picker.title" = "จัดเข้ากิจกรรมไหน";
+"city.picker.search" = "ค้นหาชื่อกิจกรรมหรือสถานที่";
+"city.picker.filter" = "แสดง";
+"city.picker.filter_all" = "ทั้งหมด";
+"city.picker.filter_mine" = "ที่ฉันจัด";
+"city.picker.previous_month" = "เดือนก่อนหน้า";
+"city.picker.next_month" = "เดือนถัดไป";
+"city.picker.today" = "วันนี้";
+"city.picker.yesterday" = "เมื่อวาน";
+"city.picker.count_format" = "%lld กิจกรรม";
+"city.picker.count_ended_format" = "%lld กิจกรรม จบแล้วทั้งหมด";
+"city.picker.count_mine_format" = "คุณจัด %lld กิจกรรม";
+"city.picker.month_today_format" = "เดือนนี้ %1$lld กิจกรรม · วันนี้ %2$lld กิจกรรม";
+"city.picker.month_day_format" = "เดือนนี้ %1$lld กิจกรรม · วันที่เลือก %2$lld กิจกรรม";
+"city.picker.month_mine_format" = "เดือนนี้คุณจัด %lld กิจกรรม";
+"city.picker.group.overlapping" = "เวลาตรงกับการบันทึกนี้";
+"city.picker.group.running" = "กำลังดำเนินอยู่";
+"city.picker.group.later" = "ภายหลังวันนี้";
+"city.picker.group.ended" = "จบแล้ว";
+"city.picker.group.rest" = "กิจกรรมอื่นในวันนั้น";
+"city.picker.group.mine_other_days" = "กิจกรรมอื่นที่คุณจัดในเดือนนี้";
+"city.picker.group.other_days" = "วันอื่น";
+"city.picker.tag_mine" = "คุณจัด";
+"city.picker.tag_residents" = "เฉพาะผู้อยู่อาศัย";
+"city.picker.tag_filed" = "ส่งแล้ว";
+"city.picker.empty_day" = "วันที่เลือกไม่มีกิจกรรม";
+"city.picker.empty_mine" = "วันที่เลือกไม่มีกิจกรรมที่คุณจัด";
+"city.picker.empty_never" = "ยังไม่ได้โหลดรายการกิจกรรม เชื่อมต่ออินเทอร์เน็ตแล้วกด “รีเฟรช”";
+"city.picker.refresh" = "รีเฟรช";
+"city.picker.updated_format" = "รายการกิจกรรมอัปเดตเมื่อ %@";
+"city.picker.never_updated" = "ยังไม่ได้โหลดรายการกิจกรรม";
+"city.picker.confirm" = "ใช้กิจกรรมนี้";
+
+/* City: the destination in the recording bar. */
+"city.bar.hint" = "ดูหรือเปลี่ยนว่าการบันทึกนี้จะส่งไปที่ไหน";
+"city.bar.files_to_format" = "จัดเข้ากิจกรรม: %@";
+"city.bar.not_filing" = "การบันทึกนี้จะไม่ส่งเข้าคลังเอกสาร";
+"city.bar.not_filing_detail" = "การบันทึกนี้จะไม่ส่งเข้าคลังเอกสาร เลือกกิจกรรมจากปฏิทินตอนนี้ หรือส่งภายหลังจาก “แชร์…” ก็ได้";
+"city.bar.heading_automatic" = "ส่งเข้าคลังเอกสารหลังบันทึกเสร็จ";
+"city.bar.heading_ask" = "จัดเข้ากิจกรรมแล้ว · คุณเป็นผู้ส่งหลังบันทึกเสร็จ";
+"city.bar.heading_none" = "ครั้งนี้ไม่ส่ง";
+"city.bar.channel_format" = "ช่อง “%@”";
+
+/* City: the archive section of a recording’s Share panel. */
+"city.share.title" = "คลังเอกสาร";
+"city.share.filed" = "ส่งเข้าคลังเอกสารแล้ว";
+"city.share.filed_format" = "ส่งเข้าคลังเอกสารแล้ว · %@";
+"city.share.fact.event" = "กิจกรรม";
+"city.share.fact.channel" = "ช่อง";
+"city.share.fact.signer" = "ลงชื่อโดย";
+"city.share.fact.content" = "เนื้อหา";
+"city.share.fact.last" = "ครั้งล่าสุด";
+"city.share.last_format" = "%1$@ โดย %2$@";
+"city.share.changed_format" = "คุณแก้ไป %lld ประโยค ในคลังเอกสารยังเป็นฉบับเดิม";
+"city.share.changed_detail" = "การอัปเดตจะส่งเฉพาะประโยคที่แก้";
+"city.share.update" = "อัปเดตคลังเอกสาร";
+"city.share.open" = "เปิดในเบราว์เซอร์";
+"city.share.withdraw" = "ถอนออกจากคลังเอกสาร…";
+"city.share.public_note" = "สิ่งที่อยู่ในคลังเอกสารเป็นสาธารณะและจะอยู่ตลอดไป ต่างจากลิงก์ด้านล่างที่หมดอายุใน 24 ชั่วโมง";
+"city.share.queued" = "กำลังรอส่งเข้าคลังเอกสาร…";
+"city.share.queued_offline" = "ไม่มีเครือข่าย เมื่อกลับมาออนไลน์จะส่งเข้าคลังเอกสารเอง";
+"city.share.retry_now" = "ลองใหม่ตอนนี้";
+"city.share.failed_format" = "ส่งไม่สำเร็จ: %@";
+"city.share.failed_safe" = "บทถอดความยังอยู่บน Mac เครื่องนี้ครบ ไม่มีอะไรหาย";
+"city.share.not_filed" = "การบันทึกนี้ยังไม่ได้ส่งเข้าคลังเอกสาร";
+"city.share.withdrawn" = "บทถอดความนี้ถูกถอนออกจากคลังเอกสารแล้ว เลือกกิจกรรมอื่นหรือส่งใหม่ได้";
+"city.share.pick" = "เลือกกิจกรรมจากปฏิทิน…";
+"city.share.change" = "เปลี่ยน…";
+
+/* City: what is said once filing finishes in the background. */
+"city.notice.filed_format" = "ส่งเข้าคลังเอกสารแล้ว · %@";
+"city.notice.ask_format" = "จัดการบันทึกเข้า “%@” แล้ว ยังไม่ได้ส่ง";
+"city.toast.failed" = "ส่งเข้าคลังเอกสารไม่สำเร็จ";
+"city.toast.failed_format" = "ส่งเข้าคลังเอกสารไม่สำเร็จ · %@";
+"city.toast.queued" = "เข้าคิวแล้ว จะส่งเข้าคลังเอกสารในอีกสักครู่";
+"city.toast.queued_offline" = "ไม่มีเครือข่าย เมื่อออนไลน์แล้วจะส่งเข้าคลังเอกสารเอง";
+"city.toast.withdrawn" = "ถอนออกจากคลังเอกสารแล้ว";
+"city.bind.failed" = "จัดเข้ากิจกรรมไม่สำเร็จ";
+
+/* City: errors. The keys are the stable codes the core reports; each says what to do next. */
+"city.error.offline" = "Mac เครื่องนี้ไม่ได้เชื่อมต่ออินเทอร์เน็ต เชื่อมต่อแล้วลองอีกครั้ง";
+"city.error.server" = "ตอนนี้ติดต่อเซิร์ฟเวอร์ของเมืองไม่ได้ ลองใหม่อีกสักครู่";
+"city.error.bad_address" = "ที่อยู่นี้ดูไม่เหมือนที่อยู่ของเมือง กรอกตามที่เมืองแจ้งไว้ เฉพาะชื่อโดเมน";
+"city.error.no_city" = "ไม่พบเมืองที่ที่อยู่นี้ ตรวจดูว่าพิมพ์ผิดหรือไม่";
+"city.error.bad_key" = "คีย์กู้คืนนี้ไม่ถูกต้อง ตรวจเทียบกับที่คุณเก็บไว้แล้วกรอกอีกครั้ง ต้องตรงทุกตัวอักษร";
+"city.error.expired" = "รหัสลงชื่อเข้าหมดอายุแล้ว ขอรหัสใหม่แล้วสแกนอีกครั้ง";
+"city.error.signed_out" = "Mac เครื่องนี้ยังไม่ได้ลงชื่อเข้าเมือง ลงชื่อเข้าที่ “การตั้งค่า › เมือง” แล้วลองอีกครั้ง";
+"city.error.unbound" = "การบันทึกนี้ยังไม่ได้จัดเข้ากิจกรรม เลือกกิจกรรมก่อนแล้วจึงส่ง";
+"city.error.not_allowed" = "กิจกรรมนี้รับเฉพาะเอกสารจากผู้จัดและผู้บันทึก ขอให้ผู้จัดเพิ่มคุณใน “ผู้บันทึก” ของกิจกรรม แล้วลองอีกครั้ง";
+"city.error.not_allowed_named_format" = "กิจกรรมนี้รับเฉพาะเอกสารจากผู้จัดและผู้บันทึก ขอให้ผู้จัดเพิ่มคุณ (%@) ใน “ผู้บันทึก” ของกิจกรรม แล้วลองอีกครั้ง";
+"city.error.no_transcript" = "การบันทึกนี้ยังไม่มีบทถอดความ เมื่อถอดเสียงเสร็จแล้ว เปิด “แชร์…” ของการบันทึกนี้แล้วลองอีกครั้ง";
+"city.error.refused" = "เมืองไม่รับบทถอดความนี้ ลองอีกครั้ง ถ้ายังไม่ได้ ให้แจ้งชื่อกิจกรรมกับผู้ประสานงานของเมือง";
+"city.error.busy" = "การบันทึกนี้กำลังส่งอยู่ รอให้เสร็จแล้วลองอีกครั้ง";
+"city.error.generic" = "เกิดปัญหาระหว่างติดต่อกับเมือง ลองใหม่อีกสักครู่";

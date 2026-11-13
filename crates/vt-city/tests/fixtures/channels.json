@@ -1,0 +1,513 @@
+{
+ "city": "a592ad348181ab935ee403c39ecaeaaef2f4336feba46faf976be57eabdab346",
+ "recs": [
+  {
+   "e": {
+    "v": 2,
+    "type": "id/inception",
+    "by": null,
+    "key": "did:key:z6MkjJRuJtMxfTErK55eWeV7FQLLxpsvzSUQ3AC6DmdNPFja",
+    "deps": [],
+    "links": [],
+    "body": {},
+    "at": 0
+   },
+   "s": "-CP6e5p6FYQGzxpzx2ruhV-uMZjxebzQtblb1yRO4ym78TE8YmduWzMKtiESDqJ_JePtEKF6uoZs-wTRG0V9CA"
+  },
+  {
+   "e": {
+    "v": 2,
+    "type": "id/inception",
+    "by": null,
+    "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+    "deps": [],
+    "links": [],
+    "body": {},
+    "at": 0
+   },
+   "s": "CgVEh5KlTJ5yjrokW1lpNVYr3CLHdw8TU4288xOuflPDfg3WsDrZIQLutMhQiIfNrbSpLdJsSryaw790BvE4Bw"
+  },
+  {
+   "e": {
+    "v": 2,
+    "type": "id/inception",
+    "by": null,
+    "key": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+    "deps": [],
+    "links": [],
+    "body": {},
+    "at": 0
+   },
+   "s": "pq-HR7CKHVs5HOS8p-Goor6A-Sqr9ozL_5ogWH3MEGIL3PlA2D4GnmLLO6jEZLw5rjLwrjY5UvLRQ2OIz5EdDQ"
+  },
+  {
+   "e": {
+    "v": 2,
+    "type": "id/inception",
+    "by": null,
+    "key": "did:key:z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV",
+    "deps": [],
+    "links": [],
+    "body": {},
+    "at": 0
+   },
+   "s": "fIh5JwWsMVmgcwkurpvBbja3kAfLwpkXw-mMBk6WxUzIsO6_bs3xTx535ZKpl8FR6iQsC6kTWCdPo8mVxJhiDQ"
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "polis/found",
+    "by": "9a5f20e44dd7447d23c4b3c7f97de7c2ffbd91672308a4836591cc1ca30ad7c1",
+    "key": "did:key:z6MkjJRuJtMxfTErK55eWeV7FQLLxpsvzSUQ3AC6DmdNPFja",
+    "deps": [
+     "9a5f20e44dd7447d23c4b3c7f97de7c2ffbd91672308a4836591cc1ca30ad7c1"
+    ],
+    "links": [],
+    "body": {
+     "name": "Harbour Town"
+    },
+    "at": 1774816000000
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkjJRuJtMxfTErK55eWeV7FQLLxpsvzSUQ3AC6DmdNPFja#z6MkjJRuJtMxfTErK55eWeV7FQLLxpsvzSUQ3AC6DmdNPFja",
+     "created": "2026-03-29T20:26:40.000Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z4vKPnnTDWfnoyRh4RscXR9V5db7R5PPpnwEZzVbx2TiZEPkGgYA3LPRoDB8K5VXPe6XtAzbw4o4JkNAdNWxPqhwf"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "polis/join",
+    "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+    "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+    "deps": [
+     "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+    ],
+    "links": [
+     "a592ad348181ab935ee403c39ecaeaaef2f4336feba46faf976be57eabdab346"
+    ],
+    "body": {},
+    "at": 1775680000000
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "created": "2026-04-08T20:26:40.000Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "zNHkqAjEAcviVUBSfYafZggRcdyx7QyAqxi7vuC4sDxnDgTDpsHTGQgjqEFKf92CA8tW4jgkWtdweQ9YQDziBBQo"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "polis/admit",
+    "by": "9a5f20e44dd7447d23c4b3c7f97de7c2ffbd91672308a4836591cc1ca30ad7c1",
+    "key": "did:key:z6MkjJRuJtMxfTErK55eWeV7FQLLxpsvzSUQ3AC6DmdNPFja",
+    "deps": [
+     "a592ad348181ab935ee403c39ecaeaaef2f4336feba46faf976be57eabdab346"
+    ],
+    "links": [
+     "a592ad348181ab935ee403c39ecaeaaef2f4336feba46faf976be57eabdab346",
+     "d701a903042ec6abc951a56cc0eee8233f6e235d488d3ba4dd342d35f5d37d4a",
+     "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+    ],
+    "body": {},
+    "at": 1775766400000
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkjJRuJtMxfTErK55eWeV7FQLLxpsvzSUQ3AC6DmdNPFja#z6MkjJRuJtMxfTErK55eWeV7FQLLxpsvzSUQ3AC6DmdNPFja",
+     "created": "2026-04-09T20:26:40.000Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "zXNbAg6Mx1ebjiLSUfVajZ6ofr9Gnho9yp7E5jUB3FLgUEHcWhf3aEKQAjoPsZU6dos99roG2BYeKw3VVjWFfeiY"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "polis/join",
+    "by": "537dc0ff10c75cc9fb5e7625bccfd57ffd7a91b3c0b4b928914f9b2c27fcaf87",
+    "key": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+    "deps": [
+     "537dc0ff10c75cc9fb5e7625bccfd57ffd7a91b3c0b4b928914f9b2c27fcaf87"
+    ],
+    "links": [
+     "a592ad348181ab935ee403c39ecaeaaef2f4336feba46faf976be57eabdab346"
+    ],
+    "body": {},
+    "at": 1775680000000
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK#z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+     "created": "2026-04-08T20:26:40.000Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z4bkoCrftrxTkK6UaR2BNaqx2N6VxdyVmjG58XWZWKQ6WfCjZZBDNDTzzxMq55wWNHqFB46K6gDcakm8yTr8LxBAq"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "polis/admit",
+    "by": "9a5f20e44dd7447d23c4b3c7f97de7c2ffbd91672308a4836591cc1ca30ad7c1",
+    "key": "did:key:z6MkjJRuJtMxfTErK55eWeV7FQLLxpsvzSUQ3AC6DmdNPFja",
+    "deps": [
+     "fae4d90ba296ce74a6185b1c358de3dd004beaffbfc86e0b2b64ac7eab7934e5"
+    ],
+    "links": [
+     "a592ad348181ab935ee403c39ecaeaaef2f4336feba46faf976be57eabdab346",
+     "a297649d9d7f1840a5cf13b9287b2881fb6717a974ce246f25335e78468bf415",
+     "537dc0ff10c75cc9fb5e7625bccfd57ffd7a91b3c0b4b928914f9b2c27fcaf87"
+    ],
+    "body": {},
+    "at": 1775766400000
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkjJRuJtMxfTErK55eWeV7FQLLxpsvzSUQ3AC6DmdNPFja#z6MkjJRuJtMxfTErK55eWeV7FQLLxpsvzSUQ3AC6DmdNPFja",
+     "created": "2026-04-09T20:26:40.000Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z4QNVjtsRxYA3ZFMzJ1MqsNAzoxvPbBrqbKVDnXrCe82eezruBKeEyDW2bDp5BCjaZKWznXfMCW56nwbxfBPWb9GX"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "arc/channel",
+    "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+    "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+    "deps": [
+     "d701a903042ec6abc951a56cc0eee8233f6e235d488d3ba4dd342d35f5d37d4a"
+    ],
+    "links": [],
+    "body": {
+     "title": "Field notes",
+     "about": "",
+     "status": "open",
+     "polis": "a592ad348181ab935ee403c39ecaeaaef2f4336feba46faf976be57eabdab346"
+    },
+    "at": 1780000000000
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "created": "2026-05-28T20:26:40.000Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "zG1yJMY7csfbMuxAih4JaxVh6eUYeC96adrdBY1QQ1itke21nFcaeSMfmzpj4Hffxa1V1FCg6YFR7Ei5JA5mmpj2"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "arc/edit",
+    "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+    "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+    "deps": [
+     "fe597547a530aff9b3f98edf3feb07817df4a76831b377a4a57502a198afe130"
+    ],
+    "links": [
+     "fe597547a530aff9b3f98edf3feb07817df4a76831b377a4a57502a198afe130"
+    ],
+    "body": {
+     "title": "Field notes, second season"
+    },
+    "at": 1780000001000
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "created": "2026-05-28T20:26:41.000Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z2SX55wTovgNbCTn7N6sdgTU3p6gpTm7wf6JKTRFCXEJiDE58WKwN6HPdL3CTeZemzoUbCyv4cc3rSHavQQtFiJnB"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "arc/edit",
+    "by": "537dc0ff10c75cc9fb5e7625bccfd57ffd7a91b3c0b4b928914f9b2c27fcaf87",
+    "key": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+    "deps": [
+     "a297649d9d7f1840a5cf13b9287b2881fb6717a974ce246f25335e78468bf415"
+    ],
+    "links": [
+     "fe597547a530aff9b3f98edf3feb07817df4a76831b377a4a57502a198afe130"
+    ],
+    "body": {
+     "title": "Renamed by a visitor"
+    },
+    "at": 1780000002000
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK#z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+     "created": "2026-05-28T20:26:42.000Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z3HjhNFWSedG94z64P3oJ9bGbT6iMvurMu5snxX4mbT5TzykGpwfwQCGJrqUqCapkM3zfK5vwmXpmkCrdfXXF7qF5"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "arc/edit",
+    "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+    "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+    "deps": [
+     "da37949e935afe4e9c0bd0af49570f2f9585bbea61b2303d6a36ce2228ec02f6"
+    ],
+    "links": [
+     "fe597547a530aff9b3f98edf3feb07817df4a76831b377a4a57502a198afe130"
+    ],
+    "body": {
+     "status": "closed"
+    },
+    "at": 1780000003000
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "created": "2026-05-28T20:26:43.000Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z2Ci4Ct1EvFCtJk9BEEVNohEq591KvvRTiA9DXcTJy8e9FbbmSxv8tZE4d6qXtxvXxUsD9kA2pPycDzH3DRMTtPSf"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "arc/edit",
+    "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+    "key": "did:key:z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV",
+    "deps": [
+     "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+    ],
+    "links": [
+     "fe597547a530aff9b3f98edf3feb07817df4a76831b377a4a57502a198afe130"
+    ],
+    "body": {
+     "title": "Forged under the owner's name"
+    },
+    "at": 1780000004000
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV#z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV",
+     "created": "2026-05-28T20:26:44.000Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z3bnhQYHj1CjRJRrMyoeGo71dJVwRpH6f1zxytMRHgyxkNTPw3uopeXNphJf9PC5bgvyB2mZgf4VQyg8jyAWdZ8sT"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "arc/channel",
+    "by": "537dc0ff10c75cc9fb5e7625bccfd57ffd7a91b3c0b4b928914f9b2c27fcaf87",
+    "key": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+    "deps": [
+     "892b73b7f13f1514d50cfa903d03a0d7100e37428e8a3d59607567a49c7c19a5"
+    ],
+    "links": [],
+    "body": {
+     "title": "Open mic recordings",
+     "status": "open",
+     "polis": "a592ad348181ab935ee403c39ecaeaaef2f4336feba46faf976be57eabdab346"
+    },
+    "at": 1780000000010
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK#z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+     "created": "2026-05-28T20:26:40.010Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "zG8srh3Qqrtd8H9Ktq6Ng4LACwi54KhvMfZVWuJKVBCn2K6cLy62phszaoK3Jhg6aipyZgb7PSTCTqDrzdWRorXE"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "arc/channel",
+    "by": "9a5f20e44dd7447d23c4b3c7f97de7c2ffbd91672308a4836591cc1ca30ad7c1",
+    "key": "did:key:z6MkjJRuJtMxfTErK55eWeV7FQLLxpsvzSUQ3AC6DmdNPFja",
+    "deps": [
+     "e7cb30c49a6850f60994f515650b1a643062849af28d3b7678d3074328e14889"
+    ],
+    "links": [],
+    "body": {
+     "title": "Best of the season",
+     "about": "",
+     "set": true,
+     "polis": "a592ad348181ab935ee403c39ecaeaaef2f4336feba46faf976be57eabdab346"
+    },
+    "at": 1780000000020
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkjJRuJtMxfTErK55eWeV7FQLLxpsvzSUQ3AC6DmdNPFja#z6MkjJRuJtMxfTErK55eWeV7FQLLxpsvzSUQ3AC6DmdNPFja",
+     "created": "2026-05-28T20:26:40.020Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z5yuYmBCEjQKtWwv47YjTH1Rk8fmxSZBqiVJrnMgzNr8xUQWMrNtg92XEyZXhU7xLc6WRccFGdjypqw6cabJ6XayN"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "arc/channel",
+    "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+    "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+    "deps": [
+     "a2cc3b3b63af48518cf6ff4c6d597c20033feaa63d447d004328f84942c5b96a"
+    ],
+    "links": [],
+    "body": {
+     "title": "Personal",
+     "status": "closed"
+    },
+    "at": 1780000000030
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "created": "2026-05-28T20:26:40.030Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z4qpK198qwixktfifdYzbNwr4MGwD3RGXUB7Nuvv93WU2VG6BwEGW7nFAfPFTbMrauEXHSBut1LHD8rcbXxo4w1gJ"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "arc/edit",
+    "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+    "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+    "deps": [
+     "e0e0b68b0c788677cb0646395bb20915401ea1fd748cfae23f0abf999ce11118"
+    ],
+    "links": [
+     "e0e0b68b0c788677cb0646395bb20915401ea1fd748cfae23f0abf999ce11118"
+    ],
+    "body": {
+     "status": "open",
+     "title": 7
+    },
+    "at": 1780000001030
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "created": "2026-05-28T20:26:41.030Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z3spJPQ6xcbA88xz1rrULBkGB1KhBDf7SwExmVMcgfZDWxY1ZgwXtAc2rLbVJE35BUS1vuPGfCgNtVjdcvNfnBgHK"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "arc/channel",
+    "by": "537dc0ff10c75cc9fb5e7625bccfd57ffd7a91b3c0b4b928914f9b2c27fcaf87",
+    "key": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+    "deps": [
+     "4b7b129dae568876ad6fb91eba08588ef2f672c66bcd63c643bb9d9f6824609d"
+    ],
+    "links": [],
+    "body": {
+     "status": "something else"
+    },
+    "at": 1780000000040
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK#z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+     "created": "2026-05-28T20:26:40.040Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z4CjN5DBHSZ6LSLKvoVH51rkpMN74cxs2FBVqNZQSRUzwtxGWz7c4qxfpjvDrS9GdY8EkEVUHsp9SgJA5SAH3KePo"
+    }
+   ]
+  }
+ ],
+ "channels": [
+  {
+   "id": "fe597547a530aff9b3f98edf3feb07817df4a76831b377a4a57502a198afe130",
+   "title": "Field notes, second season",
+   "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+   "city": "a592ad348181ab935ee403c39ecaeaaef2f4336feba46faf976be57eabdab346",
+   "open": false,
+   "set": false
+  },
+  {
+   "id": "a8d707d5ce6b19e18282c2b1554be6b8e41c45a63bcd1697b2044eb44604abc2",
+   "title": "Best of the season",
+   "by": "9a5f20e44dd7447d23c4b3c7f97de7c2ffbd91672308a4836591cc1ca30ad7c1",
+   "city": "a592ad348181ab935ee403c39ecaeaaef2f4336feba46faf976be57eabdab346",
+   "open": false,
+   "set": true
+  },
+  {
+   "id": "4b7b129dae568876ad6fb91eba08588ef2f672c66bcd63c643bb9d9f6824609d",
+   "title": "Open mic recordings",
+   "by": "537dc0ff10c75cc9fb5e7625bccfd57ffd7a91b3c0b4b928914f9b2c27fcaf87",
+   "city": "a592ad348181ab935ee403c39ecaeaaef2f4336feba46faf976be57eabdab346",
+   "open": true,
+   "set": false
+  },
+  {
+   "id": "125d83e2a9e95a07ec6d7249cba57c46045c88fa76b371f180fdadae4eea769c",
+   "title": "",
+   "by": "537dc0ff10c75cc9fb5e7625bccfd57ffd7a91b3c0b4b928914f9b2c27fcaf87",
+   "city": null,
+   "open": true,
+   "set": false
+  },
+  {
+   "id": "e0e0b68b0c788677cb0646395bb20915401ea1fd748cfae23f0abf999ce11118",
+   "title": "Personal",
+   "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+   "city": null,
+   "open": true,
+   "set": false
+  }
+ ]
+}

@@ -45,7 +45,7 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
     }
 
     func testSettingsSectionsAreNamedForWhatTheyAreAbout() throws {
-        XCTAssertEqual(SettingsSection.allCases, [.general, .captions, .sharing, .devices])
+        XCTAssertEqual(SettingsSection.allCases, [.general, .captions, .sharing, .devices, .city])
         let expected = [
             "en": ["General", "Live captions", "Sharing"],
             "zh-Hans": ["通用", "实时字幕", "共享"],
@@ -1187,5 +1187,579 @@ private final class FakeProviderCredentialValidator: ProviderCredentialValidatin
         // store's secret-lifetime boundary.
         lastCandidateAfterCall = nil
         return result
+    }
+}
+
+// MARK: - City archive
+
+/// The picker's arithmetic: which cells a month has, how a day's events are
+/// grouped, what a filter leaves. Dates are pinned to one time zone so the
+/// expectations do not depend on where the tests run.
+@MainActor
+final class CityCalendarLayoutTests: XCTestCase {
+    private let calendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Bangkok")!
+        calendar.locale = Locale(identifier: "en_GB")
+        calendar.firstWeekday = 2
+        return calendar
+    }()
+
+    private func date(_ month: Int, _ day: Int, _ hour: Int = 0, _ minute: Int = 0) -> Date {
+        calendar.date(from: DateComponents(year: 2026, month: month, day: day, hour: hour, minute: minute))!
+    }
+
+    private func ms(_ month: Int, _ day: Int, _ hour: Int, _ minute: Int = 0) -> Int64 {
+        Int64(date(month, day, hour, minute).timeIntervalSince1970 * 1_000)
+    }
+
+    private func event(
+        _ id: String,
+        start: Int64,
+        end: Int64,
+        title: String = "",
+        place: String = "",
+        mine: Bool = false
+    ) -> FfiCityEvent {
+        FfiCityEvent(
+            id: id,
+            title: title.isEmpty ? id : title,
+            place: place,
+            startMs: start,
+            endMs: end,
+            residentsOnly: false,
+            mine: mine
+        )
+    }
+
+    func testMonthGridStartsOnTheMondayOfTheFirstWeekAndAlwaysHasSixRows() {
+        // 1 November 2026 is a Sunday, so its row starts on Monday 26 October.
+        let grid = CityCalendarLayout.monthGrid(for: date(11, 13), calendar: calendar)
+
+        XCTAssertEqual(grid.count, 42)
+        XCTAssertEqual(grid.first, date(10, 26))
+        XCTAssertEqual(grid[6], date(11, 1))
+        XCTAssertEqual(grid.last, date(12, 6))
+        XCTAssertEqual(calendar.component(.weekday, from: grid[0]), 2)
+    }
+
+    func testWeekdayHeadersRunMondayToSunday() {
+        XCTAssertEqual(
+            CityCalendarLayout.weekdaySymbols(calendar: calendar, locale: Locale(identifier: "en_GB")),
+            ["M", "T", "W", "T", "F", "S", "S"]
+        )
+    }
+
+    func testMonthPagingLandsOnTheFirstOfTheNeighbouringMonth() {
+        XCTAssertEqual(CityCalendarLayout.month(date(11, 13), offsetBy: 1, calendar: calendar), date(12, 1))
+        XCTAssertEqual(CityCalendarLayout.month(date(11, 13), offsetBy: -1, calendar: calendar), date(10, 1))
+    }
+
+    func testAnEventCountsOnTheDayItStartsInThisTimeZone() {
+        // 19:00 to midnight belongs to the 13th, not to both days.
+        let late = event("late", start: ms(11, 13, 19), end: ms(11, 14, 0))
+        let morning = event("morning", start: ms(11, 13, 9), end: ms(11, 13, 10))
+        let next = event("next", start: ms(11, 14, 9), end: ms(11, 14, 10))
+
+        let counts = CityCalendarLayout.countsByDay([late, morning, next], calendar: calendar)
+
+        XCTAssertEqual(counts[date(11, 13)], 2)
+        XCTAssertEqual(counts[date(11, 14)], 1)
+        XCTAssertNil(counts[date(11, 15)])
+        XCTAssertEqual(CityCalendarLayout.count(inMonth: date(11, 1), from: [late, morning, next], calendar: calendar), 3)
+        XCTAssertEqual(CityCalendarLayout.count(inMonth: date(12, 1), from: [late, morning, next], calendar: calendar), 0)
+    }
+
+    func testTheBarUnderADayGrowsWithItsEventsAndStaysInsideTheCell() {
+        XCTAssertEqual(CityCalendarLayout.barWidth(count: 0), 0)
+        XCTAssertLessThan(CityCalendarLayout.barWidth(count: 1), CityCalendarLayout.barWidth(count: 4))
+        XCTAssertLessThan(CityCalendarLayout.barWidth(count: 4), CityCalendarLayout.barWidth(count: 8))
+        XCTAssertLessThanOrEqual(CityCalendarLayout.barWidth(count: 200), 24)
+    }
+
+    func testSearchCoversTitleAndPlaceAndMineKeepsOnlyOnesOwn() {
+        let reading = event("a", start: ms(11, 12, 9), end: ms(11, 12, 11), title: "Reading Club", place: "Library")
+        let tea = event("b", start: ms(11, 13, 13), end: ms(11, 13, 16), title: "Tea & Coworking", place: "Gallery Space", mine: true)
+        let all = [reading, tea]
+
+        XCTAssertEqual(CityCalendarLayout.filter(all, query: "", mineOnly: false).map(\.id), ["a", "b"])
+        XCTAssertEqual(CityCalendarLayout.filter(all, query: "  reading ", mineOnly: false).map(\.id), ["a"])
+        XCTAssertEqual(CityCalendarLayout.filter(all, query: "gallery", mineOnly: false).map(\.id), ["b"])
+        XCTAssertEqual(CityCalendarLayout.filter(all, query: "", mineOnly: true).map(\.id), ["b"])
+        XCTAssertTrue(CityCalendarLayout.filter(all, query: "reading", mineOnly: true).isEmpty)
+    }
+
+    func testTodayIsGroupedByTheClock() {
+        let now = date(11, 13, 15, 10)
+        // Far enough from "now" that no tolerance for early starts or
+        // overruns could move them between groups.
+        let lecture = event("lecture", start: ms(11, 13, 15), end: ms(11, 13, 17))
+        let tea = event("tea", start: ms(11, 13, 13, 30), end: ms(11, 13, 16, 30))
+        let evening = event("evening", start: ms(11, 13, 19), end: ms(11, 13, 21))
+        let noon = event("noon", start: ms(11, 13, 11), end: ms(11, 13, 12))
+        let early = event("early", start: ms(11, 13, 8), end: ms(11, 13, 9))
+        let tomorrow = event("tomorrow", start: ms(11, 14, 9), end: ms(11, 14, 10))
+
+        let groups = CityCalendarLayout.groups(
+            on: date(11, 13),
+            from: [early, noon, tea, lecture, evening, tomorrow],
+            now: now,
+            recording: nil,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(groups.map(\.kind), [.running, .laterToday, .endedToday])
+        XCTAssertEqual(Set(groups[0].events.map(\.id)), ["lecture", "tea"])
+        XCTAssertEqual(groups[1].events.map(\.id), ["evening"])
+        // The one that just ended comes first.
+        XCTAssertEqual(groups[2].events.map(\.id), ["noon", "early"])
+        XCTAssertFalse(groups.contains { $0.showsDates })
+    }
+
+    func testAnotherDayIsOneUntitledList() {
+        let first = event("first", start: ms(11, 20, 9), end: ms(11, 20, 10))
+        let second = event("second", start: ms(11, 20, 11), end: ms(11, 20, 13))
+
+        let groups = CityCalendarLayout.groups(
+            on: date(11, 20),
+            from: [second, first],
+            now: date(11, 13, 15, 10),
+            recording: nil,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(groups.map(\.kind), [.plain])
+        XCTAssertEqual(groups[0].events.map(\.id), ["first", "second"])
+        XCTAssertNil(CityEventListView.title(.plain))
+    }
+
+    func testFilingAfterwardsPutsEventsThatOverlapTheRecordingFirst() {
+        // Recorded yesterday 09:40 to 11:20.
+        let recording = CityRecordingSpan(start: date(11, 12, 9, 40), duration: 100 * 60)
+        let club = event("club", start: ms(11, 12, 9, 30), end: ms(11, 12, 11, 30))
+        let yoga = event("yoga", start: ms(11, 12, 9), end: ms(11, 12, 10, 30))
+        let taichi = event("taichi", start: ms(11, 12, 13, 30), end: ms(11, 12, 16))
+        let events = [yoga, club, taichi]
+
+        let groups = CityCalendarLayout.groups(
+            on: date(11, 12),
+            from: events,
+            now: date(11, 13, 15, 10),
+            recording: recording,
+            calendar: calendar
+        )
+
+        XCTAssertEqual(groups.map(\.kind), [.overlapping, .restOfDay])
+        // The one that covers more of the recording leads.
+        XCTAssertEqual(groups[0].events.map(\.id), ["club", "yoga"])
+        XCTAssertEqual(groups[1].events.map(\.id), ["taichi"])
+
+        XCTAssertEqual(
+            CityCalendarLayout.initialDay(now: date(11, 13, 15, 10), recording: recording, calendar: calendar),
+            date(11, 12)
+        )
+        XCTAssertEqual(
+            CityCalendarLayout.initialSelection(current: nil, events: events, recording: recording),
+            "club"
+        )
+        // What the recording is already filed under stays selected.
+        XCTAssertEqual(
+            CityCalendarLayout.initialSelection(current: "taichi", events: events, recording: recording),
+            "taichi"
+        )
+        // Nothing is chosen for a recording that has no span to compare with.
+        XCTAssertNil(CityCalendarLayout.initialSelection(current: nil, events: events, recording: nil))
+        XCTAssertNil(CityCalendarLayout.initialSelection(current: "gone", events: events, recording: nil))
+    }
+
+    func testOtherDaysAreListedOnlyWhileNarrowingDown() {
+        let sixth = event("6", start: ms(11, 6, 11), end: ms(11, 6, 13), mine: true)
+        let thirteenth = event("13", start: ms(11, 13, 11), end: ms(11, 13, 13), mine: true)
+        let twentieth = event("20", start: ms(11, 20, 11), end: ms(11, 20, 13), mine: true)
+        let december = event("dec", start: ms(12, 4, 11), end: ms(12, 4, 13), mine: true)
+        let mine = [twentieth, sixth, thirteenth, december]
+
+        XCTAssertNil(CityCalendarLayout.otherDays(
+            than: date(11, 13), from: mine, month: date(11, 1),
+            searching: false, mineOnly: false, calendar: calendar
+        ))
+
+        let thisMonth = CityCalendarLayout.otherDays(
+            than: date(11, 13), from: mine, month: date(11, 1),
+            searching: false, mineOnly: true, calendar: calendar
+        )
+        XCTAssertEqual(thisMonth?.kind, .mineOtherDays)
+        XCTAssertEqual(thisMonth?.events.map(\.id), ["6", "20"])
+        XCTAssertEqual(thisMonth?.showsDates, true)
+
+        // A search is not limited to the month on screen.
+        let found = CityCalendarLayout.otherDays(
+            than: date(11, 13), from: mine, month: date(11, 1),
+            searching: true, mineOnly: false, calendar: calendar
+        )
+        XCTAssertEqual(found?.kind, .foundOtherDays)
+        XCTAssertEqual(found?.events.map(\.id), ["6", "20", "dec"])
+    }
+
+    func testDayIdentifiersDoNotFollowTheInterfaceLanguage() {
+        XCTAssertEqual(CityMonthCalendarView.key(date(11, 13, 15, 10), calendar: calendar), "2026-11-13")
+        XCTAssertEqual(CityMonthCalendarView.key(date(1, 5), calendar: calendar), "2026-01-05")
+    }
+}
+
+/// What the city feature says: errors a person can act on, who signs, what
+/// goes into the archive, and that audio does not.
+@MainActor
+final class CityTextTests: XCTestCase {
+    private static let languages = ["en", "th", "ja", "ko", "fr", "es", "de", "zh-Hans"]
+
+    private let calendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Bangkok")!
+        return calendar
+    }()
+
+    private func date(_ month: Int, _ day: Int, _ hour: Int = 0, _ minute: Int = 0) -> Date {
+        calendar.date(from: DateComponents(year: 2026, month: month, day: day, hour: hour, minute: minute))!
+    }
+
+    private func account(roles: [String], city: String = "Riverside") -> FfiCityAccount {
+        FfiCityAccount(
+            server: "city.example",
+            cityId: "polis:riverside",
+            cityName: city,
+            personId: "person-1",
+            personName: "Sam",
+            roles: roles,
+            signedInAtEpoch: 0
+        )
+    }
+
+    private func filing(
+        state: FfiCityFilingState,
+        changed: UInt32 = 0,
+        errorCode: String? = nil
+    ) -> FfiCityFiling {
+        FfiCityFiling(
+            sessionId: "session-1",
+            eventId: "event-1",
+            eventTitle: "Language Exchange",
+            eventStartMs: Int64(date(11, 6, 11).timeIntervalSince1970 * 1_000),
+            channelTitle: nil,
+            state: state,
+            filedAtEpoch: nil,
+            signerName: "Sam",
+            languages: [
+                FfiCityLanguageCount(language: "en", sentences: 412),
+                FfiCityLanguageCount(language: "th", sentences: 96),
+            ],
+            speakers: 4,
+            marks: 7,
+            changedSentences: changed,
+            errorCode: errorCode,
+            webUrl: nil
+        )
+    }
+
+    func testStableCodesAreReadFromWhateverCaseTheCoreThrows() {
+        XCTAssertEqual(
+            CityText.errorCode(CoreError.ValidationFailed(message: "city.error.offline")),
+            "city.error.offline"
+        )
+        XCTAssertEqual(
+            CityText.errorCode(CoreError.NotFound(message: "city.error.unbound")),
+            "city.error.unbound"
+        )
+        XCTAssertEqual(
+            CityText.errorCode(CoreError.InternalError(message: "city.error.server")),
+            "city.error.server"
+        )
+        XCTAssertNil(CityText.errorCode(CoreError.InternalError(message: "disk full")))
+        XCTAssertNil(CityText.errorCode(CocoaError(.fileNoSuchFile)))
+    }
+
+    func testEveryStableCodeHasWordsAndUnknownOnesGetTheGeneralSentence() {
+        let general = CityText.message(forCode: nil)
+        XCTAssertEqual(general, String(localized: "city.error.generic"))
+        XCTAssertEqual(CityText.message(forCode: "city.error.something_new"), general)
+        for code in CityText.errorCodes {
+            let message = CityText.message(forCode: code)
+            XCTAssertNotEqual(message, code, "\(code) has no wording")
+            XCTAssertNotEqual(message, general, "\(code) falls through to the general sentence")
+        }
+    }
+
+    /// "Not allowed" has to say who must do what; with a name, the name the
+    /// host is to add is in the sentence.
+    func testNotAllowedNamesThePersonTheHostShouldAdd() {
+        let named = CityText.message(forCode: "city.error.not_allowed", signer: "Sam")
+        XCTAssertTrue(named.contains("Sam"), named)
+        XCTAssertFalse(named.contains("%@"), named)
+        let unnamed = CityText.message(forCode: "city.error.not_allowed", signer: "")
+        XCTAssertFalse(unnamed.contains("%@"), unnamed)
+        XCTAssertEqual(
+            CityText.describe(CoreError.ValidationFailed(message: "city.error.not_allowed"), signer: "Sam"),
+            named
+        )
+    }
+
+    func testErrorWordingExistsInEveryInterfaceLanguage() throws {
+        let keys = CityText.errorCodes.sorted() + ["city.error.generic", "city.error.not_allowed_named_format"]
+        for language in Self.languages {
+            let strings = try self.strings(language)
+            for key in keys {
+                let value = try XCTUnwrap(strings[key], "\(language) lacks \(key)")
+                XCTAssertFalse(value.isEmpty, "\(language) \(key)")
+                // The codes double as keys; none may carry a format specifier
+                // that a plain lookup would print as "%@".
+                if key != "city.error.not_allowed_named_format" {
+                    XCTAssertFalse(value.contains("%"), "\(language) \(key)")
+                }
+            }
+        }
+    }
+
+    /// Every `city.` key the views ask for exists, so nothing shows its key.
+    func testEveryCityKeyUsedInSourceIsLocalized() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("ZuTalk", isDirectory: true)
+        let english = try strings("en")
+        let pattern = try NSRegularExpression(pattern: "\"(city\\.[a-z0-9_.]+)\"")
+        var checked = 0
+        let files = try XCTUnwrap(FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil))
+        for case let file as URL in files where file.lastPathComponent.hasPrefix("City")
+            && file.pathExtension == "swift" {
+            let source = try String(contentsOf: file, encoding: .utf8)
+            let range = NSRange(source.startIndex..., in: source)
+            for match in pattern.matches(in: source, range: range) {
+                let key = String(source[Range(match.range(at: 1), in: source)!])
+                XCTAssertNotNil(
+                    english[key],
+                    "\(file.lastPathComponent) uses \(key), which has no English string"
+                )
+                checked += 1
+            }
+        }
+        XCTAssertGreaterThan(checked, 100)
+    }
+
+    func testOnlyTheWeightiestRoleIsNamedAndTheCityComesFromTheServer() {
+        let resident = CityText.role(account(roles: ["resident"]))
+        let coordinator = CityText.role(account(roles: ["resident", "inviter", "coordinator"]))
+        let founder = CityText.role(account(roles: ["coordinator", "founder", "resident"]))
+
+        for text in [resident, coordinator, founder] {
+            XCTAssertTrue(text.contains("Riverside"), text)
+        }
+        XCTAssertEqual(Set([resident, coordinator, founder]).count, 3)
+        // No role at all: just the city, never a made-up title.
+        XCTAssertEqual(CityText.role(account(roles: [])), "Riverside")
+        XCTAssertEqual(CityText.role(account(roles: [], city: "")), "city.example")
+    }
+
+    func testSentencesJoinWithoutASpaceAfterAnIdeographicFullStop() {
+        XCTAssertEqual(CityText.joinSentences(["One.", "", "Two."]), "One. Two.")
+        XCTAssertEqual(CityText.joinSentences(["甲。", "乙。"]), "甲。乙。")
+        XCTAssertEqual(CityText.joinSentences([]), "")
+    }
+
+    func testTheSummaryNamesTheSignerTheChannelAndThatAudioStays() {
+        let options = FfiCityFilingOptions(speakerNames: true, marks: false, automatic: true)
+        let audio = String(localized: "city.summary.audio_stays")
+
+        let plain = CityText.summary(signer: "Sam", languages: ["en", "th"], options: options, channel: nil)
+        let withChannel = CityText.summary(signer: "Sam", languages: ["en", "th"], options: options, channel: "Exchange")
+
+        XCTAssertTrue(plain.contains("Sam"))
+        XCTAssertTrue(plain.contains("English"))
+        XCTAssertTrue(plain.contains(String(localized: "city.summary.extras.names_only")))
+        XCTAssertTrue(plain.hasSuffix(audio))
+        XCTAssertFalse(plain.contains("Exchange"))
+        XCTAssertTrue(withChannel.contains("Exchange"))
+        XCTAssertTrue(withChannel.hasSuffix(audio))
+        // A recording whose languages are not known yet still says who signs.
+        XCTAssertTrue(CityText.summary(signer: "Sam", languages: [], options: options, channel: nil).contains("Sam"))
+        XCTAssertEqual(CityText.languageNames(["en", "EN", "und", "th"]).count, 2)
+    }
+
+    func testFiledContentListsEachLanguageThenSpeakersAndMarks() {
+        let content = CityText.content(filing(state: .filed))
+
+        XCTAssertTrue(content.contains("412"))
+        XCTAssertTrue(content.contains("96"))
+        XCTAssertEqual(content.components(separatedBy: " · ").count, 4)
+    }
+
+    func testFilingRowsSayWhatHappenedNotOnlyByColour() {
+        let filed = CityFilingsCard.status(filing(state: .filed), signer: "Sam")
+        let changed = CityFilingsCard.status(filing(state: .filed, changed: 6), signer: "Sam")
+        let offline = CityFilingsCard.status(filing(state: .queued, errorCode: "city.error.offline"), signer: "Sam")
+        let refused = CityFilingsCard.status(filing(state: .failed, errorCode: "city.error.not_allowed"), signer: "Sam")
+
+        XCTAssertEqual(Set([filed, changed, offline, refused]).count, 4)
+        XCTAssertTrue(changed.contains("6"))
+        XCTAssertTrue(refused.contains("Sam"))
+        XCTAssertTrue(CityFilingsCard.detail(filing(state: .filed), signer: "Sam").hasSuffix(filed))
+    }
+
+    func testEventTimesAreShownInTheGivenTimeZone() {
+        let locale = Locale(identifier: "en_GB")
+        let start = Int64(date(11, 13, 11).timeIntervalSince1970 * 1_000)
+        let end = Int64(date(11, 13, 13).timeIntervalSince1970 * 1_000)
+        let event = FfiCityEvent(
+            id: "e", title: "Exchange", place: "Event Space",
+            startMs: start, endMs: end, residentsOnly: false, mine: true
+        )
+
+        XCTAssertEqual(
+            CityText.timeRange(startMs: start, endMs: end, calendar: calendar, locale: locale),
+            "11:00–13:00"
+        )
+        let today = CityText.when(event, now: date(11, 13, 15, 10), calendar: calendar, locale: locale)
+        XCTAssertEqual(today, String(format: String(localized: "city.event.today_format"), "11:00–13:00"))
+        let later = CityText.when(event, now: date(11, 14, 9), calendar: calendar, locale: locale)
+        XCTAssertTrue(later.hasSuffix("11:00–13:00"))
+        XCTAssertTrue(later.contains("13"))
+        XCTAssertNotEqual(later, today)
+        XCTAssertTrue(
+            CityText.whenAndWhere(event, now: date(11, 13, 15, 10), calendar: calendar, locale: locale)
+                .hasSuffix("Event Space")
+        )
+    }
+
+    func testOnlyWebAddressesAreOpened() {
+        XCTAssertEqual(CityText.siteURL(server: " city.example ")?.absoluteString, "https://city.example")
+        XCTAssertEqual(CityText.siteURL(server: "http://localhost:8787")?.absoluteString, "http://localhost:8787")
+        XCTAssertNil(CityText.siteURL(server: "   "))
+        XCTAssertNotNil(CityText.webURL("https://city.example/archive/item"))
+        XCTAssertNil(CityText.webURL(nil))
+        XCTAssertNil(CityText.webURL("file:///private/etc/hosts"))
+        XCTAssertNil(CityText.webURL("javascript:alert(1)"))
+        XCTAssertNil(CityText.webURL("https://"))
+    }
+
+    /// Copy that must be said truthfully, in every language the app ships.
+    func testWithdrawAndSignInCopyStateTheirLimitsEverywhere() throws {
+        let keys = [
+            "city.withdraw.confirm_title",
+            "city.withdraw.confirm_message",
+            "city.signin.trust",
+            "city.signout.confirm_message",
+            "city.share.public_note",
+            "city.signin.step_scan",
+            "city.signin.step_check",
+            "settings.section.city_name",
+        ]
+        for language in Self.languages {
+            let strings = try self.strings(language)
+            for key in keys {
+                let value = try XCTUnwrap(strings[key], "\(language) lacks \(key)")
+                XCTAssertFalse(value.isEmpty, "\(language) \(key)")
+            }
+            // The public note sets the archive against the 24-hour link.
+            XCTAssertTrue(try XCTUnwrap(strings["city.share.public_note"]).contains("24"), language)
+        }
+    }
+
+    private func strings(_ language: String) throws -> [String: String] {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("ZuTalk/Resources", isDirectory: true)
+            .appendingPathComponent("\(language).lproj", isDirectory: true)
+            .appendingPathComponent("Localizable.strings")
+        return try XCTUnwrap(NSDictionary(contentsOf: url) as? [String: String])
+    }
+}
+
+// MARK: - 哪场活动算「现在正在进行」
+
+/// The Record page preselects an event only when exactly one is running, so
+/// what counts as "running" decides whether hosts get a ready-made choice or
+/// a wrong one.
+@MainActor
+final class CityEventMatchingTests: XCTestCase {
+    private let minute: Int64 = 60_000
+    private let hour: Int64 = 3_600_000
+    private let noon: Int64 = 1_794_547_200_000
+
+    private func at(_ ms: Int64) -> Date {
+        Date(timeIntervalSince1970: TimeInterval(ms) / 1_000)
+    }
+
+    private func event(_ id: String, start: Int64, end: Int64, mine: Bool = false) -> FfiCityEvent {
+        FfiCityEvent(
+            id: id,
+            title: id,
+            place: "",
+            startMs: start,
+            endMs: end,
+            residentsOnly: false,
+            mine: mine
+        )
+    }
+
+    func testAnEventCountsFromShortlyBeforeItStartsUntilShortlyAfterItEnds() {
+        let talk = event("talk", start: noon, end: noon + 2 * hour)
+        let ids = { (ms: Int64) in
+            CityEventMatching.runningNow([talk], now: self.at(ms)).map(\.id)
+        }
+        XCTAssertEqual(ids(noon - 16 * minute), [], "too early to be this event")
+        XCTAssertEqual(ids(noon - 15 * minute), ["talk"], "people press Record a little early")
+        XCTAssertEqual(ids(noon + hour), ["talk"])
+        XCTAssertEqual(ids(noon + 2 * hour + 20 * minute), ["talk"], "events run over")
+        XCTAssertEqual(ids(noon + 2 * hour + 21 * minute), [])
+    }
+
+    func testASeasonLongEventIsNeverChosenForYou() {
+        let season = event("season", start: noon - 20 * 24 * hour, end: noon + 29 * 24 * hour)
+        let talk = event("talk", start: noon, end: noon + 2 * hour)
+        XCTAssertEqual(
+            CityEventMatching.runningNow([season], now: at(noon + hour)).map(\.id),
+            [],
+            "an umbrella event is running every day; choosing it would be a guess"
+        )
+        XCTAssertEqual(
+            CityEventMatching.automaticChoice([season, talk], now: at(noon + hour))?.id,
+            "talk",
+            "and it must not stop the one real session from being chosen"
+        )
+    }
+
+    func testNothingIsChosenWhenSeveralEventsRunAtOnce() {
+        let hall = event("hall", start: noon, end: noon + 2 * hour)
+        let gallery = event("gallery", start: noon - hour, end: noon + hour)
+        XCTAssertNil(CityEventMatching.automaticChoice([hall, gallery], now: at(noon + 10 * minute)))
+        XCTAssertNil(CityEventMatching.automaticChoice([], now: at(noon)))
+    }
+
+    func testYourOwnEventComesFirstThenTheOneThatJustStarted() {
+        let earlier = event("earlier", start: noon - hour, end: noon + hour)
+        let justStarted = event("just-started", start: noon, end: noon + 2 * hour)
+        let mine = event("mine", start: noon - 2 * hour, end: noon + hour, mine: true)
+        XCTAssertEqual(
+            CityEventMatching.runningNow([earlier, justStarted, mine], now: at(noon + 5 * minute)).map(\.id),
+            ["mine", "just-started", "earlier"]
+        )
+    }
+
+    func testAnEventWithoutAnEndIsTreatedAsTwoHours() {
+        let open = event("open", start: noon, end: noon)
+        XCTAssertEqual(CityEventMatching.runningNow([open], now: at(noon + hour)).map(\.id), ["open"])
+        XCTAssertEqual(CityEventMatching.runningNow([open], now: at(noon + 3 * hour)).map(\.id), [])
+    }
+
+    func testFilingLaterPutsTheEventThatOverlapsTheRecordingMostFirst() {
+        let morning = event("morning", start: noon - 3 * hour, end: noon - hour)
+        let midday = event("midday", start: noon - hour, end: noon + hour)
+        let evening = event("evening", start: noon + 6 * hour, end: noon + 8 * hour)
+        let found = CityEventMatching.overlapping(
+            [morning, midday, evening],
+            recordingStart: at(noon - 90 * minute),
+            duration: 2 * 3_600
+        )
+        XCTAssertEqual(found.map(\.id), ["midday", "morning"])
     }
 }

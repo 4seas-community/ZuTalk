@@ -124,6 +124,12 @@ struct NotebookCaptureSettingsView: View {
             }
             .disabled(editor.canEdit == false)
             .opacity(editor.canEdit ? 1 : 0.62)
+
+            // Only a topic has a channel; a recording filed under none has
+            // nowhere to inherit one from.
+            if scope == .topic {
+                CityTopicChannelCard(notebookId: notebookId)
+            }
         }
         .frame(maxWidth: 820, alignment: .leading)
         .padding(Spacing.xl)

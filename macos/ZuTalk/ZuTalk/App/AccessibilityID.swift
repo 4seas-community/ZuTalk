@@ -98,4 +98,96 @@ enum AccessibilityID {
 
     /// ToastCenter 显示的 toast 容器 (用于断言「Recording saved」等)
     static let toastContainer = "toast.container"
+
+    // MARK: - 城与档案馆
+
+    /// 设置 › 城:登录卡片和它里面的每一步
+    static let citySettingsSignIn = "settings.city.sign-in"
+    static let citySettingsServer = "settings.city.server"
+    static let citySettingsContinue = "settings.city.continue"
+    static let citySettingsQRCode = "settings.city.qr"
+    static let citySettingsCopyCode = "settings.city.copy-code"
+    static let citySettingsCheckDigits = "settings.city.check-digits"
+    static let citySettingsNewCode = "settings.city.new-code"
+    static let citySettingsUseRecoveryKey = "settings.city.use-recovery-key"
+    static let citySettingsRecoveryKey = "settings.city.recovery-key"
+    static let citySettingsRecoverySignIn = "settings.city.recovery-sign-in"
+    static let citySettingsChangeCity = "settings.city.change-city"
+    static let citySettingsProblem = "settings.city.problem"
+
+    /// 设置 › 城:登录以后
+    static let citySettingsAccount = "settings.city.account"
+    static let citySettingsSignOut = "settings.city.sign-out"
+    static let citySettingsSpeakerNames = "settings.city.speaker-names"
+    static let citySettingsMarks = "settings.city.marks"
+    static let citySettingsWhen = "settings.city.when"
+    static let citySettingsFilings = "settings.city.filings"
+    static let citySettingsFilingOpen = "settings.city.filing.open"
+    static let citySettingsFilingUpdate = "settings.city.filing.update"
+    static let citySettingsFilingWithdraw = "settings.city.filing.withdraw"
+    static let citySettingsFilingRetry = "settings.city.filing.retry"
+
+    /// 「已交到档案馆」表里的一行 (拼接 session id)
+    static func citySettingsFiling(sessionId: String) -> String {
+        "settings.city.filing.\(sessionId)"
+    }
+
+    /// 主题设置里的「档案馆」卡片和频道选单
+    static let cityTopicCard = "capture.settings.city"
+    static let cityTopicChannel = "capture.settings.city.channel"
+
+    /// 「开始录音」页的「归到活动」一行
+    static let cityRecordRow = "record.page.city"
+    static let cityRecordEvent = "record.page.city.event"
+    static let cityRecordSummary = "record.page.city.summary"
+    static let cityRecordPick = "record.page.city.pick"
+
+    /// 同时有好几场活动时列出来的一场 (拼接活动 id)
+    static func cityRecordChoice(eventId: String) -> String {
+        "record.page.city.choice.\(eventId)"
+    }
+
+    /// 「归到哪场活动」那张表
+    static let cityPicker = "city.picker"
+    static let cityPickerSearch = "city.picker.search"
+    static let cityPickerFilter = "city.picker.filter"
+    static let cityPickerCalendar = "city.picker.calendar"
+    static let cityPickerPreviousMonth = "city.picker.previous-month"
+    static let cityPickerNextMonth = "city.picker.next-month"
+    static let cityPickerList = "city.picker.list"
+    static let cityPickerEmpty = "city.picker.empty"
+    static let cityPickerRefresh = "city.picker.refresh"
+    static let cityPickerNotFiling = "city.picker.not-filing"
+    static let cityPickerCancel = "city.picker.cancel"
+    static let cityPickerConfirm = "city.picker.confirm"
+
+    /// 月历上的一天 (拼接 `2026-11-13` 这样的日期)
+    static func cityPickerDay(_ day: String) -> String {
+        "city.picker.day.\(day)"
+    }
+
+    /// 清单里的一场活动 (拼接活动 id)
+    static func cityPickerEvent(id: String) -> String {
+        "city.picker.event.\(id)"
+    }
+
+    /// 录音条上的去向和点开的那张卡
+    static let cityBarChip = "recording-bar.city"
+    static let cityBarCard = "recording-bar.city.card"
+    static let cityBarChange = "recording-bar.city.change"
+    static let cityBarNotFiling = "recording-bar.city.not-filing"
+
+    /// 共享面板里的「档案馆」一段
+    static let cityShare = "share.city"
+    static let cityShareStatus = "share.city.status"
+    static let cityShareOpen = "share.city.open"
+    static let cityShareFile = "share.city.file"
+    static let cityShareUpdate = "share.city.update"
+    static let cityShareRetry = "share.city.retry"
+    static let cityShareChange = "share.city.change"
+    static let cityShareWithdraw = "share.city.withdraw"
+
+    /// 窗口底部「已交到档案馆」那条提示和它的按钮
+    static let cityNotice = "city.notice"
+    static let cityNoticeAction = "city.notice.action"
 }

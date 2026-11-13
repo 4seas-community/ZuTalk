@@ -39,6 +39,8 @@ struct MainShellView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.bgRoot.ignoresSafeArea())
         .toastOverlay()
+        // "Filed in the archive", with its Open button; see `CityNoticeOverlay`.
+        .cityNoticeOverlay()
         .onAppear {
             store.recordSnapshot()
             // 主窗口关了又开时,接上核心里还在跑的直播。

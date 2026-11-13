@@ -158,6 +158,7 @@ Topic → Session → Transcript / Note / Screenshot → Evidence → Tag → In
 - 导入音频保存在目标 Topic；只有用户明确发起远端处理后才发送。
 - Context Pack 在预览并确认后才附加到服务请求。
 - 凭据只用于建立服务连接，不自动授权任何音频、文本、截图或笔记传输。
+- 交到城的档案馆只在登录一座城之后、逐场录音确认归到哪场活动时发生；只交文字，交上去的内容是公开的（见 `docs/architecture/city-archive.md`）。
 - 远程服务不可用时，本地录音仍继续并被可靠保存。
 - 复制研究集合只写入本机剪贴板，内容包含来源 Session ID；它不是 AI 分析或外部分享。
 

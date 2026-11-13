@@ -13,10 +13,12 @@ private func L(_ key: String.LocalizationValue) -> String {
 
 // MARK: - Settings Section
 //
-// 三节,按「这件事关于什么」分,不按「这是哪种技术」分:
+// 五节,按「这件事关于什么」分,不按「这是哪种技术」分:
 //   通用     — 语言、外观、更新、整理标记(可选的语言模型)、快捷键
 //   实时字幕 — 让字幕跑起来的东西:Soniox 密钥或社区邀请
 //   共享     — 此刻在外面的链接,一处看清、随手撤销
+//   设备     — 自己的几台 Mac 之间同步
+//   城       — 登录你在城里的身份,把文字稿交到那座城的档案馆
 // 主题自己的设置(语言、专有词与背景、音频保留)在主题里,不在这里。
 
 enum SettingsSection: String, CaseIterable, Identifiable {
@@ -24,6 +26,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case captions = "Captions"
     case sharing = "Sharing"
     case devices = "Devices"
+    case city = "City"
 
     var id: String { rawValue }
 
@@ -33,6 +36,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .captions: return String(localized: "settings.section.captions_name")
         case .sharing:  return String(localized: "settings.section.sharing_name")
         case .devices:  return String(localized: "settings.section.devices_name")
+        case .city:     return String(localized: "settings.section.city_name")
         }
     }
 
@@ -42,6 +46,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .captions: return "captions.bubble"
         case .sharing:  return "square.and.arrow.up"
         case .devices:  return "laptopcomputer"
+        case .city:     return "building.columns"
         }
     }
 }
@@ -152,6 +157,8 @@ struct FullSettingsView: View {
             SharingSettingsSection()
         case .devices:
             DevicesSettingsSection()
+        case .city:
+            CitySettingsSection()
         }
     }
 }

@@ -101,6 +101,10 @@ name = "vt-sync"
 allow = ["GPL-3.0-or-later"]
 
 [[licenses.exceptions]]
+name = "vt-city"
+allow = ["GPL-3.0-or-later"]
+
+[[licenses.exceptions]]
 name = "zutalk-uniffi-bindgen"
 allow = ["GPL-3.0-or-later"]
 

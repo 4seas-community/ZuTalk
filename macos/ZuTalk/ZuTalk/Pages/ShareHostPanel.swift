@@ -292,6 +292,8 @@ struct RecordingShareSheet: View {
                             .font(.bodySM)
                             .foregroundColor(.textSecondary)
                     }
+                    // 登录了城才出现:交到档案馆,唯一公开、长期留存的出口。
+                    CityShareSection(request: request)
                     sendCopySection
                     NearbySendSection(sessionId: request.sessionId, title: request.title)
                     linkSection

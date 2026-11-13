@@ -94,6 +94,9 @@ final class CaptureCommandCenter: ObservableObject {
                 self?.isStopping = false
                 self?.isRetryingStop = false
                 self?.isPausing = false
+                // A recording filed under a city event goes to that city's
+                // archive when it ends, however it ended; see `CityStore`.
+                CityStore.shared.recordingEnded()
                 let usedSeconds = Int(capture.elapsedRecordingTime.rounded(.up))
                 Task { @MainActor in
                     await invite.settleRealtimeSession(usedSeconds: usedSeconds)

@@ -418,6 +418,15 @@ impl ZuTalkCore {
             .collect())
     }
 
+    /// 精修稿的各段文字。交到城的档案馆(city_api)用的是同一份。
+    pub(crate) fn refined_paragraphs(&self, session_id: &str) -> Result<Vec<String>, CoreError> {
+        Ok(self
+            .refined_blocks(session_id)?
+            .into_iter()
+            .map(|block| block.text)
+            .collect())
+    }
+
     /// 精修稿的纯文字,一段一块。没有精修结果时为空。
     fn refined_blocks(&self, session_id: &str) -> Result<Vec<WebBlock>, CoreError> {
         let transcript = crate::settings_api::export_transcript(self, session_id)?;

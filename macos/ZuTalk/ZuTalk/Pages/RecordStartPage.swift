@@ -109,6 +109,10 @@ struct RecordStartPage: View {
 
             Divider().padding(.horizontal, Spacing.md)
 
+            // 登录了城才有这一行(自带下面那条分隔线):这场录音归到哪场活动。
+            // 不选也不挡开始。
+            CityDestinationRow(editor: editor, topicId: topicId)
+
             // 会议录音还是麦克风录音,开始之前就定:线上会议里对方的声音
             // 从扬声器出来,麦克风收不到,只能录这台 Mac 播放的声音。
             if let notebookId {
@@ -318,6 +322,8 @@ struct RecordStartPage: View {
 
     private func start() {
         guard let notebookId else { return }
+        // 「归到活动」那一行此刻写着什么,按下开始就是确认了什么。
+        CityStore.shared.confirmNextDestination()
         if topicId == nil {
             commands.startQuickCapture(profileEditor: editor)
             return

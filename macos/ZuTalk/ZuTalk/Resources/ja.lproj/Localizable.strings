@@ -1432,3 +1432,221 @@
 "network.offline.record_hint" = "この Mac は現在オフラインです。リアルタイム字幕にはインターネットが必要です。字幕をオフにすれば録音だけできます。";
 "network.offline.short" = "ネットワークなし";
 "network.offline.recording_banner" = "この Mac はオフラインです。録音は続いています。オンラインに戻ると字幕は自動で再開しますが、オフラインだった部分には字幕が付かないことがあります。";
+
+/* City archive: filing a recording’s transcript in a city’s archive, as the signed-in resident. Text only; audio never leaves this Mac. */
+"settings.section.city_name" = "シティ";
+"city.settings.subtitle" = "シティでのあなたの身元でサインインすると、録音の文字起こしをあなたの名前でアーカイブに提出し、該当するイベントに紐づけられます。";
+
+/* City: signing in. */
+"city.signin.title" = "サインイン";
+"city.signin.title_format" = "%@ にサインイン";
+"city.signin.address_hint" = "まずシティのアドレスを入力します。";
+"city.signin.address_placeholder" = "シティのアドレス";
+"city.signin.address_label" = "シティのウェブアドレス";
+"city.signin.continue" = "続ける";
+"city.signin.requesting" = "シティにサインイン用コードを問い合わせています…";
+"city.signin.signing_in" = "サインイン中…";
+"city.signin.step_scan" = "このシティにサインイン済みのデバイスで「市役所 → ID」を開き、「新しい端末をリンク → スキャン」を選んで、このコードを読み取ります。コピーしたコードを貼り付けることもできます。";
+"city.signin.step_check" = "両方のデバイスに同じ 6 桁の数字が表示されます。同じであれば、そのデバイスで確認を押します。";
+"city.signin.qr_label" = "サインイン用コードの QR コード";
+"city.signin.copy_code" = "コードをコピー";
+"city.signin.code_copied" = "サインイン用コードをコピーしました";
+"city.signin.expires_format" = "あと %@ で失効";
+"city.signin.check_label" = "確認用の数字";
+"city.signin.check_waiting" = "そのデバイスでの確認を待っています…";
+"city.signin.lapsed_title" = "このコードは無効になりました";
+"city.signin.lapsed_detail" = "サインイン用コードの有効期間は 5 分です。新しいコードを表示して、もう一度読み取ってください。";
+"city.signin.new_code" = "新しいコード";
+"city.signin.no_device" = "ほかのデバイスが手元にありませんか？";
+"city.signin.use_recovery_key" = "復旧キーでサインイン…";
+"city.signin.change_city" = "別のシティにする";
+"city.signin.recovery_placeholder" = "復旧キー";
+"city.signin.sign_in" = "サインイン";
+"city.signin.recovery_hint" = "復旧キーは、シティでのあなたの身元そのものです。共用のコンピュータでは入力しないでください。";
+"city.signin.trust" = "サインインすると、シティでのあなたの身元がこの Mac に渡ります。この Mac は、あなたがシティでできることを、あなたの名前で何でも行えるようになります。ZuTalk がそれを使うのは、あなたがイベントに割り当てた文字起こしをアーカイブに提出するときだけです。会場の共用コンピュータでは、使い終わったらサインアウトしてください。";
+
+/* City: signed in. */
+"city.settings.signed_in" = "サインイン済み";
+"city.settings.unnamed" = "名前のない住民";
+"city.settings.stored_title" = "サインイン情報の保存場所";
+"city.settings.stored_detail" = "この Mac にだけ保存されます。サインアウトするとこの Mac から削除されますが、シティでのあなたの身元には影響しません。";
+"city.role.resident_format" = "%@ の住民";
+"city.role.founder_format" = "%@ の創設者";
+"city.role.coordinator_format" = "%@ のコーディネーター";
+"city.role.curator_format" = "%@ のキュレーター";
+"city.role.inviter_format" = "%@ の招待者";
+"city.signout.action" = "サインアウト…";
+"city.signout.button" = "サインアウト";
+"city.signout.confirm_title" = "この Mac でサインアウトしますか？";
+"city.signout.confirm_message" = "サインイン情報は、この Mac からだけ削除されます。シティでのあなたの身元も、アーカイブに提出済みの内容も、そのまま残ります。サインアウト後は、この Mac があなたの名前で何かを行うことはなくなり、提出待ちの文字起こしも送信されません。";
+"city.signout.failed" = "サインアウトできませんでした";
+
+/* City: what is filed, and when. */
+"city.what.title" = "提出する内容";
+"city.what.subtitle" = "録音を始める前に、毎回あらためて表示されます。";
+"city.what.text" = "原文と訳文";
+"city.what.text_detail" = "言語ごとに 1 つ、時刻で揃えます。";
+"city.what.always" = "常に提出";
+"city.what.speakers" = "話者の名前";
+"city.what.speakers_detail" = "オフにすると「話者 1」「話者 2」とだけ記載します。";
+"city.what.marks" = "マーク";
+"city.what.marks_detail" = "マークした位置だけを提出し、書いたメモは提出しません。";
+"city.what.audio" = "音声";
+"city.what.never" = "提出しない";
+"city.when.title" = "録音が終わったら";
+"city.when.row" = "提出するタイミング";
+"city.when.automatic" = "自動で提出";
+"city.when.ask" = "先に確認する";
+"city.when.automatic_detail" = "停止すると、待たずにバックグラウンドで提出します。オフラインのときは、接続が戻ってから提出します。";
+"city.when.ask_detail" = "停止してもイベントに割り当てるだけで、送信はしません。「アーカイブに提出」を押したときに提出します。";
+"city.options.save_failed" = "この設定を保存できませんでした";
+
+/* City: what has been filed from this Mac. */
+"city.filings.title" = "アーカイブに提出済み";
+"city.filings.subtitle" = "この Mac から提出したものはすべてここにあります。いつでも取り下げられます。";
+"city.filings.empty" = "まだ提出したものはありません。";
+"city.filing.filed" = "提出済み";
+"city.filing.changed_format" = "%lld 文を修正しました。アーカイブは古いままです";
+"city.filing.queued" = "提出待ち";
+"city.filing.queued_offline" = "提出待ち。オンラインになると自動で提出します";
+"city.filing.failed_format" = "提出できませんでした：%@";
+"city.filing.bound" = "イベントに割り当て済み（未提出）";
+"city.filing.withdrawn" = "取り下げ済み";
+
+/* City: actions shared by several surfaces. */
+"city.action.open" = "開く";
+"city.action.update" = "更新";
+"city.action.withdraw" = "取り下げる…";
+"city.action.retry" = "再試行";
+"city.action.file" = "アーカイブに提出";
+"city.action.not_filing" = "今回は提出しない";
+"city.action.pick_from_calendar" = "カレンダーから選ぶ…";
+"city.action.change_event" = "イベントを変更…";
+"city.withdraw.confirm_title" = "この文字起こしをアーカイブから取り下げますか？";
+"city.withdraw.confirm_message" = "アーカイブのページからは表示されなくなります。ただし、提出済みの文字起こしの記録はシティのログに残り、現時点では削除できません。";
+"city.withdraw.button" = "取り下げる";
+
+/* City: a topic’s channel. */
+"city.topic.title" = "アーカイブ";
+"city.topic.subtitle" = "このテーマの録音を、その場のイベントに加えてどのチャンネルにも入れるかを選びます。";
+"city.topic.channel" = "チャンネル";
+"city.topic.channel_detail_format" = "%@ のアーカイブで、あなたが追加できるチャンネルです。";
+"city.topic.no_channel" = "チャンネルに入れない";
+"city.topic.new_channel" = "ブラウザで新しいチャンネルを作成…";
+"city.topic.channel_failed" = "チャンネルを保存できませんでした";
+
+/* City: the event row on the Record page, and the sentence that says what will be filed. */
+"city.record.title" = "イベント";
+"city.record.detail_format" = "録音が終わると、文字起こしを %@ のアーカイブの、このイベントの資料に提出します。";
+"city.record.change_hint" = "イベントを変更するか、今回は提出しないようにします";
+"city.record.several_format" = "いま %lld 件のイベントが進行中です。1 つ選んでください。選ばずに始めて、あとで割り当てることもできます。";
+"city.record.none_running_detail" = "いま進行中のイベントはありません。今回は提出せず、録音後に割り当てることができます。";
+"city.record.none_chosen_detail" = "この録音はアーカイブに提出しません。録音後に割り当てることができます。";
+"city.event.today_format" = "今日 %@";
+"city.summary.as_languages_format" = "%1$@ の名前で、%2$@の文字起こしを提出します。";
+"city.summary.as_format" = "%@ の名前で文字起こしを提出します。";
+"city.summary.extras.names_marks" = "話者の名前とマークを含みます。";
+"city.summary.extras.names_only" = "話者の名前を含み、マークは含みません。";
+"city.summary.extras.marks_only" = "マークを含み、話者の名前は含みません。";
+"city.summary.extras.neither" = "話者の名前もマークも含みません。";
+"city.summary.channel_format" = "チャンネル「%@」にも入れます。";
+"city.summary.audio_stays" = "音声はこの Mac に残ります。";
+"city.content.language_format" = "%1$@ %2$lld 文";
+"city.content.speakers_format" = "話者 %lld 人";
+"city.content.marks_format" = "マーク %lld か所";
+
+/* City: choosing an event from the calendar. */
+"city.picker.title" = "どのイベントに割り当てますか";
+"city.picker.search" = "イベント名や会場を検索";
+"city.picker.filter" = "表示";
+"city.picker.filter_all" = "すべて";
+"city.picker.filter_mine" = "自分が主催";
+"city.picker.previous_month" = "前の月";
+"city.picker.next_month" = "次の月";
+"city.picker.today" = "今日";
+"city.picker.yesterday" = "昨日";
+"city.picker.count_format" = "%lld 件";
+"city.picker.count_ended_format" = "%lld 件（すべて終了）";
+"city.picker.count_mine_format" = "あなたの主催 %lld 件";
+"city.picker.month_today_format" = "今月 %1$lld 件 · 今日 %2$lld 件";
+"city.picker.month_day_format" = "今月 %1$lld 件 · この日 %2$lld 件";
+"city.picker.month_mine_format" = "今月のあなたの主催 %lld 件";
+"city.picker.group.overlapping" = "この録音と時間が重なる";
+"city.picker.group.running" = "進行中";
+"city.picker.group.later" = "このあと";
+"city.picker.group.ended" = "終了";
+"city.picker.group.rest" = "この日のほかのイベント";
+"city.picker.group.mine_other_days" = "今月のほかの主催イベント";
+"city.picker.group.other_days" = "ほかの日";
+"city.picker.tag_mine" = "あなたが主催";
+"city.picker.tag_residents" = "住民のみ";
+"city.picker.tag_filed" = "提出済み";
+"city.picker.empty_day" = "この日のイベントはありません。";
+"city.picker.empty_mine" = "この日にあなたが主催するイベントはありません。";
+"city.picker.empty_never" = "イベント一覧をまだ読み込めていません。インターネットに接続して「更新」を押してください。";
+"city.picker.refresh" = "更新";
+"city.picker.updated_format" = "イベント一覧：%@ に更新";
+"city.picker.never_updated" = "イベント一覧は未取得";
+"city.picker.confirm" = "このイベントにする";
+
+/* City: the destination in the recording bar. */
+"city.bar.hint" = "この録音の提出先を確認・変更します";
+"city.bar.files_to_format" = "提出先：%@";
+"city.bar.not_filing" = "この録音は提出しません";
+"city.bar.not_filing_detail" = "この録音はアーカイブに提出しません。いまカレンダーからイベントを選ぶか、録音後に「共有…」から提出できます。";
+"city.bar.heading_automatic" = "録音後にアーカイブへ提出";
+"city.bar.heading_ask" = "イベントに割り当て済み · 提出は録音後に自分で";
+"city.bar.heading_none" = "今回は提出しない";
+"city.bar.channel_format" = "チャンネル「%@」";
+
+/* City: the archive section of a recording’s Share panel. */
+"city.share.title" = "アーカイブ";
+"city.share.filed" = "アーカイブに提出済み";
+"city.share.filed_format" = "アーカイブに提出済み · %@";
+"city.share.fact.event" = "イベント";
+"city.share.fact.channel" = "チャンネル";
+"city.share.fact.signer" = "署名";
+"city.share.fact.content" = "内容";
+"city.share.fact.last" = "前回";
+"city.share.last_format" = "%1$@（%2$@ が提出）";
+"city.share.changed_format" = "%lld 文を修正しました。アーカイブは古いままです。";
+"city.share.changed_detail" = "更新では、修正した文だけを送ります。";
+"city.share.update" = "アーカイブを更新";
+"city.share.open" = "ブラウザで開く";
+"city.share.withdraw" = "アーカイブから取り下げる…";
+"city.share.public_note" = "アーカイブの内容は公開され、ずっと残ります。24 時間で無効になる下のリンクとは異なります。";
+"city.share.queued" = "アーカイブへの提出を待っています…";
+"city.share.queued_offline" = "ネットワークがありません。オンラインに戻ると自動でアーカイブに提出します。";
+"city.share.retry_now" = "いま再試行";
+"city.share.failed_format" = "提出できませんでした：%@";
+"city.share.failed_safe" = "文字起こしはすべてこの Mac にあり、失われていません。";
+"city.share.not_filed" = "この録音はまだアーカイブに提出していません。";
+"city.share.withdrawn" = "この文字起こしはアーカイブから取り下げました。別のイベントを選ぶか、もう一度提出できます。";
+"city.share.pick" = "カレンダーからイベントを選ぶ…";
+"city.share.change" = "変更…";
+
+/* City: what is said once filing finishes in the background. */
+"city.notice.filed_format" = "アーカイブに提出しました · %@";
+"city.notice.ask_format" = "録音を「%@」に割り当てました。まだ提出していません。";
+"city.toast.failed" = "アーカイブに提出できませんでした";
+"city.toast.failed_format" = "アーカイブに提出できませんでした · %@";
+"city.toast.queued" = "提出待ちにしました。まもなくアーカイブに提出します。";
+"city.toast.queued_offline" = "ネットワークがありません。オンラインになると自動でアーカイブに提出します。";
+"city.toast.withdrawn" = "アーカイブから取り下げました";
+"city.bind.failed" = "イベントに割り当てられませんでした";
+
+/* City: errors. The keys are the stable codes the core reports; each says what to do next. */
+"city.error.offline" = "この Mac はインターネットに接続されていません。接続してからもう一度お試しください。";
+"city.error.server" = "シティのサーバーに現在接続できません。しばらくしてからもう一度お試しください。";
+"city.error.bad_address" = "シティのアドレスとして認識できません。シティから案内されたとおりに、ドメイン名だけを入力してください。";
+"city.error.no_city" = "このアドレスにシティが見つかりません。入力に誤りがないか確認してください。";
+"city.error.bad_key" = "復旧キーが正しくありません。保存しておいたものと照らし合わせて、もう一度入力してください。1 文字でも違うと使えません。";
+"city.error.expired" = "サインイン用コードの有効期限が切れました。新しいコードを表示して、もう一度読み取ってください。";
+"city.error.signed_out" = "この Mac はシティにサインインしていません。「設定 › シティ」でサインインしてから、もう一度お試しください。";
+"city.error.unbound" = "この録音はまだイベントに割り当てられていません。先にイベントを選んでから提出してください。";
+"city.error.not_allowed" = "このイベントは、主催者と記録係からの資料だけを受け付けます。主催者にイベントの「記録係」へ追加してもらってから、もう一度お試しください。";
+"city.error.not_allowed_named_format" = "このイベントは、主催者と記録係からの資料だけを受け付けます。主催者にイベントの「記録係」へあなた（%@）を追加してもらってから、もう一度お試しください。";
+"city.error.no_transcript" = "この録音にはまだ文字起こしがありません。文字起こしが終わったら、録音の「共有…」からもう一度お試しください。";
+"city.error.refused" = "シティがこの文字起こしを受け付けませんでした。もう一度お試しください。それでも受け付けられない場合は、イベント名をシティのコーディネーターに伝えてください。";
+"city.error.busy" = "この録音は現在提出中です。終わってからもう一度お試しください。";
+"city.error.generic" = "シティとのやり取りで問題が起きました。しばらくしてからもう一度お試しください。";

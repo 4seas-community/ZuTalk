@@ -1432,3 +1432,221 @@
 "network.offline.record_hint" = "Dieser Mac ist offline. Live-Untertitel brauchen das Internet; schalte sie aus, um ohne sie aufzunehmen.";
 "network.offline.short" = "Kein Netzwerk";
 "network.offline.recording_banner" = "Dieser Mac ist offline. Die Aufnahme läuft weiter, und die Untertitel setzen von selbst wieder ein, sobald er wieder online ist; für die Offline-Strecke fehlen sie womöglich.";
+
+/* City archive: filing a recording’s transcript in a city’s archive, as the signed-in resident. Text only; audio never leaves this Mac. */
+"settings.section.city_name" = "Stadt";
+"city.settings.subtitle" = "Melden Sie sich mit Ihrer Identität in einer Stadt an. Dann lässt sich das Transkript einer fertigen Aufnahme in Ihrem Namen im Archiv dieser Stadt ablegen, bei der passenden Veranstaltung.";
+
+/* City: signing in. */
+"city.signin.title" = "Anmelden";
+"city.signin.title_format" = "Bei %@ anmelden";
+"city.signin.address_hint" = "Geben Sie zuerst die Webadresse der Stadt ein.";
+"city.signin.address_placeholder" = "Adresse der Stadt";
+"city.signin.address_label" = "Webadresse der Stadt";
+"city.signin.continue" = "Weiter";
+"city.signin.requesting" = "Anmeldecode wird bei der Stadt angefordert…";
+"city.signin.signing_in" = "Anmeldung läuft…";
+"city.signin.step_scan" = "Öffnen Sie auf einem Gerät, das bereits bei dieser Stadt angemeldet ist, „Rathaus → Identität“, wählen Sie „Neues Gerät verbinden → Scannen“ und scannen Sie diesen Code – oder fügen Sie dort den kopierten Code ein.";
+"city.signin.step_check" = "Beide Geräte zeigen dieselben sechs Ziffern. Stimmen sie überein, bestätigen Sie auf dem anderen Gerät.";
+"city.signin.qr_label" = "QR-Code des Anmeldecodes";
+"city.signin.copy_code" = "Code kopieren";
+"city.signin.code_copied" = "Anmeldecode kopiert";
+"city.signin.expires_format" = "Läuft in %@ ab";
+"city.signin.check_label" = "Prüfziffern";
+"city.signin.check_waiting" = "Warten auf die Bestätigung am anderen Gerät…";
+"city.signin.lapsed_title" = "Dieser Code ist nicht mehr gültig";
+"city.signin.lapsed_detail" = "Ein Anmeldecode gilt fünf Minuten. Fordern Sie einen neuen an und scannen Sie erneut.";
+"city.signin.new_code" = "Neuer Code";
+"city.signin.no_device" = "Kein anderes Gerät zur Hand?";
+"city.signin.use_recovery_key" = "Mit Wiederherstellungsschlüssel anmelden…";
+"city.signin.change_city" = "Andere Stadt";
+"city.signin.recovery_placeholder" = "Wiederherstellungsschlüssel";
+"city.signin.sign_in" = "Anmelden";
+"city.signin.recovery_hint" = "Der Wiederherstellungsschlüssel ist Ihre Identität in der Stadt. Geben Sie ihn nicht an einem gemeinsam genutzten Computer ein.";
+"city.signin.trust" = "Mit der Anmeldung übergeben Sie diesem Mac Ihre Identität in der Stadt: Er kann dort in Ihrem Namen alles tun, was Sie tun können. ZuTalk nutzt sie nur, um die Transkripte abzulegen, die Sie einer Veranstaltung zuordnen. Melden Sie sich an einem gemeinsam genutzten Computer am Veranstaltungsort danach wieder ab.";
+
+/* City: signed in. */
+"city.settings.signed_in" = "Angemeldet";
+"city.settings.unnamed" = "Unbenannter Bewohner";
+"city.settings.stored_title" = "Wo die Anmeldung gespeichert ist";
+"city.settings.stored_detail" = "Nur auf diesem Mac. Beim Abmelden wird sie von diesem Mac gelöscht; Ihre Identität in der Stadt bleibt unberührt.";
+"city.role.resident_format" = "Einwohner von %@";
+"city.role.founder_format" = "Gründer von %@";
+"city.role.coordinator_format" = "Koordinator von %@";
+"city.role.curator_format" = "Kurator von %@";
+"city.role.inviter_format" = "Einlader von %@";
+"city.signout.action" = "Abmelden…";
+"city.signout.button" = "Abmelden";
+"city.signout.confirm_title" = "Auf diesem Mac abmelden?";
+"city.signout.confirm_message" = "Die Anmeldung wird nur von diesem Mac entfernt. Ihre Identität in der Stadt und alles, was bereits im Archiv liegt, bleiben unverändert. Nach dem Abmelden kann dieser Mac nicht mehr in Ihrem Namen handeln, und noch wartende Transkripte werden nicht mehr gesendet.";
+"city.signout.failed" = "Abmelden nicht möglich";
+
+/* City: what is filed, and when. */
+"city.what.title" = "Was abgelegt wird";
+"city.what.subtitle" = "Wird vor jeder Aufnahme noch einmal aufgeführt.";
+"city.what.text" = "Original und Übersetzungen";
+"city.what.text_detail" = "Eines pro Sprache, zeitlich aufeinander abgestimmt.";
+"city.what.always" = "Immer";
+"city.what.speakers" = "Namen der Sprecher";
+"city.what.speakers_detail" = "Wenn aus, stehen dort nur „Sprecher 1“, „Sprecher 2“.";
+"city.what.marks" = "Markierungen";
+"city.what.marks_detail" = "Nur die markierten Stellen, nie Ihre Notizen.";
+"city.what.audio" = "Audio";
+"city.what.never" = "Nie";
+"city.when.title" = "Nach der Aufnahme";
+"city.when.row" = "Wann ablegen";
+"city.when.automatic" = "Automatisch";
+"city.when.ask" = "Erst fragen";
+"city.when.automatic_detail" = "Wird nach dem Stoppen im Hintergrund abgelegt – ohne Wartezeit. Ohne Netzwerk geschieht das, sobald die Verbindung zurück ist.";
+"city.when.ask_detail" = "Beim Stoppen bleibt die Aufnahme nur ihrer Veranstaltung zugeordnet; gesendet wird erst, wenn Sie „Im Archiv ablegen“ wählen.";
+"city.options.save_failed" = "Einstellung konnte nicht gesichert werden";
+
+/* City: what has been filed from this Mac. */
+"city.filings.title" = "Im Archiv abgelegt";
+"city.filings.subtitle" = "Alles, was Sie von diesem Mac aus abgelegt haben. Sie können es jederzeit zurückziehen.";
+"city.filings.empty" = "Noch nichts abgelegt.";
+"city.filing.filed" = "Abgelegt";
+"city.filing.changed_format" = "Sie haben %lld Sätze geändert; im Archiv steht noch die alte Fassung";
+"city.filing.queued" = "Wartet auf die Ablage";
+"city.filing.queued_offline" = "Wartet – wird automatisch abgelegt, sobald Sie online sind";
+"city.filing.failed_format" = "Nicht abgelegt: %@";
+"city.filing.bound" = "Der Veranstaltung zugeordnet, noch nicht abgelegt";
+"city.filing.withdrawn" = "Zurückgezogen";
+
+/* City: actions shared by several surfaces. */
+"city.action.open" = "Öffnen";
+"city.action.update" = "Aktualisieren";
+"city.action.withdraw" = "Zurückziehen…";
+"city.action.retry" = "Wiederholen";
+"city.action.file" = "Im Archiv ablegen";
+"city.action.not_filing" = "Diese nicht ablegen";
+"city.action.pick_from_calendar" = "Im Kalender wählen…";
+"city.action.change_event" = "Veranstaltung ändern…";
+"city.withdraw.confirm_title" = "Dieses Transkript aus dem Archiv zurückziehen?";
+"city.withdraw.confirm_message" = "Es verschwindet von den Seiten des Archivs. Die bereits abgelegten Transkript-Einträge bleiben jedoch im Protokoll der Stadt und lassen sich dort derzeit nicht löschen.";
+"city.withdraw.button" = "Zurückziehen";
+
+/* City: a topic’s channel. */
+"city.topic.title" = "Archiv";
+"city.topic.subtitle" = "Der Kanal, in den Aufnahmen dieses Themas zusätzlich zur jeweiligen Veranstaltung kommen.";
+"city.topic.channel" = "Kanal";
+"city.topic.channel_detail_format" = "Kanäle im Archiv von %@, in die Sie etwas legen dürfen.";
+"city.topic.no_channel" = "Kein Kanal";
+"city.topic.new_channel" = "Neuer Kanal im Browser…";
+"city.topic.channel_failed" = "Kanal konnte nicht gesichert werden";
+
+/* City: the event row on the Record page, and the sentence that says what will be filed. */
+"city.record.title" = "Veranstaltung";
+"city.record.detail_format" = "Nach der Aufnahme wird das Transkript im Archiv von %@ bei den Materialien dieser Veranstaltung abgelegt.";
+"city.record.change_hint" = "Veranstaltung ändern oder diese Aufnahme nicht ablegen";
+"city.record.several_format" = "Gerade laufen %lld Veranstaltungen – wählen Sie eine. Sie können auch ohne Auswahl starten und später zuordnen.";
+"city.record.none_running_detail" = "Gerade läuft keine Veranstaltung, daher wird diese Aufnahme nicht abgelegt. Sie können sie später zuordnen.";
+"city.record.none_chosen_detail" = "Diese Aufnahme wird nicht im Archiv abgelegt. Sie können sie später zuordnen.";
+"city.event.today_format" = "Heute %@";
+"city.summary.as_languages_format" = "Abgelegt im Namen von %1$@: Transkripte in %2$@.";
+"city.summary.as_format" = "Abgelegt im Namen von %@.";
+"city.summary.extras.names_marks" = "Mit Sprechernamen und Markierungen.";
+"city.summary.extras.names_only" = "Mit Sprechernamen, ohne Markierungen.";
+"city.summary.extras.marks_only" = "Mit Markierungen, ohne Sprechernamen.";
+"city.summary.extras.neither" = "Ohne Sprechernamen und ohne Markierungen.";
+"city.summary.channel_format" = "Kommt außerdem in den Kanal „%@“.";
+"city.summary.audio_stays" = "Audio bleibt auf diesem Mac.";
+"city.content.language_format" = "%1$@ %2$lld Sätze";
+"city.content.speakers_format" = "%lld Sprecher";
+"city.content.marks_format" = "%lld Markierungen";
+
+/* City: choosing an event from the calendar. */
+"city.picker.title" = "Zu welcher Veranstaltung gehört das?";
+"city.picker.search" = "Veranstaltungen oder Orte suchen";
+"city.picker.filter" = "Anzeigen";
+"city.picker.filter_all" = "Alle";
+"city.picker.filter_mine" = "Meine";
+"city.picker.previous_month" = "Vorheriger Monat";
+"city.picker.next_month" = "Nächster Monat";
+"city.picker.today" = "Heute";
+"city.picker.yesterday" = "Gestern";
+"city.picker.count_format" = "%lld Veranstaltungen";
+"city.picker.count_ended_format" = "%lld Veranstaltungen, alle beendet";
+"city.picker.count_mine_format" = "%lld von Ihnen veranstaltet";
+"city.picker.month_today_format" = "%1$lld in diesem Monat · %2$lld heute";
+"city.picker.month_day_format" = "%1$lld in diesem Monat · %2$lld an diesem Tag";
+"city.picker.month_mine_format" = "%lld von Ihnen in diesem Monat";
+"city.picker.group.overlapping" = "Zeitgleich mit dieser Aufnahme";
+"city.picker.group.running" = "Läuft gerade";
+"city.picker.group.later" = "Später heute";
+"city.picker.group.ended" = "Beendet";
+"city.picker.group.rest" = "Weitere Veranstaltungen an diesem Tag";
+"city.picker.group.mine_other_days" = "Ihre weiteren Veranstaltungen in diesem Monat";
+"city.picker.group.other_days" = "An anderen Tagen";
+"city.picker.tag_mine" = "Von Ihnen";
+"city.picker.tag_residents" = "Nur Bewohner";
+"city.picker.tag_filed" = "Abgelegt";
+"city.picker.empty_day" = "Keine Veranstaltungen an diesem Tag.";
+"city.picker.empty_mine" = "An diesem Tag veranstalten Sie nichts.";
+"city.picker.empty_never" = "Die Veranstaltungsliste wurde noch nicht geladen. Verbinden Sie sich mit dem Internet und klicken Sie auf „Aktualisieren“.";
+"city.picker.refresh" = "Aktualisieren";
+"city.picker.updated_format" = "Veranstaltungsliste aktualisiert: %@";
+"city.picker.never_updated" = "Veranstaltungsliste noch nicht geladen";
+"city.picker.confirm" = "Diese Veranstaltung wählen";
+
+/* City: the destination in the recording bar. */
+"city.bar.hint" = "Zeigt, wo diese Aufnahme abgelegt wird, und lässt es ändern";
+"city.bar.files_to_format" = "Veranstaltung: %@";
+"city.bar.not_filing" = "Diese Aufnahme wird nicht abgelegt";
+"city.bar.not_filing_detail" = "Diese Aufnahme wird nicht im Archiv abgelegt. Sie können jetzt im Kalender eine Veranstaltung wählen oder sie später über „Teilen…“ ablegen.";
+"city.bar.heading_automatic" = "Wird nach der Aufnahme im Archiv abgelegt";
+"city.bar.heading_ask" = "Einer Veranstaltung zugeordnet · Sie legen es danach ab";
+"city.bar.heading_none" = "Wird nicht abgelegt";
+"city.bar.channel_format" = "Kanal „%@“";
+
+/* City: the archive section of a recording’s Share panel. */
+"city.share.title" = "Archiv";
+"city.share.filed" = "Im Archiv abgelegt";
+"city.share.filed_format" = "Im Archiv abgelegt · %@";
+"city.share.fact.event" = "Veranstaltung";
+"city.share.fact.channel" = "Kanal";
+"city.share.fact.signer" = "Signiert von";
+"city.share.fact.content" = "Inhalt";
+"city.share.fact.last" = "Zuletzt";
+"city.share.last_format" = "%1$@, von %2$@";
+"city.share.changed_format" = "Sie haben %lld Sätze geändert; im Archiv steht noch die alte Fassung.";
+"city.share.changed_detail" = "Beim Aktualisieren werden nur die geänderten Sätze gesendet.";
+"city.share.update" = "Archiv aktualisieren";
+"city.share.open" = "Im Browser öffnen";
+"city.share.withdraw" = "Aus dem Archiv zurückziehen…";
+"city.share.public_note" = "Was im Archiv liegt, ist öffentlich und bleibt dort – anders als der Link unten, der nach 24 Stunden abläuft.";
+"city.share.queued" = "Wartet auf die Ablage im Archiv…";
+"city.share.queued_offline" = "Kein Netzwerk. Wird automatisch im Archiv abgelegt, sobald Sie wieder online sind.";
+"city.share.retry_now" = "Jetzt wiederholen";
+"city.share.failed_format" = "Nicht abgelegt: %@";
+"city.share.failed_safe" = "Das Transkript liegt vollständig auf diesem Mac – nichts ist verloren.";
+"city.share.not_filed" = "Diese Aufnahme wurde noch nicht im Archiv abgelegt.";
+"city.share.withdrawn" = "Dieses Transkript wurde aus dem Archiv zurückgezogen. Sie können eine andere Veranstaltung wählen oder es erneut ablegen.";
+"city.share.pick" = "Veranstaltung im Kalender wählen…";
+"city.share.change" = "Ändern…";
+
+/* City: what is said once filing finishes in the background. */
+"city.notice.filed_format" = "Im Archiv abgelegt · %@";
+"city.notice.ask_format" = "Aufnahme „%@“ zugeordnet – noch nicht abgelegt.";
+"city.toast.failed" = "Ablage im Archiv fehlgeschlagen";
+"city.toast.failed_format" = "Ablage im Archiv fehlgeschlagen · %@";
+"city.toast.queued" = "Eingereiht – wird in Kürze im Archiv abgelegt.";
+"city.toast.queued_offline" = "Kein Netzwerk. Das Transkript wird automatisch im Archiv abgelegt, sobald Sie online sind.";
+"city.toast.withdrawn" = "Aus dem Archiv zurückgezogen";
+"city.bind.failed" = "Zuordnung zur Veranstaltung fehlgeschlagen";
+
+/* City: errors. The keys are the stable codes the core reports; each says what to do next. */
+"city.error.offline" = "Dieser Mac ist nicht mit dem Internet verbunden. Stellen Sie eine Verbindung her und versuchen Sie es erneut.";
+"city.error.server" = "Der Server der Stadt ist gerade nicht erreichbar. Versuchen Sie es etwas später erneut.";
+"city.error.bad_address" = "Das sieht nicht nach der Adresse einer Stadt aus. Geben Sie sie so ein, wie die Stadt sie Ihnen genannt hat – nur die Domain.";
+"city.error.no_city" = "Unter dieser Adresse wurde keine Stadt gefunden. Prüfen Sie auf Tippfehler.";
+"city.error.bad_key" = "Dieser Wiederherstellungsschlüssel stimmt nicht. Vergleichen Sie ihn mit Ihrer gesicherten Kopie und geben Sie ihn erneut ein – jedes Zeichen zählt.";
+"city.error.expired" = "Der Anmeldecode ist abgelaufen. Fordern Sie einen neuen an und scannen Sie erneut.";
+"city.error.signed_out" = "Dieser Mac ist bei keiner Stadt angemeldet. Melden Sie sich unter Einstellungen › Stadt an und versuchen Sie es erneut.";
+"city.error.unbound" = "Diese Aufnahme ist noch keiner Veranstaltung zugeordnet. Wählen Sie zuerst eine Veranstaltung und legen Sie sie dann ab.";
+"city.error.not_allowed" = "Diese Veranstaltung nimmt nur Material von Gastgebern und Protokollanten an. Bitten Sie einen Gastgeber, Sie bei der Veranstaltung unter „Protokollanten“ einzutragen, und versuchen Sie es dann erneut.";
+"city.error.not_allowed_named_format" = "Diese Veranstaltung nimmt nur Material von Gastgebern und Protokollanten an. Bitten Sie einen Gastgeber, Sie (%@) bei der Veranstaltung unter „Protokollanten“ einzutragen, und versuchen Sie es dann erneut.";
+"city.error.no_transcript" = "Diese Aufnahme hat noch kein Transkript. Öffnen Sie nach Abschluss der Transkription „Teilen…“ für die Aufnahme und versuchen Sie es erneut.";
+"city.error.refused" = "Die Stadt hat dieses Transkript nicht angenommen. Versuchen Sie es noch einmal; wird es wieder abgelehnt, nennen Sie einem Koordinator der Stadt die Veranstaltung.";
+"city.error.busy" = "Diese Aufnahme wird bereits abgelegt. Warten Sie, bis das abgeschlossen ist, und versuchen Sie es dann erneut.";
+"city.error.generic" = "Bei der Verbindung mit der Stadt ist etwas schiefgegangen. Versuchen Sie es gleich noch einmal.";

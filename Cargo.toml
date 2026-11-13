@@ -14,6 +14,7 @@ members = [
     "crates/vt-llm",
     "crates/vt-mirror",
     "crates/vt-sync",
+    "crates/vt-city",
     "tools/uniffi-bindgen",
 ]
 

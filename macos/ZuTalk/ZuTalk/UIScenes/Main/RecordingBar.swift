@@ -208,6 +208,8 @@ struct RecordingBarContent: View {
     private func row(compact: Bool) -> some View {
         HStack(spacing: Spacing.sm) {
             identity(compact: compact)
+            // Where this recording will be filed, when a city event was chosen.
+            CityDestinationChip(compact: compact)
             if compact == false {
                 captionsChip
                 if let lag = model.lagNotice {

@@ -1,0 +1,80 @@
+{
+ "new_scalar": "1111111111111111111111111111111111111111111111111111111111111111",
+ "old_scalar": "1212121212121212121212121212121212121212121212121212121212121212",
+ "new_public": "BAIX5hfwtkQ5KCePlpmeaaI6TywVK99tbN9m5bgCgtTtGUp968uXcS0t2jyoWqh2Wlb0X8dYWZZS8ol8ZTBuV5Q",
+ "old_public": "BCYVk5Ks93UZ7EWglzEWh8fF3wXEXu7kXWNzG8yHdfechHqGgOXNaIBD4MfGlR2ZVrCuLWddHmBh-EXKnPWyOL8",
+ "code": "os:link:0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f.BAIX5hfwtkQ5KCePlpmeaaI6TywVK99tbN9m5bgCgtTtGUp968uXcS0t2jyoWqh2Wlb0X8dYWZZS8ol8ZTBuV5Q",
+ "room": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+ "key": "d69057c1e206e446be00ecd7d8a760cb19293bc43ee02b02072c49e846ce1cff",
+ "check": "799 185",
+ "value": {
+  "greeting": "สวัสดี 🌏",
+  "n": [
+   1,
+   2.5,
+   null
+  ],
+  "nested": {
+   "ok": true
+  }
+ },
+ "sealed": "JUpvlLneAyhNcpe8.x2l_zKqF1SclL-bYjGAIyDVnemk4S2Ql7aIZjEmaKhWAO7UrYmcBz6Td3WIEIBl5MHdwTbcxIx3R0mKQl2pjLxnlExPuaOzXNrx9usBK49N1B5QrxLCPIfGuTBY",
+ "sessions": [
+  {
+   "note": "a recovery-key identity, with its history offered first",
+   "msgs": [
+    {
+     "t": "hi",
+     "pub": "BCYVk5Ks93UZ7EWglzEWh8fF3wXEXu7kXWNzG8yHdfechHqGgOXNaIBD4MfGlR2ZVrCuLWddHmBh-EXKnPWyOL8"
+    },
+    {
+     "t": "recs",
+     "i": 0,
+     "box": "JUpvlLneAyhNcpe8.5zA62-3a2mw9av7QgqLEG6W6_7Oik-CyLizCfdlW9loehhWGIjIBm-iS6j8EMFwpZTs_A78FawXU0mjeiDgMfg2jNjC2C6DnLe9QviFJccIZKOaXEaChv0RdOvL2oD3J6mXzfaAYRxLEqoz_JZ9BAdwtDRuVtGRXXTyRR9Xs8oa_xT3i6eHdXLyVirW1E4MJQOdlQrZUayIiNzI6AUTzRqbsL3vp9-d3eq-tNb8Zi4RMsenAQC-JqXJ6wSbFpC6L_LhlNJFdVePyh2PUFr6NpyPUj3Llptkv2Km5OgliSSKlxItVWVoUHGVrYoWdx0HTEdF_4S3X4aXoMGM_M2zb1yk_PQ"
+    },
+    {
+     "t": "key",
+     "box": "JUpvlLneAyhNcpe8.x2lz27bCm2w4IaaLz-6dCbCm8Li6vObbDynFSf1y72c07nLTIXp5ys2J1TFaWFV_bV52V70aOnvU5WmmsToVelSfJjOUZLqJYbdhqic5PtNJZ8nEJrO4owJCY6W4hTLf2WPfJ7JXE332uJuoY5FZEcsoGxWNh1waGyPaE-XC_J6U-WO0-KyDFOMIlVBLJBZH2ug5mWSRORZR"
+    }
+   ],
+   "id": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+   "did_key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+   "controller": null,
+   "name": "Ada of the Garden"
+  },
+  {
+   "note": "an identity that moved to did:webvh",
+   "msgs": [
+    {
+     "t": "hi",
+     "pub": "BCYVk5Ks93UZ7EWglzEWh8fF3wXEXu7kXWNzG8yHdfechHqGgOXNaIBD4MfGlR2ZVrCuLWddHmBh-EXKnPWyOL8"
+    },
+    {
+     "t": "key",
+     "box": "JUpvlLneAyhNcpe8.x2lujO3a2mwiLObYjLfVBOG77rzjzbaqcnHAKZwXpgRHxgvFInhHlrOC5WoadFN_JHwwQ7ldalmLgyfdkTd3JQalS0r-Y_qQeu1i_nE5KNMDZbKRa7GgoEBAY-Ki4DfE2TzGYvADV2XUtI-3V8sNJMsQFH7Jmko_Th6NW-zOouyHy1qFw7qPbd_Wto_rS9QfCYgQVag6ImNxYQhzMnn6Hp3sHguptLpgc_CeN-YK8uAi9uniPVLP8mhd_XWZvizR_ppLGaV-BsWut1_YBtaColrIuQ_Lpd0g7r7-FDFeYByWz68STXIZYy09YdH00XHLXNgAnvTkXT4O0B9tbDOfbaDJT-IxpvbONoObChBCmhO0HpXX-gJJnjBgmp1NM9EbEFGSzI4ksNjo_kiBB8VGBWLYQD4sVSFL_qo4dTSeRYWm1WQsnib9gOwdCFdEwxg8eCVlNb9g9vYZK3S0k0WseH-Wjl9EcLuw6FzpzZX0LEa0lKmtox1cDTfBABmhq8KTTmlAbdEhQ_kQIYd5Yoko9kdERDgBvQB5H5Xt8sRN1xhZ8D5C63BpmEELfJX5LMHRefiaVjVF5CaTcxNMlKkof6agiXLzUleXsIKwZwSjzUq-c2qPH_jIo8BfeEd7aTtJF7HgrB2Rfl6rsnFA4fP7eB7junkh0T8SDs4W2ZMJfK7ev4mBem2TclPli2-wFIfsuB3LQW1JZmYQg80plpWUsAbwRi3q-fCM0dqQIuvpLLwjLKTzO6axnfVB2nOUTAs1MCCJls_UFGWydfbP9JIcRSr2Gat68oxPel4dJRxKDLD97Ug7RT0t-IFse0FBuTP_qLf3fxnepCzRZwTSdaOYV801YNDNA2On3N63P8ToacGQXMK00SjLwGH38u0GgUfTAgQvpyQGln7ZUT297Oww2iH3SrXxPOA5fNVTgc8pklVHN_iIHdOCpFXqsVovR82R9QD98u0nYYTRJE9wH-sGlDWdGnnjzcgbvVGyW39LXv1DoZ6IJZIbKjxP1E0Qnik25tioXAXJE64sIXEes2J1nra025C7le28awMT_-6f1dTEh4JBaRnFK74VLpBlnZN2zvcFt0b8bFyiZQiTtsokJH_ovh-QkiH5mREbVHUR1qQXbNlUfF-44Kq-0A3KSSpfHR4YaJK4xFaBHKtF-K3oHzP_0X0q39u1RR9eDhUQ9td4wYLH2FYjYnbR0qRkNrkLxzfyMxfkLygN_0mxSnh43yPhCbB-VvoXaPAoiHasiysSc7WeoyPq1Q4R0tnzKGw_VnsYVCjq6VnW9p0XRYfz1ZqqTAJowtPWIp_Naix4crFVvrKJtXaAhsMeWFX8qPSP3gZqhDn9MP2Fx9WxjDZArBEpZU58HADvxS3MtM7uXvZSW5t5SJ8Tjn1KyW9fDBl4LOkPQO4WnDvA_TwsR6AlxY1SA2zFQZDWyXBsAsrDUdpRYu7ileisWkqWUegiFk11zKgEYCURwgh-_R2DB0U0eQFdCm6tvVI0lqZhStzE96amX19QKWH5fBaxyrQf2bV9wSEPcHHXdu1XAIn8HJUxgTqRS61dDRnQhClvGIDQ-ELf_Cn874pwWROVDoutj9BJPKtTMorfnRsUTq2B4WD2eQ4abVVPMiADkorRbejH7IggomwC3hDkv_Rw9Po3V-BL-SBJ3ELd85dVhyuVIb_5C89V1e2JGWOyBVxlLPN5ZY75bNcd7h5Temu-N0Mt2JYV"
+    }
+   ],
+   "id": "7ef4d35c72753a155917b2ab3d75ec92fd38e5bb1ef4469c960db7221b594b93",
+   "did_key": "did:key:z6Mkuofzo8mrvf8FYE6ye72eQowDyFxSQ8SNBbfdZJfJscqc",
+   "controller": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15",
+   "name": "Mo"
+  },
+  {
+   "note": "a name longer than the city shows",
+   "msgs": [
+    {
+     "t": "hi",
+     "pub": "BCYVk5Ks93UZ7EWglzEWh8fF3wXEXu7kXWNzG8yHdfechHqGgOXNaIBD4MfGlR2ZVrCuLWddHmBh-EXKnPWyOL8"
+    },
+    {
+     "t": "key",
+     "box": "JUpvlLneAyhNcpe8.x2lz27bCm2w4IaaLz-6dCbCm8Li6vbbpIyDwS9941XEV7A_wDDMX0_OMzDERcV8BSnxRFu4baGnH_2eoumgocwGmRSifJrqJYbdhqic5PtMRP_DYP-uvvVpOc7jguivVxX7Jf-oNRyf9oZW1f8sbHcElBkHXl0GL4Mh4UMS9_J6X-Wel76yDQ__Dgq3k7MUAqzxadcZKI1a4O00vGA"
+    }
+   ],
+   "id": "537dc0ff10c75cc9fb5e7625bccfd57ffd7a91b3c0b4b928914f9b2c27fcaf87",
+   "did_key": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+   "controller": null,
+   "name": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  }
+ ]
+}

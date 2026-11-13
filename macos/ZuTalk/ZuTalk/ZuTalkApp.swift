@@ -182,6 +182,9 @@ final class ZuTalkAppDelegate: NSObject, NSApplicationDelegate {
             // Lets recording surfaces say "no network" instead of a service
             // error; see `NetworkReachability`.
             NetworkReachability.shared.start()
+            // Transcripts still queued for a city's archive are filed now,
+            // and again whenever the network comes back; see `CityStore`.
+            CityStore.shared.start()
             // Full-screen safety net: macOS hides the menu bar in full-screen apps,
             // which would leave the menu-bar pulsing icon invisible. This controller
             // presents a tiny `.fullScreenAuxiliary` REC pill at the top of the

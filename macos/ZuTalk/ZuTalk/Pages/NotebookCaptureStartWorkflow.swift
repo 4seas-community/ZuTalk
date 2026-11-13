@@ -14,6 +14,9 @@ struct NotebookCaptureStartCoordinator {
         guard let sessionId = capture.sessionId else {
             throw NotebookCaptureClientError.captureNotActive
         }
+        // The city event confirmed on the Record page is bound as soon as
+        // the recording has an id; every way of starting passes through here.
+        CityStore.shared.recordingStarted(sessionId: sessionId)
         navigation.openRealtimeTranscript(
             notebookID: notebookId,
             selectedSessionID: sessionId

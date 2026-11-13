@@ -1432,3 +1432,221 @@
 "network.offline.record_hint" = "이 Mac은 지금 오프라인이에요. 실시간 자막에는 인터넷이 필요해요. 자막을 끄면 녹음만 할 수 있어요.";
 "network.offline.short" = "네트워크 없음";
 "network.offline.recording_banner" = "이 Mac은 오프라인이에요. 녹음은 계속되고, 다시 연결되면 자막이 자동으로 이어져요. 오프라인이었던 구간에는 자막이 없을 수 있어요.";
+
+/* City archive: filing a recording’s transcript in a city’s archive, as the signed-in resident. Text only; audio never leaves this Mac. */
+"settings.section.city_name" = "도시";
+"city.settings.subtitle" = "도시에서 쓰는 내 신원으로 로그인하면, 녹음이 끝난 뒤 전사본을 내 이름으로 아카이브에 제출하고 해당 이벤트에 넣을 수 있어요.";
+
+/* City: signing in. */
+"city.signin.title" = "로그인";
+"city.signin.title_format" = "%@에 로그인";
+"city.signin.address_hint" = "먼저 도시의 웹 주소를 입력하세요.";
+"city.signin.address_placeholder" = "도시 주소";
+"city.signin.address_label" = "도시 웹 주소";
+"city.signin.continue" = "계속";
+"city.signin.requesting" = "도시에 로그인 코드를 요청하는 중…";
+"city.signin.signing_in" = "로그인 중…";
+"city.signin.step_scan" = "이 도시에 이미 로그인한 기기에서 ‘시청 → 신원’을 열고 ‘새 기기 연결 → 스캔’을 선택한 다음 이 코드를 스캔하세요. 복사한 코드를 붙여 넣어도 돼요.";
+"city.signin.step_check" = "두 기기에 같은 여섯 자리 숫자가 나타나요. 숫자가 같으면 그 기기에서 확인을 누르세요.";
+"city.signin.qr_label" = "로그인 코드 QR 코드";
+"city.signin.copy_code" = "코드 복사";
+"city.signin.code_copied" = "로그인 코드를 복사했어요";
+"city.signin.expires_format" = "%@ 후 만료";
+"city.signin.check_label" = "확인 숫자";
+"city.signin.check_waiting" = "그 기기에서 확인하기를 기다리는 중…";
+"city.signin.lapsed_title" = "이 코드는 더 이상 쓸 수 없어요";
+"city.signin.lapsed_detail" = "로그인 코드는 5분 동안만 유효해요. 새 코드를 받아 다시 스캔하세요.";
+"city.signin.new_code" = "새 코드";
+"city.signin.no_device" = "다른 기기가 곁에 없나요?";
+"city.signin.use_recovery_key" = "복구 키로 로그인…";
+"city.signin.change_city" = "다른 도시";
+"city.signin.recovery_placeholder" = "복구 키";
+"city.signin.sign_in" = "로그인";
+"city.signin.recovery_hint" = "복구 키는 도시에서의 내 신원 그 자체예요. 공용 컴퓨터에서는 입력하지 마세요.";
+"city.signin.trust" = "로그인하면 도시에서의 내 신원이 이 Mac에 넘어와요. 이 Mac은 내가 도시에서 할 수 있는 모든 일을 내 이름으로 할 수 있게 돼요. ZuTalk는 이벤트에 넣은 전사본을 아카이브에 제출할 때만 이 신원을 써요. 행사장의 공용 컴퓨터라면 다 쓴 뒤 로그아웃하세요.";
+
+/* City: signed in. */
+"city.settings.signed_in" = "로그인됨";
+"city.settings.unnamed" = "이름 없는 주민";
+"city.settings.stored_title" = "로그인 정보가 저장되는 곳";
+"city.settings.stored_detail" = "이 Mac에만 저장돼요. 로그아웃하면 이 Mac에서 지워지며, 도시에서의 내 신원에는 영향이 없어요.";
+"city.role.resident_format" = "%@ 주민";
+"city.role.founder_format" = "%@ 설립자";
+"city.role.coordinator_format" = "%@ 코디네이터";
+"city.role.curator_format" = "%@ 큐레이터";
+"city.role.inviter_format" = "%@ 초대자";
+"city.signout.action" = "로그아웃…";
+"city.signout.button" = "로그아웃";
+"city.signout.confirm_title" = "이 Mac에서 로그아웃할까요?";
+"city.signout.confirm_message" = "로그인 정보는 이 Mac에서만 지워져요. 도시에서의 내 신원과 이미 아카이브에 제출한 내용은 그대로예요. 로그아웃한 뒤에는 이 Mac이 더 이상 내 이름으로 아무 일도 할 수 없고, 제출을 기다리던 전사본도 보내지 않아요.";
+"city.signout.failed" = "로그아웃하지 못했어요";
+
+/* City: what is filed, and when. */
+"city.what.title" = "제출하는 내용";
+"city.what.subtitle" = "녹음을 시작하기 전에 매번 다시 보여 줘요.";
+"city.what.text" = "원문과 번역";
+"city.what.text_detail" = "언어마다 하나씩, 시간에 맞춰 정렬돼요.";
+"city.what.always" = "항상 제출";
+"city.what.speakers" = "발표자 이름";
+"city.what.speakers_detail" = "끄면 ‘발표자 1’, ‘발표자 2’로만 적어요.";
+"city.what.marks" = "표시";
+"city.what.marks_detail" = "표시한 위치만 제출하고, 내가 쓴 메모는 제출하지 않아요.";
+"city.what.audio" = "오디오";
+"city.what.never" = "제출 안 함";
+"city.when.title" = "녹음이 끝난 뒤";
+"city.when.row" = "제출 시점";
+"city.when.automatic" = "자동으로 제출";
+"city.when.ask" = "먼저 물어보기";
+"city.when.automatic_detail" = "녹음을 멈추면 기다릴 필요 없이 백그라운드에서 제출해요. 네트워크가 없으면 다시 연결됐을 때 제출해요.";
+"city.when.ask_detail" = "녹음을 멈춰도 이벤트에만 넣어 둘 뿐 보내지 않아요. ‘아카이브에 제출’을 눌러야 제출해요.";
+"city.options.save_failed" = "이 설정을 저장하지 못했어요";
+
+/* City: what has been filed from this Mac. */
+"city.filings.title" = "아카이브에 제출한 항목";
+"city.filings.subtitle" = "이 Mac에서 제출한 것이 모두 여기 있어요. 언제든 내릴 수 있어요.";
+"city.filings.empty" = "아직 제출한 것이 없어요.";
+"city.filing.filed" = "제출됨";
+"city.filing.changed_format" = "%lld문장을 고쳤어요. 아카이브에는 예전 내용이 있어요";
+"city.filing.queued" = "제출 대기 중";
+"city.filing.queued_offline" = "대기 중 · 온라인이 되면 자동으로 제출해요";
+"city.filing.failed_format" = "제출하지 못했어요: %@";
+"city.filing.bound" = "이벤트에 넣음 · 아직 제출 전";
+"city.filing.withdrawn" = "내림";
+
+/* City: actions shared by several surfaces. */
+"city.action.open" = "열기";
+"city.action.update" = "업데이트";
+"city.action.withdraw" = "내리기…";
+"city.action.retry" = "재시도";
+"city.action.file" = "아카이브에 제출";
+"city.action.not_filing" = "이번 녹음은 제출 안 함";
+"city.action.pick_from_calendar" = "캘린더에서 선택…";
+"city.action.change_event" = "이벤트 변경…";
+"city.withdraw.confirm_title" = "이 전사본을 아카이브에서 내릴까요?";
+"city.withdraw.confirm_message" = "아카이브 페이지에서는 사라져요. 다만 이미 제출한 전사 기록은 도시의 로그에 남아 있고, 지금은 거기서 지울 수 없어요.";
+"city.withdraw.button" = "내리기";
+
+/* City: a topic’s channel. */
+"city.topic.title" = "아카이브";
+"city.topic.subtitle" = "이 주제의 녹음을 그때의 이벤트 말고 어느 채널에도 넣을지 정해요.";
+"city.topic.channel" = "채널";
+"city.topic.channel_detail_format" = "%@ 아카이브에서 내가 넣을 수 있는 채널이에요.";
+"city.topic.no_channel" = "채널에 넣지 않음";
+"city.topic.new_channel" = "브라우저에서 새 채널 만들기…";
+"city.topic.channel_failed" = "채널을 저장하지 못했어요";
+
+/* City: the event row on the Record page, and the sentence that says what will be filed. */
+"city.record.title" = "이벤트";
+"city.record.detail_format" = "녹음이 끝나면 전사본을 %@ 아카이브의 이 이벤트 자료에 제출해요.";
+"city.record.change_hint" = "이벤트를 바꾸거나 이번 녹음은 제출하지 않아요";
+"city.record.several_format" = "지금 이벤트 %lld개가 진행 중이에요. 하나를 고르세요. 고르지 않고 시작한 뒤 나중에 넣어도 돼요.";
+"city.record.none_running_detail" = "지금 진행 중인 이벤트가 없어요. 이번 녹음은 제출하지 않으며, 끝난 뒤에 넣을 수 있어요.";
+"city.record.none_chosen_detail" = "이 녹음은 아카이브에 제출하지 않아요. 끝난 뒤에 넣을 수 있어요.";
+"city.event.today_format" = "오늘 %@";
+"city.summary.as_languages_format" = "%1$@ 이름으로 %2$@ 전사본을 제출해요.";
+"city.summary.as_format" = "%@ 이름으로 전사본을 제출해요.";
+"city.summary.extras.names_marks" = "발표자 이름과 표시를 포함해요.";
+"city.summary.extras.names_only" = "발표자 이름은 포함하고 표시는 빼요.";
+"city.summary.extras.marks_only" = "표시는 포함하고 발표자 이름은 빼요.";
+"city.summary.extras.neither" = "발표자 이름과 표시는 모두 빼요.";
+"city.summary.channel_format" = "채널 ‘%@’에도 넣어요.";
+"city.summary.audio_stays" = "오디오는 이 Mac에 남아요.";
+"city.content.language_format" = "%1$@ %2$lld문장";
+"city.content.speakers_format" = "발표자 %lld명";
+"city.content.marks_format" = "표시 %lld곳";
+
+/* City: choosing an event from the calendar. */
+"city.picker.title" = "어느 이벤트에 넣을까요?";
+"city.picker.search" = "이벤트 이름이나 장소 검색";
+"city.picker.filter" = "보기";
+"city.picker.filter_all" = "전체";
+"city.picker.filter_mine" = "내가 주최";
+"city.picker.previous_month" = "이전 달";
+"city.picker.next_month" = "다음 달";
+"city.picker.today" = "오늘";
+"city.picker.yesterday" = "어제";
+"city.picker.count_format" = "%lld개";
+"city.picker.count_ended_format" = "%lld개 · 모두 종료";
+"city.picker.count_mine_format" = "내가 주최 %lld개";
+"city.picker.month_today_format" = "이번 달 %1$lld개 · 오늘 %2$lld개";
+"city.picker.month_day_format" = "이번 달 %1$lld개 · 이날 %2$lld개";
+"city.picker.month_mine_format" = "이번 달 내가 주최 %lld개";
+"city.picker.group.overlapping" = "이 녹음과 시간이 겹침";
+"city.picker.group.running" = "진행 중";
+"city.picker.group.later" = "오늘 이후";
+"city.picker.group.ended" = "종료";
+"city.picker.group.rest" = "이날의 다른 이벤트";
+"city.picker.group.mine_other_days" = "이번 달 내가 주최하는 다른 이벤트";
+"city.picker.group.other_days" = "다른 날";
+"city.picker.tag_mine" = "내가 주최";
+"city.picker.tag_residents" = "주민 전용";
+"city.picker.tag_filed" = "제출됨";
+"city.picker.empty_day" = "이날은 이벤트가 없어요.";
+"city.picker.empty_mine" = "이날 내가 주최하는 이벤트가 없어요.";
+"city.picker.empty_never" = "이벤트 목록을 아직 불러오지 못했어요. 인터넷에 연결한 뒤 ‘새로 고침’을 누르세요.";
+"city.picker.refresh" = "새로 고침";
+"city.picker.updated_format" = "이벤트 목록 · %@ 업데이트";
+"city.picker.never_updated" = "이벤트 목록을 아직 불러오지 않음";
+"city.picker.confirm" = "이 이벤트로 지정";
+
+/* City: the destination in the recording bar. */
+"city.bar.hint" = "이 녹음을 어디에 제출할지 보고 바꿀 수 있어요";
+"city.bar.files_to_format" = "제출할 이벤트: %@";
+"city.bar.not_filing" = "이 녹음은 제출하지 않아요";
+"city.bar.not_filing_detail" = "이 녹음은 아카이브에 제출하지 않아요. 지금 캘린더에서 이벤트를 고르거나, 녹음이 끝난 뒤 ‘공유…’에서 제출할 수 있어요.";
+"city.bar.heading_automatic" = "녹음 후 아카이브에 제출";
+"city.bar.heading_ask" = "이벤트에 넣음 · 제출은 녹음 후 직접";
+"city.bar.heading_none" = "이번 녹음은 제출 안 함";
+"city.bar.channel_format" = "채널 ‘%@’";
+
+/* City: the archive section of a recording’s Share panel. */
+"city.share.title" = "아카이브";
+"city.share.filed" = "아카이브에 제출됨";
+"city.share.filed_format" = "아카이브에 제출됨 · %@";
+"city.share.fact.event" = "이벤트";
+"city.share.fact.channel" = "채널";
+"city.share.fact.signer" = "서명";
+"city.share.fact.content" = "내용";
+"city.share.fact.last" = "지난번";
+"city.share.last_format" = "%1$@ · %2$@ 제출";
+"city.share.changed_format" = "%lld문장을 고쳤어요. 아카이브에는 예전 내용이 있어요.";
+"city.share.changed_detail" = "업데이트하면 고친 문장만 보내요.";
+"city.share.update" = "아카이브 업데이트";
+"city.share.open" = "브라우저에서 열기";
+"city.share.withdraw" = "아카이브에서 내리기…";
+"city.share.public_note" = "아카이브의 내용은 공개되며 계속 남아요. 24시간 뒤 만료되는 아래 링크와는 달라요.";
+"city.share.queued" = "아카이브 제출을 기다리는 중…";
+"city.share.queued_offline" = "네트워크가 없어요. 다시 온라인이 되면 자동으로 아카이브에 제출해요.";
+"city.share.retry_now" = "지금 재시도";
+"city.share.failed_format" = "제출하지 못했어요: %@";
+"city.share.failed_safe" = "전사본은 모두 이 Mac에 있어요. 잃어버린 것은 없어요.";
+"city.share.not_filed" = "이 녹음은 아직 아카이브에 제출하지 않았어요.";
+"city.share.withdrawn" = "이 전사본은 아카이브에서 내렸어요. 다른 이벤트를 고르거나 다시 제출할 수 있어요.";
+"city.share.pick" = "캘린더에서 이벤트 선택…";
+"city.share.change" = "변경…";
+
+/* City: what is said once filing finishes in the background. */
+"city.notice.filed_format" = "아카이브에 제출했어요 · %@";
+"city.notice.ask_format" = "녹음을 ‘%@’에 넣었어요. 아직 제출하지 않았어요.";
+"city.toast.failed" = "아카이브에 제출하지 못했어요";
+"city.toast.failed_format" = "아카이브에 제출하지 못했어요 · %@";
+"city.toast.queued" = "대기열에 넣었어요. 곧 아카이브에 제출해요.";
+"city.toast.queued_offline" = "네트워크가 없어요. 온라인이 되면 자동으로 아카이브에 제출해요.";
+"city.toast.withdrawn" = "아카이브에서 내렸어요";
+"city.bind.failed" = "이벤트에 넣지 못했어요";
+
+/* City: errors. The keys are the stable codes the core reports; each says what to do next. */
+"city.error.offline" = "이 Mac이 인터넷에 연결되어 있지 않아요. 연결한 뒤 다시 시도하세요.";
+"city.error.server" = "지금은 도시의 서버에 연결할 수 없어요. 잠시 뒤 다시 시도하세요.";
+"city.error.bad_address" = "도시 주소로 보이지 않아요. 도시에서 안내받은 대로 도메인만 입력하세요.";
+"city.error.no_city" = "이 주소에서 도시를 찾지 못했어요. 잘못 입력하지 않았는지 확인하세요.";
+"city.error.bad_key" = "복구 키가 올바르지 않아요. 저장해 둔 것과 대조해 다시 입력하세요. 한 글자라도 다르면 안 돼요.";
+"city.error.expired" = "로그인 코드가 만료됐어요. 새 코드를 받아 다시 스캔하세요.";
+"city.error.signed_out" = "이 Mac은 도시에 로그인되어 있지 않아요. ‘설정 › 도시’에서 로그인한 뒤 다시 시도하세요.";
+"city.error.unbound" = "이 녹음은 아직 이벤트에 넣지 않았어요. 먼저 이벤트를 고른 뒤 제출하세요.";
+"city.error.not_allowed" = "이 이벤트는 주최자와 기록 담당이 낸 자료만 받아요. 주최자에게 이벤트의 ‘기록 담당’에 나를 추가해 달라고 한 뒤 다시 시도하세요.";
+"city.error.not_allowed_named_format" = "이 이벤트는 주최자와 기록 담당이 낸 자료만 받아요. 주최자에게 이벤트의 ‘기록 담당’에 나(%@)를 추가해 달라고 한 뒤 다시 시도하세요.";
+"city.error.no_transcript" = "이 녹음에는 아직 전사본이 없어요. 전사가 끝나면 녹음의 ‘공유…’에서 다시 시도하세요.";
+"city.error.refused" = "도시에서 이 전사본을 받아 주지 않았어요. 한 번 더 시도해 보고, 그래도 안 되면 이벤트 이름을 도시의 코디네이터에게 알려 주세요.";
+"city.error.busy" = "이 녹음은 지금 제출하는 중이에요. 끝난 뒤 다시 시도하세요.";
+"city.error.generic" = "도시와 주고받는 중에 문제가 생겼어요. 잠시 뒤 다시 시도하세요.";

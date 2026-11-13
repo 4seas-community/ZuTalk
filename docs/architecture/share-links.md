@@ -79,7 +79,9 @@ stop_live_link ── DELETE …(?purge=1) ─────►  封笔或当场�
 ## 4. 音频不可共享
 
 共享只有两个出口，都在 `crates/vt-ffi/src/link_share.rs`：加密链接与发送副本
-（`transcript_file`，只走 `export_markdown` / `export_srt`）。
+（`transcript_file`，只走 `export_markdown` / `export_srt`）。2026-11-13 起另有
+第三个出口「交到城的档案馆」（[city-archive.md](city-archive.md)），同样只给
+文字，由同一个脚本的第 6 层守着。
 `scripts/test_share_no_audio_gate.sh` 四层检查（去掉注释与测试模块之后）：
 
 1. 模块不引用 `vt_audio`、音频解密（`decrypt_session_audio` 等）、PCM 类型；

@@ -1,0 +1,1519 @@
+{
+ "event": "abababababababababababababababababababababababababababababababab",
+ "made": [
+  {
+   "who": "v1",
+   "kind": "tape/take",
+   "body": {
+    "mime": "",
+    "started": 1780000000000
+   },
+   "links": [
+    "abababababababababababababababababababababababababababababababab"
+   ],
+   "deps": [
+    "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+   ],
+   "at": 1780000000123,
+   "id": "2b5b7db662a91ddb7f275530ab1f5d1f3d443eab52a5b2bab91b2973ba94d1eb",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "tape/take",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {
+      "mime": "",
+      "started": 1780000000000
+     },
+     "at": 1780000000123
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+      "created": "2026-05-28T20:26:40.123Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "zhpznUvGYK6XSogEuKrSUDh1YJ1soGtn82yYANNPmNg6VJq6R3hBpj73Yv2cyEmqyknmXrDjUGnokTui34ywctwC"
+     }
+    ]
+   },
+   "signature": "zhpznUvGYK6XSogEuKrSUDh1YJ1soGtn82yYANNPmNg6VJq6R3hBpj73Yv2cyEmqyknmXrDjUGnokTui34ywctwC"
+  },
+  {
+   "who": "v1",
+   "kind": "tape/text",
+   "body": {
+    "segs": [
+     {
+      "t": 0,
+      "d": 1500,
+      "sp": "1",
+      "text": "Good morning — สวัสดี — 早上好 🌏"
+     },
+     {
+      "t": 2500,
+      "d": 900.5,
+      "sp": "",
+      "text": "quote \" backslash \\ tab \t"
+     }
+    ]
+   },
+   "links": [
+    "abababababababababababababababababababababababababababababababab"
+   ],
+   "deps": [
+    "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+    "abababababababababababababababababababababababababababababababab"
+   ],
+   "at": 0,
+   "id": "6cc0ab94f125a877ae335fd9eb2801c0e2e18349bfce8f2de1dca3d28a2164f5",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "tape/text",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {
+      "segs": [
+       {
+        "t": 0,
+        "d": 1500,
+        "sp": "1",
+        "text": "Good morning — สวัสดี — 早上好 🌏"
+       },
+       {
+        "t": 2500,
+        "d": 900.5,
+        "sp": "",
+        "text": "quote \" backslash \\ tab \t"
+       }
+      ]
+     },
+     "at": 0
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+      "created": "1970-01-01T00:00:00.000Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "z2oA76FCf1r2zFAitd7A9HLnDV88muFUmmMy7A92QdWZpxkjz9qiWrswA5KbY965A42m4VM1kFs9j4aQMq2PXqvhk"
+     }
+    ]
+   },
+   "signature": "z2oA76FCf1r2zFAitd7A9HLnDV88muFUmmMy7A92QdWZpxkjz9qiWrswA5KbY965A42m4VM1kFs9j4aQMq2PXqvhk"
+  },
+  {
+   "who": "v1",
+   "kind": "arc/connect",
+   "body": {},
+   "links": [
+    "abababababababababababababababababababababababababababababababab",
+    "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+   ],
+   "deps": [
+    "abababababababababababababababababababababababababababababababab"
+   ],
+   "at": 253402300799999,
+   "id": "fc84df39634322760ee7e27476bee995a3a28ba893bf4bac845505694a27c3a0",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "arc/connect",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab",
+      "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+     ],
+     "body": {},
+     "at": 253402300799999
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+      "created": "9999-12-31T23:59:59.999Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "z5YTqqzveKWK3eSqm8GZfZAvvRG4WLiejNEaswJV2GmFeTfteQ9t3yEwkEULiAPqqR6FdDJiUKfa1EP3hJpxaD49w"
+     }
+    ]
+   },
+   "signature": "z5YTqqzveKWK3eSqm8GZfZAvvRG4WLiejNEaswJV2GmFeTfteQ9t3yEwkEULiAPqqR6FdDJiUKfa1EP3hJpxaD49w"
+  },
+  {
+   "who": "v2",
+   "kind": "arc/block",
+   "body": {
+    "kind": "audio",
+    "title": "Recording · Signed after moving",
+    "take": "abababababababababababababababababababababababababababababababab",
+    "dur": 5400000
+   },
+   "links": [
+    "abababababababababababababababababababababababababababababababab"
+   ],
+   "deps": [
+    "7ef4d35c72753a155917b2ab3d75ec92fd38e5bb1ef4469c960db7221b594b93"
+   ],
+   "at": 1780000000456,
+   "id": "fb5ee24ff6dbc6ae435b1a47a8a09d7ab620f9afebe44c026521dd2e555e9ada",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "arc/block",
+     "by": "7ef4d35c72753a155917b2ab3d75ec92fd38e5bb1ef4469c960db7221b594b93",
+     "key": "did:key:z6Mkuofzo8mrvf8FYE6ye72eQowDyFxSQ8SNBbfdZJfJscqc",
+     "deps": [
+      "7ef4d35c72753a155917b2ab3d75ec92fd38e5bb1ef4469c960db7221b594b93"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {
+      "kind": "audio",
+      "title": "Recording · Signed after moving",
+      "take": "abababababababababababababababababababababababababababababababab",
+      "dur": 5400000
+     },
+     "at": 1780000000456
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6Mkuofzo8mrvf8FYE6ye72eQowDyFxSQ8SNBbfdZJfJscqc",
+      "created": "2026-05-28T20:26:40.456Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "z4dXHKL5DAW3ENzCciPhWJqwthnGyeBoUpNeQbWKsLGad8pfsiNHHGYZVFbyDrDSb6x4vSTB7tzR8zAvfYZtdG4Rx"
+     }
+    ]
+   },
+   "signature": "z4dXHKL5DAW3ENzCciPhWJqwthnGyeBoUpNeQbWKsLGad8pfsiNHHGYZVFbyDrDSb6x4vSTB7tzR8zAvfYZtdG4Rx"
+  },
+  {
+   "who": "v2",
+   "kind": "tape/end",
+   "body": {},
+   "links": [
+    "abababababababababababababababababababababababababababababababab"
+   ],
+   "deps": [
+    "abababababababababababababababababababababababababababababababab"
+   ],
+   "at": 1780000000457,
+   "id": "82cad0bc53bfeb358c525c7f095f787602f8e5795471fc8ba81e6e64ba53e2cf",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "tape/end",
+     "by": "7ef4d35c72753a155917b2ab3d75ec92fd38e5bb1ef4469c960db7221b594b93",
+     "key": "did:key:z6Mkuofzo8mrvf8FYE6ye72eQowDyFxSQ8SNBbfdZJfJscqc",
+     "deps": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {},
+     "at": 1780000000457
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6Mkuofzo8mrvf8FYE6ye72eQowDyFxSQ8SNBbfdZJfJscqc",
+      "created": "2026-05-28T20:26:40.457Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "zzEZxHGZ2iT6KYEe4S4i81X3AYiwVEJTnfDLxp1qk5idtbbVMK13cKL6n3RsdK2ta7EY4eaixWgVK1hkfmEbxPcf"
+     }
+    ]
+   },
+   "signature": "zzEZxHGZ2iT6KYEe4S4i81X3AYiwVEJTnfDLxp1qk5idtbbVMK13cKL6n3RsdK2ta7EY4eaixWgVK1hkfmEbxPcf"
+  },
+  {
+   "who": "v1",
+   "kind": "id/present",
+   "body": {},
+   "links": [],
+   "deps": [],
+   "at": 1780000000789,
+   "id": "d1d63acd9a6c266a8b583d13cd4d12a84a3f89e341b17cda2654eb8ec8302707",
+   "rec": {
+    "e": {
+     "v": 2,
+     "type": "id/present",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [],
+     "links": [],
+     "body": {},
+     "at": 1780000000789
+    },
+    "s": "5L5KkltkpDm1i1fKxqmn3pfXGF80DiApaW5lnhi5l9lEzwhQo3lV_bzP0kzJgw1rYi_73qzf6LpdVcc6IhmnAw"
+   },
+   "signature": "5L5KkltkpDm1i1fKxqmn3pfXGF80DiApaW5lnhi5l9lEzwhQo3lV_bzP0kzJgw1rYi_73qzf6LpdVcc6IhmnAw"
+  }
+ ],
+ "verdicts": [
+  {
+   "note": "an inception",
+   "rec": {
+    "e": {
+     "v": 2,
+     "type": "id/inception",
+     "by": null,
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [],
+     "links": [],
+     "body": {},
+     "at": 0
+    },
+    "s": "CgVEh5KlTJ5yjrokW1lpNVYr3CLHdw8TU4288xOuflPDfg3WsDrZIQLutMhQiIfNrbSpLdJsSryaw790BvE4Bw"
+   },
+   "verdict": "ok"
+  },
+  {
+   "note": "a record as signed",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "tape/take",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {
+      "mime": "",
+      "started": 1780000000000
+     },
+     "at": 1780000000123
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+      "created": "2026-05-28T20:26:40.123Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "zhpznUvGYK6XSogEuKrSUDh1YJ1soGtn82yYANNPmNg6VJq6R3hBpj73Yv2cyEmqyknmXrDjUGnokTui34ywctwC"
+     }
+    ]
+   },
+   "verdict": "ok"
+  },
+  {
+   "note": "a record signed under a did:webvh controller",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "arc/block",
+     "by": "7ef4d35c72753a155917b2ab3d75ec92fd38e5bb1ef4469c960db7221b594b93",
+     "key": "did:key:z6Mkuofzo8mrvf8FYE6ye72eQowDyFxSQ8SNBbfdZJfJscqc",
+     "deps": [
+      "7ef4d35c72753a155917b2ab3d75ec92fd38e5bb1ef4469c960db7221b594b93"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {
+      "kind": "audio",
+      "title": "Recording · Signed after moving",
+      "take": "abababababababababababababababababababababababababababababababab",
+      "dur": 5400000
+     },
+     "at": 1780000000456
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6Mkuofzo8mrvf8FYE6ye72eQowDyFxSQ8SNBbfdZJfJscqc",
+      "created": "2026-05-28T20:26:40.456Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "z4dXHKL5DAW3ENzCciPhWJqwthnGyeBoUpNeQbWKsLGad8pfsiNHHGYZVFbyDrDSb6x4vSTB7tzR8zAvfYZtdG4Rx"
+     }
+    ]
+   },
+   "verdict": "ok"
+  },
+  {
+   "note": "a spoken statement",
+   "rec": {
+    "e": {
+     "v": 2,
+     "type": "id/present",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [],
+     "links": [],
+     "body": {},
+     "at": 1780000000789
+    },
+    "s": "5L5KkltkpDm1i1fKxqmn3pfXGF80DiApaW5lnhi5l9lEzwhQo3lV_bzP0kzJgw1rYi_73qzf6LpdVcc6IhmnAw"
+   },
+   "verdict": "ok"
+  },
+  {
+   "note": "body changed after signing",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "tape/take",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {
+      "mime": "",
+      "started": 1780000000001
+     },
+     "at": 1780000000123
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+      "created": "2026-05-28T20:26:40.123Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "zhpznUvGYK6XSogEuKrSUDh1YJ1soGtn82yYANNPmNg6VJq6R3hBpj73Yv2cyEmqyknmXrDjUGnokTui34ywctwC"
+     }
+    ]
+   },
+   "verdict": "signature"
+  },
+  {
+   "note": "time changed after signing",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "tape/take",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {
+      "mime": "",
+      "started": 1780000000000
+     },
+     "at": 1780000000124
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+      "created": "2026-05-28T20:26:40.123Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "zhpznUvGYK6XSogEuKrSUDh1YJ1soGtn82yYANNPmNg6VJq6R3hBpj73Yv2cyEmqyknmXrDjUGnokTui34ywctwC"
+     }
+    ]
+   },
+   "verdict": "signature"
+  },
+  {
+   "note": "a link added after signing",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "tape/take",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab",
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {
+      "mime": "",
+      "started": 1780000000000
+     },
+     "at": 1780000000123
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+      "created": "2026-05-28T20:26:40.123Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "zhpznUvGYK6XSogEuKrSUDh1YJ1soGtn82yYANNPmNg6VJq6R3hBpj73Yv2cyEmqyknmXrDjUGnokTui34ywctwC"
+     }
+    ]
+   },
+   "verdict": "signature"
+  },
+  {
+   "note": "signed by another key than it names",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "tape/take",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+     "deps": [
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {
+      "mime": "",
+      "started": 1780000000000
+     },
+     "at": 1780000000123
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK#z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+      "created": "2026-05-28T20:26:40.123Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "zhpznUvGYK6XSogEuKrSUDh1YJ1soGtn82yYANNPmNg6VJq6R3hBpj73Yv2cyEmqyknmXrDjUGnokTui34ywctwC"
+     }
+    ]
+   },
+   "verdict": "signature"
+  },
+  {
+   "note": "proof option changed after signing",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "tape/take",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {
+      "mime": "",
+      "started": 1780000000000
+     },
+     "at": 1780000000123
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+      "created": "2026-01-01T00:00:00.000Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "zhpznUvGYK6XSogEuKrSUDh1YJ1soGtn82yYANNPmNg6VJq6R3hBpj73Yv2cyEmqyknmXrDjUGnokTui34ywctwC"
+     }
+    ]
+   },
+   "verdict": "signature"
+  },
+  {
+   "note": "a member added to the proof after signing",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "tape/take",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {
+      "mime": "",
+      "started": 1780000000000
+     },
+     "at": 1780000000123
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+      "created": "2026-05-28T20:26:40.123Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "zhpznUvGYK6XSogEuKrSUDh1YJ1soGtn82yYANNPmNg6VJq6R3hBpj73Yv2cyEmqyknmXrDjUGnokTui34ywctwC",
+      "note": "added"
+     }
+    ]
+   },
+   "verdict": "signature"
+  },
+  {
+   "note": "a version 3 record that also carries s",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "tape/take",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {
+      "mime": "",
+      "started": 1780000000000
+     },
+     "at": 1780000000123
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+      "created": "2026-05-28T20:26:40.123Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "zhpznUvGYK6XSogEuKrSUDh1YJ1soGtn82yYANNPmNg6VJq6R3hBpj73Yv2cyEmqyknmXrDjUGnokTui34ywctwC"
+     }
+    ],
+    "s": "CgVEh5KlTJ5yjrokW1lpNVYr3CLHdw8TU4288xOuflPDfg3WsDrZIQLutMhQiIfNrbSpLdJsSryaw790BvE4Bw"
+   },
+   "verdict": "malformed"
+  },
+  {
+   "note": "no author proof",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "tape/take",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {
+      "mime": "",
+      "started": 1780000000000
+     },
+     "at": 1780000000123
+    },
+    "proof": []
+   },
+   "verdict": "malformed"
+  },
+  {
+   "note": "proof is not a list",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "tape/take",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {
+      "mime": "",
+      "started": 1780000000000
+     },
+     "at": 1780000000123
+    },
+    "proof": {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "created": "2026-05-28T20:26:40.123Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "zhpznUvGYK6XSogEuKrSUDh1YJ1soGtn82yYANNPmNg6VJq6R3hBpj73Yv2cyEmqyknmXrDjUGnokTui34ywctwC"
+    }
+   },
+   "verdict": "malformed"
+  },
+  {
+   "note": "type longer than 64",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {
+      "mime": "",
+      "started": 1780000000000
+     },
+     "at": 1780000000123
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+      "created": "2026-05-28T20:26:40.123Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "zhpznUvGYK6XSogEuKrSUDh1YJ1soGtn82yYANNPmNg6VJq6R3hBpj73Yv2cyEmqyknmXrDjUGnokTui34ywctwC"
+     }
+    ]
+   },
+   "verdict": "malformed"
+  },
+  {
+   "note": "empty type",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {
+      "mime": "",
+      "started": 1780000000000
+     },
+     "at": 1780000000123
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+      "created": "2026-05-28T20:26:40.123Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "zhpznUvGYK6XSogEuKrSUDh1YJ1soGtn82yYANNPmNg6VJq6R3hBpj73Yv2cyEmqyknmXrDjUGnokTui34ywctwC"
+     }
+    ]
+   },
+   "verdict": "malformed"
+  },
+  {
+   "note": "by is missing",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "tape/take",
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {
+      "mime": "",
+      "started": 1780000000000
+     },
+     "at": 1780000000123
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+      "created": "2026-05-28T20:26:40.123Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "zhpznUvGYK6XSogEuKrSUDh1YJ1soGtn82yYANNPmNg6VJq6R3hBpj73Yv2cyEmqyknmXrDjUGnokTui34ywctwC"
+     }
+    ]
+   },
+   "verdict": "malformed"
+  },
+  {
+   "note": "by is a number",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "tape/take",
+     "by": 7,
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {
+      "mime": "",
+      "started": 1780000000000
+     },
+     "at": 1780000000123
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+      "created": "2026-05-28T20:26:40.123Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "zhpznUvGYK6XSogEuKrSUDh1YJ1soGtn82yYANNPmNg6VJq6R3hBpj73Yv2cyEmqyknmXrDjUGnokTui34ywctwC"
+     }
+    ]
+   },
+   "verdict": "malformed"
+  },
+  {
+   "note": "body is missing",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "tape/take",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "at": 1780000000123
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+      "created": "2026-05-28T20:26:40.123Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "zhpznUvGYK6XSogEuKrSUDh1YJ1soGtn82yYANNPmNg6VJq6R3hBpj73Yv2cyEmqyknmXrDjUGnokTui34ywctwC"
+     }
+    ]
+   },
+   "verdict": "malformed"
+  },
+  {
+   "note": "time is a string",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "tape/take",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {
+      "mime": "",
+      "started": 1780000000000
+     },
+     "at": "0"
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+      "created": "2026-05-28T20:26:40.123Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "zhpznUvGYK6XSogEuKrSUDh1YJ1soGtn82yYANNPmNg6VJq6R3hBpj73Yv2cyEmqyknmXrDjUGnokTui34ywctwC"
+     }
+    ]
+   },
+   "verdict": "malformed"
+  },
+  {
+   "note": "65 dependencies",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "tape/take",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {
+      "mime": "",
+      "started": 1780000000000
+     },
+     "at": 1780000000123
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+      "created": "2026-05-28T20:26:40.123Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "zhpznUvGYK6XSogEuKrSUDh1YJ1soGtn82yYANNPmNg6VJq6R3hBpj73Yv2cyEmqyknmXrDjUGnokTui34ywctwC"
+     }
+    ]
+   },
+   "verdict": "malformed"
+  },
+  {
+   "note": "a dependency longer than 128",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "tape/take",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {
+      "mime": "",
+      "started": 1780000000000
+     },
+     "at": 1780000000123
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+      "created": "2026-05-28T20:26:40.123Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "zhpznUvGYK6XSogEuKrSUDh1YJ1soGtn82yYANNPmNg6VJq6R3hBpj73Yv2cyEmqyknmXrDjUGnokTui34ywctwC"
+     }
+    ]
+   },
+   "verdict": "malformed"
+  },
+  {
+   "note": "a link that is not text",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "tape/take",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+     ],
+     "links": [
+      1
+     ],
+     "body": {
+      "mime": "",
+      "started": 1780000000000
+     },
+     "at": 1780000000123
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+      "created": "2026-05-28T20:26:40.123Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "zhpznUvGYK6XSogEuKrSUDh1YJ1soGtn82yYANNPmNg6VJq6R3hBpj73Yv2cyEmqyknmXrDjUGnokTui34ywctwC"
+     }
+    ]
+   },
+   "verdict": "malformed"
+  },
+  {
+   "note": "created with four fractional digits",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "tape/take",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {
+      "mime": "",
+      "started": 1780000000000
+     },
+     "at": 1780000000123
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+      "created": "2026-05-28T00:00:00.0000Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "zhpznUvGYK6XSogEuKrSUDh1YJ1soGtn82yYANNPmNg6VJq6R3hBpj73Yv2cyEmqyknmXrDjUGnokTui34ywctwC"
+     }
+    ]
+   },
+   "verdict": "malformed"
+  },
+  {
+   "note": "proof value too short",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "tape/take",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {
+      "mime": "",
+      "started": 1780000000000
+     },
+     "at": 1780000000123
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+      "created": "2026-05-28T20:26:40.123Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "z1111111111111111111111111111111111111111"
+     }
+    ]
+   },
+   "verdict": "malformed"
+  },
+  {
+   "note": "proof value not base58",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "tape/take",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {
+      "mime": "",
+      "started": 1780000000000
+     },
+     "at": 1780000000123
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+      "created": "2026-05-28T20:26:40.123Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "z0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+     }
+    ]
+   },
+   "verdict": "malformed"
+  },
+  {
+   "note": "a version 3 inception",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "id/inception",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {
+      "mime": "",
+      "started": 1780000000000
+     },
+     "at": 1780000000123
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+      "created": "2026-05-28T20:26:40.123Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "zhpznUvGYK6XSogEuKrSUDh1YJ1soGtn82yYANNPmNg6VJq6R3hBpj73Yv2cyEmqyknmXrDjUGnokTui34ywctwC"
+     }
+    ]
+   },
+   "verdict": "malformed"
+  },
+  {
+   "note": "someone else's did:webvh in front of the key",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "tape/take",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {
+      "mime": "",
+      "started": 1780000000000
+     },
+     "at": 1780000000123
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:webvh:1111111111111111111111111111111111111111111111:city.example:u:537dc0ff10c75cc9#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+      "created": "2026-05-28T20:26:40.123Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "zhpznUvGYK6XSogEuKrSUDh1YJ1soGtn82yYANNPmNg6VJq6R3hBpj73Yv2cyEmqyknmXrDjUGnokTui34ywctwC"
+     }
+    ]
+   },
+   "verdict": "malformed"
+  },
+  {
+   "note": "key with another multicodec prefix",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "tape/take",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:key:z6LSkrDQvbgcY1dFbKS7ftLDxYbUhKGJ5KiRhZzjgxdry2ZQ",
+     "deps": [
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {
+      "mime": "",
+      "started": 1780000000000
+     },
+     "at": 1780000000123
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6LSkrDQvbgcY1dFbKS7ftLDxYbUhKGJ5KiRhZzjgxdry2ZQ#z6LSkrDQvbgcY1dFbKS7ftLDxYbUhKGJ5KiRhZzjgxdry2ZQ",
+      "created": "2026-05-28T20:26:40.123Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "zhpznUvGYK6XSogEuKrSUDh1YJ1soGtn82yYANNPmNg6VJq6R3hBpj73Yv2cyEmqyknmXrDjUGnokTui34ywctwC"
+     }
+    ]
+   },
+   "verdict": "badkey"
+  },
+  {
+   "note": "key that is not a did:key",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "tape/take",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:web:city.example",
+     "deps": [
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {
+      "mime": "",
+      "started": 1780000000000
+     },
+     "at": 1780000000123
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+      "created": "2026-05-28T20:26:40.123Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "zhpznUvGYK6XSogEuKrSUDh1YJ1soGtn82yYANNPmNg6VJq6R3hBpj73Yv2cyEmqyknmXrDjUGnokTui34ywctwC"
+     }
+    ]
+   },
+   "verdict": "malformed"
+  },
+  {
+   "note": "a witness receipt before the author's proof",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "tape/take",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {
+      "mime": "",
+      "started": 1780000000000
+     },
+     "at": 1780000000123
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK#z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+      "created": "2026-05-28T00:00:01.000Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "z4E4uBSw9MXLPQ7fdrjssUyqvmiMduQCLkcSin4uHzoCm53t4kxEhQt6rC8H3Wzn2LRWsmovPzEVwnNz6eaShNTAo"
+     },
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+      "created": "2026-05-28T20:26:40.123Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "zhpznUvGYK6XSogEuKrSUDh1YJ1soGtn82yYANNPmNg6VJq6R3hBpj73Yv2cyEmqyknmXrDjUGnokTui34ywctwC"
+     }
+    ]
+   },
+   "verdict": "ok"
+  },
+  {
+   "note": "only a witness receipt",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "tape/take",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {
+      "mime": "",
+      "started": 1780000000000
+     },
+     "at": 1780000000123
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK#z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+      "created": "2026-05-28T00:00:01.000Z",
+      "proofPurpose": "assertionMethod",
+      "proofValue": "z4E4uBSw9MXLPQ7fdrjssUyqvmiMduQCLkcSin4uHzoCm53t4kxEhQt6rC8H3Wzn2LRWsmovPzEVwnNz6eaShNTAo"
+     }
+    ]
+   },
+   "verdict": "malformed"
+  },
+  {
+   "note": "an unknown proof option that was signed",
+   "rec": {
+    "e": {
+     "v": 3,
+     "type": "tape/take",
+     "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+     ],
+     "links": [
+      "abababababababababababababababababababababababababababababababab"
+     ],
+     "body": {
+      "mime": "",
+      "started": 1780000000000
+     },
+     "at": 1780000000123
+    },
+    "proof": [
+     {
+      "type": "DataIntegrityProof",
+      "cryptosuite": "eddsa-jcs-2022",
+      "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+      "created": "2026-05-28T20:26:40.123Z",
+      "proofPurpose": "assertionMethod",
+      "domain": "city.example",
+      "proofValue": "z3M2sKnvko2Zt68uUdTH5fE24Ykq6xi3NSaJnBjAh18DzTaGHECK9wsknaBHwbNhp1carMnBvLK6N6mUnNjtXP1bg"
+     }
+    ]
+   },
+   "verdict": "ok"
+  },
+  {
+   "note": "a second spelling of the same signature",
+   "rec": {
+    "e": {
+     "v": 2,
+     "type": "id/inception",
+     "by": null,
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [],
+     "links": [],
+     "body": {},
+     "at": 0
+    },
+    "s": "CgVEh5KlTJ5yjrokW1lpNVYr3CLHdw8TU4288xOuflPDfg3WsDrZIQLutMhQiIfNrbSpLdJsSryaw790BvE4Bx"
+   },
+   "verdict": "malformed"
+  },
+  {
+   "note": "a different final signature byte",
+   "rec": {
+    "e": {
+     "v": 2,
+     "type": "id/inception",
+     "by": null,
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [],
+     "links": [],
+     "body": {},
+     "at": 0
+    },
+    "s": "CgVEh5KlTJ5yjrokW1lpNVYr3CLHdw8TU4288xOuflPDfg3WsDrZIQLutMhQiIfNrbSpLdJsSryaw790BvE4BA"
+   },
+   "verdict": "signature"
+  },
+  {
+   "note": "signature with padding",
+   "rec": {
+    "e": {
+     "v": 2,
+     "type": "id/inception",
+     "by": null,
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [],
+     "links": [],
+     "body": {},
+     "at": 0
+    },
+    "s": "CgVEh5KlTJ5yjrokW1lpNVYr3CLHdw8TU4288xOuflPDfg3WsDrZIQLutMhQiIfNrbSpLdJsSryaw790BvE4Bw=="
+   },
+   "verdict": "malformed"
+  },
+  {
+   "note": "S not reduced below the group order",
+   "rec": {
+    "e": {
+     "v": 2,
+     "type": "id/inception",
+     "by": null,
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [],
+     "links": [],
+     "body": {},
+     "at": 0
+    },
+    "s": "CgVEh5KlTJ5yjrokW1lpNVYr3CLHdw8TU4288xOuflOwUgMzy53rediKrGsvgmbirbSpLdJsSryaw790BvE4Fw"
+   },
+   "verdict": "signature"
+  },
+  {
+   "note": "a small-order key with S = 0",
+   "rec": {
+    "e": {
+     "v": 2,
+     "type": "id/inception",
+     "by": null,
+     "key": "did:key:z6MkeXATEjyXENzBXBxgC5EHk2JE5aqd7qMGGtDpLUH1e2Sj",
+     "deps": [],
+     "links": [],
+     "body": {},
+     "at": 0
+    },
+    "s": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+   },
+   "verdict": "signature"
+  },
+  {
+   "note": "the same with the sign bit set",
+   "rec": {
+    "e": {
+     "v": 2,
+     "type": "id/inception",
+     "by": null,
+     "key": "did:key:z6MkeXATEjyXENzBXBxgC5EHk2JE5aqd7qMGGtDpLUH1e2Uw",
+     "deps": [],
+     "links": [],
+     "body": {},
+     "at": 0
+    },
+    "s": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+   },
+   "verdict": "signature"
+  },
+  {
+   "note": "a key of order two",
+   "rec": {
+    "e": {
+     "v": 2,
+     "type": "id/inception",
+     "by": null,
+     "key": "did:key:z6MkvQQfodDS9hpfvSLcFA5f2iCB9tBXk3PE5b1P8VVsjtRt",
+     "deps": [],
+     "links": [],
+     "body": {},
+     "at": 0
+    },
+    "s": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+   },
+   "verdict": "signature"
+  },
+  {
+   "note": "a key encoded above the field prime",
+   "rec": {
+    "e": {
+     "v": 2,
+     "type": "id/inception",
+     "by": null,
+     "key": "did:key:z6Mkvc7tk7PgqDJp9WhXmfsziVRrvusqrtgwqBw3e5RruJQv",
+     "deps": [],
+     "links": [],
+     "body": {},
+     "at": 0
+    },
+    "s": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+   },
+   "verdict": "signature"
+  },
+  {
+   "note": "a small-order R under an honest key",
+   "rec": {
+    "e": {
+     "v": 2,
+     "type": "id/inception",
+     "by": null,
+     "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "deps": [],
+     "links": [],
+     "body": {},
+     "at": 0
+    },
+    "s": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADDfg3WsDrZIQLutMhQiIfNrbSpLdJsSryaw790BvE4Bw"
+   },
+   "verdict": "signature"
+  }
+ ]
+}

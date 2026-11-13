@@ -1,0 +1,1698 @@
+{
+ "recs": [
+  {
+   "e": {
+    "v": 2,
+    "type": "id/inception",
+    "by": null,
+    "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+    "deps": [],
+    "links": [],
+    "body": {},
+    "at": 0
+   },
+   "s": "CgVEh5KlTJ5yjrokW1lpNVYr3CLHdw8TU4288xOuflPDfg3WsDrZIQLutMhQiIfNrbSpLdJsSryaw790BvE4Bw"
+  },
+  {
+   "e": {
+    "v": 2,
+    "type": "id/inception",
+    "by": null,
+    "key": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+    "deps": [],
+    "links": [],
+    "body": {},
+    "at": 0
+   },
+   "s": "pq-HR7CKHVs5HOS8p-Goor6A-Sqr9ozL_5ogWH3MEGIL3PlA2D4GnmLLO6jEZLw5rjLwrjY5UvLRQ2OIz5EdDQ"
+  },
+  {
+   "e": {
+    "v": 2,
+    "type": "id/inception",
+    "by": null,
+    "key": "did:key:z6MknKrzUBQ488kw5dAksw6Xknx4V3KJY6JmQr1wVNzF7p72",
+    "deps": [],
+    "links": [],
+    "body": {},
+    "at": 0
+   },
+   "s": "9AFC_wvzHaLIot6cj_07Mt8IVEhmAhrtfkTVZqL8fpiD9-b5ui-JImOUpzti9dGahsTLAXowKNWGOytEDC7ADA"
+  },
+  {
+   "e": {
+    "v": 2,
+    "type": "id/inception",
+    "by": null,
+    "key": "did:key:z6MkkR2HMq9xJ6NiexPumkFnkabGMwvk3vpokjE1VZsNwj79",
+    "deps": [],
+    "links": [],
+    "body": {},
+    "at": 0
+   },
+   "s": "nl6a6c4ueYI4e2o3wHSNRU-vIaS0sjBngiEWOggZmidxrUrYHi-G6goLZw9dJXWDWmi5iXxDWUzWiJashqByCg"
+  },
+  {
+   "e": {
+    "v": 2,
+    "type": "id/inception",
+    "by": null,
+    "key": "did:key:z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT",
+    "deps": [],
+    "links": [],
+    "body": {},
+    "at": 0
+   },
+   "s": "05YHhiiR7jK4bMxQ6TY6gbwnuIXEk77zjdijnhb9gEJrl80tXxDWLR-lckD4S2Z5EvTsG2ayZTXqMD0J_mx-Cw"
+  },
+  {
+   "e": {
+    "v": 2,
+    "type": "id/inception",
+    "by": null,
+    "key": "did:key:z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV",
+    "deps": [],
+    "links": [],
+    "body": {},
+    "at": 0
+   },
+   "s": "fIh5JwWsMVmgcwkurpvBbja3kAfLwpkXw-mMBk6WxUzIsO6_bs3xTx535ZKpl8FR6iQsC6kTWCdPo8mVxJhiDQ"
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/event",
+    "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+    "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+    "deps": [
+     "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+    ],
+    "links": [],
+    "body": {
+     "title": "Morning circle",
+     "about": "Bring a cup.",
+     "place": "Garden",
+     "start": 1780086400000,
+     "end": 1780093600000,
+     "tz": "Asia/Bangkok",
+     "scope": "public",
+     "polis": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+     "crew": [
+      "60b9563e3999dd9dd94ae9591ebe070e5554251fe02e3590d18944a47e4b0841"
+     ],
+     "mods": [
+      "537dc0ff10c75cc9fb5e7625bccfd57ffd7a91b3c0b4b928914f9b2c27fcaf87"
+     ]
+    },
+    "at": 1780000000000
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "created": "2026-05-28T20:26:40.000Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z5zF5BaqPpvZKC99iyiRmPgtYkyy1PZMxMM9qMPctARFkAKasaNrdz6JpiFHkcvqzWNNjJ8Pmwfna9WkJpKXjvjVe"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/edit",
+    "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+    "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+    "deps": [
+     "d857138cc1acbc6cdf402f9f996774cc90655aa6428d792a5ec19cb48785beff"
+    ],
+    "links": [
+     "d857138cc1acbc6cdf402f9f996774cc90655aa6428d792a5ec19cb48785beff"
+    ],
+    "body": {
+     "title": "Morning circle (moved)",
+     "place": "Library",
+     "start": 1780090000000
+    },
+    "at": 1780000001000
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "created": "2026-05-28T20:26:41.000Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z3nEJ8XP9xeumz7faeLRuGz9UFp1XFDaARC18ojRBeCKT3Vf2JfJJGLhuGB8jSuEVAuDtgTSAkrKi1RKDrirs48cZ"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/edit",
+    "by": "1407a6af997c8daac3e01206e5e7f9161dd65c8eaa8b9374e3f058af269265aa",
+    "key": "did:key:z6MkkR2HMq9xJ6NiexPumkFnkabGMwvk3vpokjE1VZsNwj79",
+    "deps": [
+     "1407a6af997c8daac3e01206e5e7f9161dd65c8eaa8b9374e3f058af269265aa"
+    ],
+    "links": [
+     "d857138cc1acbc6cdf402f9f996774cc90655aa6428d792a5ec19cb48785beff"
+    ],
+    "body": {
+     "title": "Not the host"
+    },
+    "at": 1780000002000
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkkR2HMq9xJ6NiexPumkFnkabGMwvk3vpokjE1VZsNwj79#z6MkkR2HMq9xJ6NiexPumkFnkabGMwvk3vpokjE1VZsNwj79",
+     "created": "2026-05-28T20:26:42.000Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "zdpT5g455UJUrrNpxNMpMkiS2saXMghbN3gUTXFuS2JgkyEmJEuyTNLpDc8rZvPvC7UaxnuVPAVNXrHgiha6Acht"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/edit",
+    "by": "537dc0ff10c75cc9fb5e7625bccfd57ffd7a91b3c0b4b928914f9b2c27fcaf87",
+    "key": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+    "deps": [
+     "537dc0ff10c75cc9fb5e7625bccfd57ffd7a91b3c0b4b928914f9b2c27fcaf87"
+    ],
+    "links": [
+     "d857138cc1acbc6cdf402f9f996774cc90655aa6428d792a5ec19cb48785beff"
+    ],
+    "body": {
+     "place": "Rooftop"
+    },
+    "at": 1780000003000
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK#z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+     "created": "2026-05-28T20:26:43.000Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "zUALgBpA8EQNGY3H9bg5PkA1GgNh5vHtcepp6iQgfDW4d77crorGYQCTHSXdPtKtHohJKZ7awxE6FYqHEc3XVMiv"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/edit",
+    "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+    "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+    "deps": [
+     "5c25fc5469eeb816b86085499e7ad508b0413b3ed48cce1715b5e28683b5ab9f"
+    ],
+    "links": [
+     "d857138cc1acbc6cdf402f9f996774cc90655aa6428d792a5ec19cb48785beff"
+    ],
+    "body": {
+     "about": "tie",
+     "place": "Tie · host"
+    },
+    "at": 1780000004000
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "created": "2026-05-28T20:26:44.000Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z5p2VVoA7nG3HzWVnopmTpm8J8sEukLwKhuF7BymWrkcuSVVcB839534si1Xv9cm6vzGunYrfq2PTw6nmmgs59USL"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/edit",
+    "by": "537dc0ff10c75cc9fb5e7625bccfd57ffd7a91b3c0b4b928914f9b2c27fcaf87",
+    "key": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+    "deps": [
+     "42fd1eafd924a1f548927ddcfe694368eefd5b1917230e6d85f04bdc48fce24e"
+    ],
+    "links": [
+     "d857138cc1acbc6cdf402f9f996774cc90655aa6428d792a5ec19cb48785beff"
+    ],
+    "body": {
+     "place": "Tie · co-host"
+    },
+    "at": 1780000004000
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK#z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+     "created": "2026-05-28T20:26:44.000Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z4Vwtybbu4fg7VqEt9dyKriJJkcDKgccck4FUZRNvCAd8QQrZ1E2c6jDgWiNeRSh5y4JPmPGWiZsNJnJ5HKeDaHwA"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/hosts",
+    "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+    "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+    "deps": [
+     "bdc75ba67159e065851abb51fcc7a71f13d578a91dcb572eb4dd4af5ac93d948"
+    ],
+    "links": [
+     "d857138cc1acbc6cdf402f9f996774cc90655aa6428d792a5ec19cb48785beff"
+    ],
+    "body": {
+     "hosts": [
+      "60b9563e3999dd9dd94ae9591ebe070e5554251fe02e3590d18944a47e4b0841",
+      "not-a-person",
+      "60b9563e3999dd9dd94ae9591ebe070e5554251fe02e3590d18944a47e4b0841"
+     ]
+    },
+    "at": 1780000005000
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "created": "2026-05-28T20:26:45.000Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z53jFsU71iED8GSMpeCUveWqmeKU2g6hNBh53nTko8onvRZBEBfZ1qADEHLsj8kvpxsmzaC5761UANawtip82B7gQ"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/edit",
+    "by": "537dc0ff10c75cc9fb5e7625bccfd57ffd7a91b3c0b4b928914f9b2c27fcaf87",
+    "key": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+    "deps": [
+     "87af6478a258d65f8c186c3a1e025739a93dabd1d3fd4ed2d4e569e6cfe41c97"
+    ],
+    "links": [
+     "d857138cc1acbc6cdf402f9f996774cc90655aa6428d792a5ec19cb48785beff"
+    ],
+    "body": {
+     "title": "Signed after leaving the host list"
+    },
+    "at": 1780000006000
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK#z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+     "created": "2026-05-28T20:26:46.000Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z4FWXBQQTSP3mzzT6L9LsiVCsu3X36gMZP7XLYmeV8k9jV9qgxgNFqkNozVcmRWtNRhfhvPqvuF1qFp5hmoFh69BW"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/edit",
+    "by": "60b9563e3999dd9dd94ae9591ebe070e5554251fe02e3590d18944a47e4b0841",
+    "key": "did:key:z6MknKrzUBQ488kw5dAksw6Xknx4V3KJY6JmQr1wVNzF7p72",
+    "deps": [
+     "60b9563e3999dd9dd94ae9591ebe070e5554251fe02e3590d18944a47e4b0841"
+    ],
+    "links": [
+     "d857138cc1acbc6cdf402f9f996774cc90655aa6428d792a5ec19cb48785beff"
+    ],
+    "body": {
+     "crew": [
+      "537dc0ff10c75cc9fb5e7625bccfd57ffd7a91b3c0b4b928914f9b2c27fcaf87",
+      "60b9563e3999dd9dd94ae9591ebe070e5554251fe02e3590d18944a47e4b0841",
+      "zz",
+      "537dc0ff10c75cc9fb5e7625bccfd57ffd7a91b3c0b4b928914f9b2c27fcaf87"
+     ],
+     "tz": "not a zone!",
+     "end": null
+    },
+    "at": 1780000007000
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MknKrzUBQ488kw5dAksw6Xknx4V3KJY6JmQr1wVNzF7p72#z6MknKrzUBQ488kw5dAksw6Xknx4V3KJY6JmQr1wVNzF7p72",
+     "created": "2026-05-28T20:26:47.000Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z2aqLhaPMAknnstJsJ4Dh7Y8XUEShwiHoXhhn1w5BtzUTSE81EALqWQraNqPrVnj1cdTLuoxCwVffjGFGwDGek6XT"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/hosts",
+    "by": "537dc0ff10c75cc9fb5e7625bccfd57ffd7a91b3c0b4b928914f9b2c27fcaf87",
+    "key": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+    "deps": [
+     "c6c72d13363839e53264135f2f656b2bd66a1f367dcae17effa84a29f53f3620"
+    ],
+    "links": [
+     "d857138cc1acbc6cdf402f9f996774cc90655aa6428d792a5ec19cb48785beff"
+    ],
+    "body": {
+     "hosts": [
+      "537dc0ff10c75cc9fb5e7625bccfd57ffd7a91b3c0b4b928914f9b2c27fcaf87"
+     ]
+    },
+    "at": 1780000008000
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK#z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+     "created": "2026-05-28T20:26:48.000Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z27egWoyn6Lq3MwAa4N2dLMK3FbvznYGWkWprbLwoPJYtNwa3kCgo7wX7qwLPWamWX4r8zwDVYTbGZJ1DbqZfmWHL"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/edit",
+    "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+    "key": "did:key:z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV",
+    "deps": [
+     "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+    ],
+    "links": [
+     "d857138cc1acbc6cdf402f9f996774cc90655aa6428d792a5ec19cb48785beff"
+    ],
+    "body": {
+     "title": "Forged under the host's name",
+     "crew": [
+      "c611d29884e5a350f1f72c1dc8fb66685527397081c72d780598854b63551e1a"
+     ]
+    },
+    "at": 1780000009000
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV#z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV",
+     "created": "2026-05-28T20:26:49.000Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z3iJ4Z4Ma4Sg8AUgNFT2Kit6QtioaHKRYRTCqt72tpMLTK3HiWFvewSxZ9ENHKn1QeA7Y12Sn2Fk614zZSoTQqWpa"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/edit",
+    "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+    "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+    "deps": [],
+    "links": [
+     "d857138cc1acbc6cdf402f9f996774cc90655aa6428d792a5ec19cb48785beff"
+    ],
+    "body": {
+     "title": "Signed without dependencies"
+    },
+    "at": 1780000009500
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "created": "2026-05-28T20:26:49.500Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z35kbZKjDyJ3qgPyVp7rojwG1NyRkJEaUCi52L5uQTYsGEQxDA3XhDh8y7rEzJPBTVG6uHEb836ZDy9oS2TW65R7v"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "id/did",
+    "by": "7ef4d35c72753a155917b2ab3d75ec92fd38e5bb1ef4469c960db7221b594b93",
+    "key": "did:key:z6Mkuofzo8mrvf8FYE6ye72eQowDyFxSQ8SNBbfdZJfJscqc",
+    "deps": [
+     "7ef4d35c72753a155917b2ab3d75ec92fd38e5bb1ef4469c960db7221b594b93"
+    ],
+    "links": [],
+    "body": {
+     "log": [
+      {
+       "versionId": "1-QmZdiU6iSBP3EaNTibEo6aMfNscgRSSFmExXwAVXXNQE41",
+       "versionTime": "2026-09-27T00:00:00Z",
+       "parameters": {
+        "method": "did:webvh:1.0",
+        "scid": "QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L",
+        "updateKeys": [
+         "z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT"
+        ],
+        "portable": true
+       },
+       "state": {
+        "@context": [
+         "https://www.w3.org/ns/did/v1",
+         "https://w3id.org/security/multikey/v1"
+        ],
+        "id": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15",
+        "verificationMethod": [
+         {
+          "id": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT",
+          "type": "Multikey",
+          "controller": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15",
+          "publicKeyMultibase": "z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT"
+         }
+        ],
+        "authentication": [
+         "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT"
+        ],
+        "assertionMethod": [
+         "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT"
+        ],
+        "service": [
+         {
+          "id": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#door",
+          "type": "SibianDoor",
+          "serviceEndpoint": "https://city.example/door/7ef4d35c72753a15"
+         },
+         {
+          "id": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#relay",
+          "type": "SibianRelay",
+          "serviceEndpoint": "https://city.example/hub/"
+         }
+        ]
+       },
+       "proof": [
+        {
+         "type": "DataIntegrityProof",
+         "cryptosuite": "eddsa-jcs-2022",
+         "verificationMethod": "did:key:z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT#z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT",
+         "created": "2026-09-27T00:00:00Z",
+         "proofPurpose": "assertionMethod",
+         "proofValue": "z3EACDPzejX2ZdAbxfwEqb5ngmJdku7tJyCqqv6ixTx2uLv79FKLr1raFK7oeNJ7pduJuR299UFhWdM5NMUfK3PJm"
+        }
+       ]
+      },
+      {
+       "versionId": "2-QmVVWeJvWVTxdTZZQyZFgqQfNe5bGUC8BYCexQBaFkVwQa",
+       "versionTime": "2026-09-27T00:00:01Z",
+       "parameters": {
+        "nextKeyHashes": [
+         "Qmd7szaFctCy9RgG38dibNw3xTeQMD7U1yddHKRXK2Xc7H"
+        ]
+       },
+       "state": {
+        "@context": [
+         "https://www.w3.org/ns/did/v1",
+         "https://w3id.org/security/multikey/v1"
+        ],
+        "id": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15",
+        "alsoKnownAs": [
+         "did:key:z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT"
+        ],
+        "verificationMethod": [
+         {
+          "id": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT",
+          "type": "Multikey",
+          "controller": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15",
+          "publicKeyMultibase": "z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT"
+         },
+         {
+          "id": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6Mkuofzo8mrvf8FYE6ye72eQowDyFxSQ8SNBbfdZJfJscqc",
+          "type": "Multikey",
+          "controller": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15",
+          "publicKeyMultibase": "z6Mkuofzo8mrvf8FYE6ye72eQowDyFxSQ8SNBbfdZJfJscqc"
+         }
+        ],
+        "authentication": [
+         "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6Mkuofzo8mrvf8FYE6ye72eQowDyFxSQ8SNBbfdZJfJscqc"
+        ],
+        "assertionMethod": [
+         "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT",
+         "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6Mkuofzo8mrvf8FYE6ye72eQowDyFxSQ8SNBbfdZJfJscqc"
+        ],
+        "service": [
+         {
+          "id": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#site",
+          "type": "SibianSite",
+          "serviceEndpoint": "https://city.example/@7ef4d35c72753a15"
+         },
+         {
+          "id": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#relay",
+          "type": "SibianRelay",
+          "serviceEndpoint": "https://city.example/hub/"
+         }
+        ]
+       },
+       "proof": [
+        {
+         "type": "DataIntegrityProof",
+         "cryptosuite": "eddsa-jcs-2022",
+         "verificationMethod": "did:key:z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT#z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT",
+         "created": "2026-09-27T00:00:01Z",
+         "proofPurpose": "assertionMethod",
+         "proofValue": "z47Nf77mwwqsuHzYQ1aC2Qf51mLLuBefNGHnnc8TaZGmdjirwWASAHi6bLZpGBexbYM6U4bdTQdv2YTviDvr8xtqR"
+        }
+       ]
+      }
+     ],
+     "witness": []
+    },
+    "at": 1777408001000
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6Mkuofzo8mrvf8FYE6ye72eQowDyFxSQ8SNBbfdZJfJscqc",
+     "created": "2026-04-28T20:26:41.000Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z2vMvzhQwBSNkhqr6udzQUt8Pczsh8eZFcsdQWYjjnXieL1KykHXqnSmjV9r3UEAeBUcm1fVJkDPDHzceVrLmkuYZ"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/event",
+    "by": "7ef4d35c72753a155917b2ab3d75ec92fd38e5bb1ef4469c960db7221b594b93",
+    "key": "did:key:z6Mkuofzo8mrvf8FYE6ye72eQowDyFxSQ8SNBbfdZJfJscqc",
+    "deps": [
+     "7ef4d35c72753a155917b2ab3d75ec92fd38e5bb1ef4469c960db7221b594b93"
+    ],
+    "links": [],
+    "body": {
+     "title": "Signed after moving",
+     "start": 1780172800000,
+     "tz": "UTC",
+     "scope": "link"
+    },
+    "at": 1780000000010
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6Mkuofzo8mrvf8FYE6ye72eQowDyFxSQ8SNBbfdZJfJscqc",
+     "created": "2026-05-28T20:26:40.010Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z4tFsK5iPYGJsa5TYz9VxymMK12jwFru5vFgM7nptC1JdgV9o9mzzohTqPgKsUbgNgjnBJQVxDSgo1hS59SMWkTr2"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/edit",
+    "by": "7ef4d35c72753a155917b2ab3d75ec92fd38e5bb1ef4469c960db7221b594b93",
+    "key": "did:key:z6Mkuofzo8mrvf8FYE6ye72eQowDyFxSQ8SNBbfdZJfJscqc",
+    "deps": [
+     "6c7d8c69625ba30e31196cdb783f9ff2576d256948dd9d762e0979c0d29ffde5"
+    ],
+    "links": [
+     "6c7d8c69625ba30e31196cdb783f9ff2576d256948dd9d762e0979c0d29ffde5"
+    ],
+    "body": {
+     "place": "Workshop",
+     "end": 1780176400000
+    },
+    "at": 1780000001010
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6Mkuofzo8mrvf8FYE6ye72eQowDyFxSQ8SNBbfdZJfJscqc",
+     "created": "2026-05-28T20:26:41.010Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z2EzVEkz6mWGp5sMzy6mWodD42KNHzWQqefkXq4jv8zE3vtynnwctsQA4WGdfmJyoNc7APcTGmkExngm87sxdhaJg"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/edit",
+    "by": "7ef4d35c72753a155917b2ab3d75ec92fd38e5bb1ef4469c960db7221b594b93",
+    "key": "did:key:z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT",
+    "deps": [
+     "7ef4d35c72753a155917b2ab3d75ec92fd38e5bb1ef4469c960db7221b594b93"
+    ],
+    "links": [
+     "6c7d8c69625ba30e31196cdb783f9ff2576d256948dd9d762e0979c0d29ffde5"
+    ],
+    "body": {
+     "title": "Signed after moving, with the first key"
+    },
+    "at": 1780000002010
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT#z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT",
+     "created": "2026-05-28T20:26:42.010Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z5nUpTsWFs7kx7ASh5L8XXUZtQagV5LdRkaCjQiyznpTXCDtwxjugNU6LBoVuaAyUgxf46VAZKyd6f5UqHU91CkoX"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/edit",
+    "by": "7ef4d35c72753a155917b2ab3d75ec92fd38e5bb1ef4469c960db7221b594b93",
+    "key": "did:key:z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV",
+    "deps": [
+     "7ef4d35c72753a155917b2ab3d75ec92fd38e5bb1ef4469c960db7221b594b93"
+    ],
+    "links": [
+     "6c7d8c69625ba30e31196cdb783f9ff2576d256948dd9d762e0979c0d29ffde5"
+    ],
+    "body": {
+     "title": "Forged under the moved person's name"
+    },
+    "at": 1780000003010
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV#z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV",
+     "created": "2026-05-28T20:26:43.010Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z4B7kAAMtvCitbkvqx7FdWZCuZS5Gkc3XqJBK2kQRQNoxxE4UXdaeNGhbYpScBVPS1eyF1Br22utibgoNuK3afBq6"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "id/did",
+    "by": "7ef4d35c72753a155917b2ab3d75ec92fd38e5bb1ef4469c960db7221b594b93",
+    "key": "did:key:z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV",
+    "deps": [
+     "7ef4d35c72753a155917b2ab3d75ec92fd38e5bb1ef4469c960db7221b594b93"
+    ],
+    "links": [],
+    "body": {
+     "log": [
+      {
+       "versionId": "1-QmZdiU6iSBP3EaNTibEo6aMfNscgRSSFmExXwAVXXNQE41",
+       "versionTime": "2026-09-27T00:00:00Z",
+       "parameters": {
+        "method": "did:webvh:1.0",
+        "scid": "QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L",
+        "updateKeys": [
+         "z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT"
+        ],
+        "portable": true
+       },
+       "state": {
+        "@context": [
+         "https://www.w3.org/ns/did/v1",
+         "https://w3id.org/security/multikey/v1"
+        ],
+        "id": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15",
+        "verificationMethod": [
+         {
+          "id": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT",
+          "type": "Multikey",
+          "controller": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15",
+          "publicKeyMultibase": "z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT"
+         }
+        ],
+        "authentication": [
+         "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT"
+        ],
+        "assertionMethod": [
+         "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT"
+        ],
+        "service": [
+         {
+          "id": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#door",
+          "type": "SibianDoor",
+          "serviceEndpoint": "https://city.example/door/7ef4d35c72753a15"
+         },
+         {
+          "id": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#relay",
+          "type": "SibianRelay",
+          "serviceEndpoint": "https://city.example/hub/"
+         }
+        ]
+       },
+       "proof": [
+        {
+         "type": "DataIntegrityProof",
+         "cryptosuite": "eddsa-jcs-2022",
+         "verificationMethod": "did:key:z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT#z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT",
+         "created": "2026-09-27T00:00:00Z",
+         "proofPurpose": "assertionMethod",
+         "proofValue": "z3EACDPzejX2ZdAbxfwEqb5ngmJdku7tJyCqqv6ixTx2uLv79FKLr1raFK7oeNJ7pduJuR299UFhWdM5NMUfK3PJm"
+        }
+       ]
+      },
+      {
+       "versionId": "2-QmVVWeJvWVTxdTZZQyZFgqQfNe5bGUC8BYCexQBaFkVwQa",
+       "versionTime": "2026-09-27T00:00:01Z",
+       "parameters": {
+        "nextKeyHashes": [
+         "Qmd7szaFctCy9RgG38dibNw3xTeQMD7U1yddHKRXK2Xc7H"
+        ]
+       },
+       "state": {
+        "@context": [
+         "https://www.w3.org/ns/did/v1",
+         "https://w3id.org/security/multikey/v1"
+        ],
+        "id": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15",
+        "alsoKnownAs": [
+         "did:key:z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT"
+        ],
+        "verificationMethod": [
+         {
+          "id": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT",
+          "type": "Multikey",
+          "controller": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15",
+          "publicKeyMultibase": "z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT"
+         },
+         {
+          "id": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6Mkuofzo8mrvf8FYE6ye72eQowDyFxSQ8SNBbfdZJfJscqc",
+          "type": "Multikey",
+          "controller": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15",
+          "publicKeyMultibase": "z6Mkuofzo8mrvf8FYE6ye72eQowDyFxSQ8SNBbfdZJfJscqc"
+         }
+        ],
+        "authentication": [
+         "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6Mkuofzo8mrvf8FYE6ye72eQowDyFxSQ8SNBbfdZJfJscqc"
+        ],
+        "assertionMethod": [
+         "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT",
+         "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6Mkuofzo8mrvf8FYE6ye72eQowDyFxSQ8SNBbfdZJfJscqc"
+        ],
+        "service": [
+         {
+          "id": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#site",
+          "type": "SibianSite",
+          "serviceEndpoint": "https://city.example/@7ef4d35c72753a15"
+         },
+         {
+          "id": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#relay",
+          "type": "SibianRelay",
+          "serviceEndpoint": "https://city.example/hub/"
+         }
+        ]
+       },
+       "proof": [
+        {
+         "type": "DataIntegrityProof",
+         "cryptosuite": "eddsa-jcs-2022",
+         "verificationMethod": "did:key:z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT#z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT",
+         "created": "2026-09-27T00:00:01Z",
+         "proofPurpose": "assertionMethod",
+         "proofValue": "z47Nf77mwwqsuHzYQ1aC2Qf51mLLuBefNGHnnc8TaZGmdjirwWASAHi6bLZpGBexbYM6U4bdTQdv2YTviDvr8xtqR"
+        }
+       ]
+      }
+     ],
+     "witness": []
+    },
+    "at": 1780000003020
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV#z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV",
+     "created": "2026-05-28T20:26:43.020Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z3DshQP8VtACYuB6n7dv4igJiUJM2PHvB5bQULshhLE8qqnL3iiVYogAkbj6vqQ5Q7yvRpE4BPwZNW6jY7VLkaKDC"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "id/did",
+    "by": "7ef4d35c72753a155917b2ab3d75ec92fd38e5bb1ef4469c960db7221b594b93",
+    "key": "did:key:z6MkqAnZwCmCTqYTAE3gJvRWTagtQ3ufyjUoAb2rXsKQZTCU",
+    "deps": [
+     "7ef4d35c72753a155917b2ab3d75ec92fd38e5bb1ef4469c960db7221b594b93"
+    ],
+    "links": [],
+    "body": {
+     "log": [
+      {
+       "versionId": "1-QmZ194nAuThWWzF4ubcaoKrtfSxZHFZu8VTyLBbXmkemfe",
+       "versionTime": "2026-09-27T00:00:00Z",
+       "parameters": {
+        "method": "did:webvh:1.0",
+        "scid": "QmQrknFy4trQdmxRd9WdYLLMvsU1aoXFfeCB27t3mQUzzL",
+        "updateKeys": [
+         "z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV"
+        ],
+        "portable": true
+       },
+       "state": {
+        "@context": [
+         "https://www.w3.org/ns/did/v1",
+         "https://w3id.org/security/multikey/v1"
+        ],
+        "id": "did:webvh:QmQrknFy4trQdmxRd9WdYLLMvsU1aoXFfeCB27t3mQUzzL:city.example:u:7ef4d35c72753a15",
+        "verificationMethod": [
+         {
+          "id": "did:webvh:QmQrknFy4trQdmxRd9WdYLLMvsU1aoXFfeCB27t3mQUzzL:city.example:u:7ef4d35c72753a15#z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV",
+          "type": "Multikey",
+          "controller": "did:webvh:QmQrknFy4trQdmxRd9WdYLLMvsU1aoXFfeCB27t3mQUzzL:city.example:u:7ef4d35c72753a15",
+          "publicKeyMultibase": "z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV"
+         }
+        ],
+        "authentication": [
+         "did:webvh:QmQrknFy4trQdmxRd9WdYLLMvsU1aoXFfeCB27t3mQUzzL:city.example:u:7ef4d35c72753a15#z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV"
+        ],
+        "assertionMethod": [
+         "did:webvh:QmQrknFy4trQdmxRd9WdYLLMvsU1aoXFfeCB27t3mQUzzL:city.example:u:7ef4d35c72753a15#z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV"
+        ],
+        "service": [
+         {
+          "id": "did:webvh:QmQrknFy4trQdmxRd9WdYLLMvsU1aoXFfeCB27t3mQUzzL:city.example:u:7ef4d35c72753a15#door",
+          "type": "SibianDoor",
+          "serviceEndpoint": "https://city.example/door/7ef4d35c72753a15"
+         },
+         {
+          "id": "did:webvh:QmQrknFy4trQdmxRd9WdYLLMvsU1aoXFfeCB27t3mQUzzL:city.example:u:7ef4d35c72753a15#relay",
+          "type": "SibianRelay",
+          "serviceEndpoint": "https://city.example/hub/"
+         }
+        ]
+       },
+       "proof": [
+        {
+         "type": "DataIntegrityProof",
+         "cryptosuite": "eddsa-jcs-2022",
+         "verificationMethod": "did:key:z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV#z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV",
+         "created": "2026-09-27T00:00:00Z",
+         "proofPurpose": "assertionMethod",
+         "proofValue": "z3yLLKM9syCJCn9ezVCThA1mmkcDvh98pDHZSjPBkYNEFMZXVanCZjh1ok7gCoRYs84ryMGCyybxWcvPpZ9hJjqfF"
+        }
+       ]
+      },
+      {
+       "versionId": "2-QmZ6Q62dvCoPmLNoPd1ootc45f6nmNX5ybvikwYo6DsEaa",
+       "versionTime": "2026-09-27T00:00:01Z",
+       "parameters": {
+        "nextKeyHashes": [
+         "QmNbjrc5QyQemQMLS9VvD2brs9TuT281uirFKu4UmfymCQ"
+        ]
+       },
+       "state": {
+        "@context": [
+         "https://www.w3.org/ns/did/v1",
+         "https://w3id.org/security/multikey/v1"
+        ],
+        "id": "did:webvh:QmQrknFy4trQdmxRd9WdYLLMvsU1aoXFfeCB27t3mQUzzL:city.example:u:7ef4d35c72753a15",
+        "alsoKnownAs": [
+         "did:key:z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV"
+        ],
+        "verificationMethod": [
+         {
+          "id": "did:webvh:QmQrknFy4trQdmxRd9WdYLLMvsU1aoXFfeCB27t3mQUzzL:city.example:u:7ef4d35c72753a15#z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV",
+          "type": "Multikey",
+          "controller": "did:webvh:QmQrknFy4trQdmxRd9WdYLLMvsU1aoXFfeCB27t3mQUzzL:city.example:u:7ef4d35c72753a15",
+          "publicKeyMultibase": "z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV"
+         },
+         {
+          "id": "did:webvh:QmQrknFy4trQdmxRd9WdYLLMvsU1aoXFfeCB27t3mQUzzL:city.example:u:7ef4d35c72753a15#z6MkqAnZwCmCTqYTAE3gJvRWTagtQ3ufyjUoAb2rXsKQZTCU",
+          "type": "Multikey",
+          "controller": "did:webvh:QmQrknFy4trQdmxRd9WdYLLMvsU1aoXFfeCB27t3mQUzzL:city.example:u:7ef4d35c72753a15",
+          "publicKeyMultibase": "z6MkqAnZwCmCTqYTAE3gJvRWTagtQ3ufyjUoAb2rXsKQZTCU"
+         }
+        ],
+        "authentication": [
+         "did:webvh:QmQrknFy4trQdmxRd9WdYLLMvsU1aoXFfeCB27t3mQUzzL:city.example:u:7ef4d35c72753a15#z6MkqAnZwCmCTqYTAE3gJvRWTagtQ3ufyjUoAb2rXsKQZTCU"
+        ],
+        "assertionMethod": [
+         "did:webvh:QmQrknFy4trQdmxRd9WdYLLMvsU1aoXFfeCB27t3mQUzzL:city.example:u:7ef4d35c72753a15#z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV",
+         "did:webvh:QmQrknFy4trQdmxRd9WdYLLMvsU1aoXFfeCB27t3mQUzzL:city.example:u:7ef4d35c72753a15#z6MkqAnZwCmCTqYTAE3gJvRWTagtQ3ufyjUoAb2rXsKQZTCU"
+        ],
+        "service": [
+         {
+          "id": "did:webvh:QmQrknFy4trQdmxRd9WdYLLMvsU1aoXFfeCB27t3mQUzzL:city.example:u:7ef4d35c72753a15#site",
+          "type": "SibianSite",
+          "serviceEndpoint": "https://city.example/@7ef4d35c72753a15"
+         },
+         {
+          "id": "did:webvh:QmQrknFy4trQdmxRd9WdYLLMvsU1aoXFfeCB27t3mQUzzL:city.example:u:7ef4d35c72753a15#relay",
+          "type": "SibianRelay",
+          "serviceEndpoint": "https://city.example/hub/"
+         }
+        ]
+       },
+       "proof": [
+        {
+         "type": "DataIntegrityProof",
+         "cryptosuite": "eddsa-jcs-2022",
+         "verificationMethod": "did:key:z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV#z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV",
+         "created": "2026-09-27T00:00:01Z",
+         "proofPurpose": "assertionMethod",
+         "proofValue": "z53RKqfXeJP9TuGJDhYJ8er4A4PfLfoqVZxMY26HveQMyTDXQdvhbGThR4L1NTfDMmXzoDx6cJyZwjTKfuA7hf4hc"
+        }
+       ]
+      }
+     ],
+     "witness": []
+    },
+    "at": 1780000003030
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkqAnZwCmCTqYTAE3gJvRWTagtQ3ufyjUoAb2rXsKQZTCU#z6MkqAnZwCmCTqYTAE3gJvRWTagtQ3ufyjUoAb2rXsKQZTCU",
+     "created": "2026-05-28T20:26:43.030Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z5dh5S8ftUzMuPGxSJNRj4UZ3Za2QbTxyFnMWCbVpP5tEpLcgiR6Z6U9a4Ld6KCH5TTU6YbYk8sKNHtQ7RYUmJirW"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/edit",
+    "by": "7ef4d35c72753a155917b2ab3d75ec92fd38e5bb1ef4469c960db7221b594b93",
+    "key": "did:key:z6MkqAnZwCmCTqYTAE3gJvRWTagtQ3ufyjUoAb2rXsKQZTCU",
+    "deps": [
+     "7ef4d35c72753a155917b2ab3d75ec92fd38e5bb1ef4469c960db7221b594b93"
+    ],
+    "links": [
+     "6c7d8c69625ba30e31196cdb783f9ff2576d256948dd9d762e0979c0d29ffde5"
+    ],
+    "body": {
+     "title": "Forged with a log of the forger's own"
+    },
+    "at": 1780000003040
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkqAnZwCmCTqYTAE3gJvRWTagtQ3ufyjUoAb2rXsKQZTCU#z6MkqAnZwCmCTqYTAE3gJvRWTagtQ3ufyjUoAb2rXsKQZTCU",
+     "created": "2026-05-28T20:26:43.040Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z5dqb5tiUztXqhggneQ7iiGSEs6VPG7LQfYzZmvGbpjWcwb8esA7MF41fQZ6L5TAAoS9Bh4cNU1VUJLt9ACsqqY8G"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "id/did",
+    "by": "7ef4d35c72753a155917b2ab3d75ec92fd38e5bb1ef4469c960db7221b594b93",
+    "key": "did:key:z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV",
+    "deps": [
+     "7ef4d35c72753a155917b2ab3d75ec92fd38e5bb1ef4469c960db7221b594b93"
+    ],
+    "links": [],
+    "body": {
+     "log": [
+      {
+       "versionId": "1-QmZdiU6iSBP3EaNTibEo6aMfNscgRSSFmExXwAVXXNQE41",
+       "versionTime": "2026-09-27T00:00:00Z",
+       "parameters": {
+        "method": "did:webvh:1.0",
+        "scid": "QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L",
+        "updateKeys": [
+         "z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT"
+        ],
+        "portable": true
+       },
+       "state": {
+        "@context": [
+         "https://www.w3.org/ns/did/v1",
+         "https://w3id.org/security/multikey/v1"
+        ],
+        "id": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15",
+        "verificationMethod": [
+         {
+          "id": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT",
+          "type": "Multikey",
+          "controller": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15",
+          "publicKeyMultibase": "z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT"
+         }
+        ],
+        "authentication": [
+         "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT"
+        ],
+        "assertionMethod": [
+         "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT"
+        ],
+        "service": [
+         {
+          "id": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#door",
+          "type": "SibianDoor",
+          "serviceEndpoint": "https://city.example/door/7ef4d35c72753a15"
+         },
+         {
+          "id": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#relay",
+          "type": "SibianRelay",
+          "serviceEndpoint": "https://city.example/hub/"
+         }
+        ]
+       },
+       "proof": [
+        {
+         "type": "DataIntegrityProof",
+         "cryptosuite": "eddsa-jcs-2022",
+         "verificationMethod": "did:key:z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT#z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT",
+         "created": "2026-09-27T00:00:00Z",
+         "proofPurpose": "assertionMethod",
+         "proofValue": "z3EACDPzejX2ZdAbxfwEqb5ngmJdku7tJyCqqv6ixTx2uLv79FKLr1raFK7oeNJ7pduJuR299UFhWdM5NMUfK3PJm"
+        }
+       ]
+      },
+      {
+       "versionId": "2-QmVVWeJvWVTxdTZZQyZFgqQfNe5bGUC8BYCexQBaFkVwQa",
+       "versionTime": "2026-09-27T00:00:01Z",
+       "parameters": {
+        "nextKeyHashes": [
+         "Qmd7szaFctCy9RgG38dibNw3xTeQMD7U1yddHKRXK2Xc7H"
+        ]
+       },
+       "state": {
+        "@context": [
+         "https://www.w3.org/ns/did/v1",
+         "https://w3id.org/security/multikey/v1"
+        ],
+        "id": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15",
+        "alsoKnownAs": [
+         "did:key:z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT"
+        ],
+        "verificationMethod": [
+         {
+          "id": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT",
+          "type": "Multikey",
+          "controller": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15",
+          "publicKeyMultibase": "z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT"
+         },
+         {
+          "id": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6Mkuofzo8mrvf8FYE6ye72eQowDyFxSQ8SNBbfdZJfJscqc",
+          "type": "Multikey",
+          "controller": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15",
+          "publicKeyMultibase": "z6Mkuofzo8mrvf8FYE6ye72eQowDyFxSQ8SNBbfdZJfJscqc"
+         },
+         {
+          "id": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV",
+          "type": "Multikey",
+          "controller": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15",
+          "publicKeyMultibase": "z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV"
+         }
+        ],
+        "authentication": [
+         "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6Mkuofzo8mrvf8FYE6ye72eQowDyFxSQ8SNBbfdZJfJscqc"
+        ],
+        "assertionMethod": [
+         "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT",
+         "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6Mkuofzo8mrvf8FYE6ye72eQowDyFxSQ8SNBbfdZJfJscqc",
+         "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV"
+        ],
+        "service": [
+         {
+          "id": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#site",
+          "type": "SibianSite",
+          "serviceEndpoint": "https://city.example/@7ef4d35c72753a15"
+         },
+         {
+          "id": "did:webvh:QmbzPxnArMjGfusD1NurRQrPcSKEH46HAyGGrz6bkUEj2L:city.example:u:7ef4d35c72753a15#relay",
+          "type": "SibianRelay",
+          "serviceEndpoint": "https://city.example/hub/"
+         }
+        ]
+       },
+       "proof": [
+        {
+         "type": "DataIntegrityProof",
+         "cryptosuite": "eddsa-jcs-2022",
+         "verificationMethod": "did:key:z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT#z6MksJEPAUwYfRHWTPLXT5JyWEBpo5ZNfzSN9mEsA5HjVUZT",
+         "created": "2026-09-27T00:00:01Z",
+         "proofPurpose": "assertionMethod",
+         "proofValue": "z47Nf77mwwqsuHzYQ1aC2Qf51mLLuBefNGHnnc8TaZGmdjirwWASAHi6bLZpGBexbYM6U4bdTQdv2YTviDvr8xtqR"
+        }
+       ]
+      }
+     ],
+     "witness": []
+    },
+    "at": 1780000003050
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV#z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV",
+     "created": "2026-05-28T20:26:43.050Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z38SiNDBJHRNsqE9rUhSkTUQkmobhUnLwxAzK1dkW5646S2EFR2KzxdaSKaZu21wqMBfejCemW9xHUxngc4btugy6"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/edit",
+    "by": "7ef4d35c72753a155917b2ab3d75ec92fd38e5bb1ef4469c960db7221b594b93",
+    "key": "did:key:z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV",
+    "deps": [
+     "7ef4d35c72753a155917b2ab3d75ec92fd38e5bb1ef4469c960db7221b594b93"
+    ],
+    "links": [
+     "6c7d8c69625ba30e31196cdb783f9ff2576d256948dd9d762e0979c0d29ffde5"
+    ],
+    "body": {
+     "title": "Forged with a tampered log"
+    },
+    "at": 1780000003060
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV#z6MkpDRswMCnPaoRQQtVWDUMDoY3Lgom8uJT9fYYFfY2CjWV",
+     "created": "2026-05-28T20:26:43.060Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z43YyztG6h8uJ3ykA6L5xnHzq3FqZCvQdMrMre27YXAF8Z7VonEpUsUk28KStEm51uYJgvXD7Qqb9ghwwQV2ep7Za"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/event",
+    "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+    "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+    "deps": [
+     "6b0ea706c561ceb602eb2efae281cc9e9e614bad423efb8f14e4f113581f6aff"
+    ],
+    "links": [],
+    "body": {
+     "title": "Evening walk",
+     "start": 1780259200000,
+     "end": 1780259199999,
+     "tz": "Europe/Lisbon",
+     "polis": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+     "scope": "polis"
+    },
+    "at": 1780000000020
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "created": "2026-05-28T20:26:40.020Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z2DL7xUHQ8TkMhnx5pHjyyWe9HbeQFfu14yN85v8no4cxdCgzbyJKE2oNDKMX9H5zkED6UY14CvYiZNxLpTmFJDQT"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/state",
+    "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+    "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+    "deps": [
+     "588f1d2ab51c2cf177fe83518fa845d62733a0e8bef82a3c891a4e7bc4cf5386"
+    ],
+    "links": [
+     "588f1d2ab51c2cf177fe83518fa845d62733a0e8bef82a3c891a4e7bc4cf5386"
+    ],
+    "body": {
+     "to": "cancelled"
+    },
+    "at": 1780000001020
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "created": "2026-05-28T20:26:41.020Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z2gdurUpbyYQSp72G2ipA7YztxLoip5vJhE2mcAe2upvH6kSfetZ5k6J983RuSmPVkrBG3jLGpTjHKQkcUxDp4NXf"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/state",
+    "by": "1407a6af997c8daac3e01206e5e7f9161dd65c8eaa8b9374e3f058af269265aa",
+    "key": "did:key:z6MkkR2HMq9xJ6NiexPumkFnkabGMwvk3vpokjE1VZsNwj79",
+    "deps": [
+     "34ea4d6fdb310f862bbc3a4c13379df95d605373e8d23986c0f5724e8122969e"
+    ],
+    "links": [
+     "588f1d2ab51c2cf177fe83518fa845d62733a0e8bef82a3c891a4e7bc4cf5386"
+    ],
+    "body": {
+     "to": "upcoming"
+    },
+    "at": 1780000002020
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkkR2HMq9xJ6NiexPumkFnkabGMwvk3vpokjE1VZsNwj79#z6MkkR2HMq9xJ6NiexPumkFnkabGMwvk3vpokjE1VZsNwj79",
+     "created": "2026-05-28T20:26:42.020Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z4eD49pu6yUA82RiHKiWgubCapeoeoueGjTbMamuygEnurrLGiKjWH5ZUYT1Cxrc4hmKsmCj3umjB8E2kq6GSq58q"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/event",
+    "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+    "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+    "deps": [
+     "f9f3fb4f2c79169d96faa3304bc79161e3f1c3cde43f281ab0c4d51fee0056f1"
+    ],
+    "links": [],
+    "body": {
+     "title": "Created by mistake",
+     "start": 1780345600000
+    },
+    "at": 1780000000030
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "created": "2026-05-28T20:26:40.030Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z53PNConwkHYQJp6EhXvFS9cWXg5Qgb8NVb6khG2dBmSE7iBRwzSv75MVsyP8XGx7yEtwzabbmSVKkufUoPhmFfn7"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/state",
+    "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+    "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+    "deps": [
+     "0ac257b3051be787ee10d37a7baaf395b6ad43029d03b168d3df3534de2d0970"
+    ],
+    "links": [
+     "0ac257b3051be787ee10d37a7baaf395b6ad43029d03b168d3df3534de2d0970"
+    ],
+    "body": {
+     "to": "removed"
+    },
+    "at": 1780000001030
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "created": "2026-05-28T20:26:41.030Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z3gq8iu5k2f3JADJyZqkfg8nbiugj5PmVuMfTs5Z9ANPvMsjmSbKEbN1ypLVRyTRvn9rdsVatPUgjDSsgrLR81M3M"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/state",
+    "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+    "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+    "deps": [
+     "a748a1671ffca04814468f61b32e7ca3a8df9f8ceee6fe8c085125ab2a9e5843"
+    ],
+    "links": [
+     "0ac257b3051be787ee10d37a7baaf395b6ad43029d03b168d3df3534de2d0970"
+    ],
+    "body": {
+     "to": "live"
+    },
+    "at": 1780000002030
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "created": "2026-05-28T20:26:42.030Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z5jvhdfEmpyWRRgsu5p4wqUfdDPQFCZK7bUxnDSGhc4vzgJkHGL8yMvfCgBnYtWzyPXtuwU2Xzm13SWgpicwaHn5y"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/event",
+    "by": "21ee10afb2d495a0e20f514cd060545334fb6f798a8f730902b574179bc2df30",
+    "key": "did:key:z6MkvVNvGpfMBA6LBm15j5ikhnFsbyBDA8nyZ36NFN9ywPoc",
+    "deps": [
+     "21ee10afb2d495a0e20f514cd060545334fb6f798a8f730902b574179bc2df30"
+    ],
+    "links": [],
+    "body": {
+     "title": "By someone whose inception is not here",
+     "start": 1780086400000
+    },
+    "at": 1780000000040
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkvVNvGpfMBA6LBm15j5ikhnFsbyBDA8nyZ36NFN9ywPoc#z6MkvVNvGpfMBA6LBm15j5ikhnFsbyBDA8nyZ36NFN9ywPoc",
+     "created": "2026-05-28T20:26:40.040Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z3tX7AtRoR2GtKMSY7JMUMHZTeCn2N2GbazCt1QHdJteK5TRrgMD5j6QQNHemh3Pa5BT1vUXWF6dkYqTUoRc85RfX"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/event",
+    "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+    "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+    "deps": [
+     "bb3224d670a9b3e5b36f224046ac44fac7555f8111346d1cc1497089d20d60b9"
+    ],
+    "links": [],
+    "body": {
+     "title": 42,
+     "place": [
+      "x"
+     ],
+     "start": "soon",
+     "end": 1780086400000,
+     "scope": "everyone",
+     "polis": 9,
+     "crew": "all",
+     "mods": [
+      "60b9563e3999dd9dd94ae9591ebe070e5554251fe02e3590d18944a47e4b0841",
+      "60b9563e3999dd9dd94ae9591ebe070e5554251fe02e3590d18944a47e4b0841",
+      "x"
+     ]
+    },
+    "at": 1780000000050
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "created": "2026-05-28T20:26:40.050Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z611RWwffTj4y39ZDWh13rDB3UuCDC8GAD5YTnX1gzRBRioRRwtt1yyevZPApxLdn5iy6GdAmR8WvS62MdVkKw4mr"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/event",
+    "by": "1407a6af997c8daac3e01206e5e7f9161dd65c8eaa8b9374e3f058af269265aa",
+    "key": "did:key:z6MkkR2HMq9xJ6NiexPumkFnkabGMwvk3vpokjE1VZsNwj79",
+    "deps": [
+     "f0ed3d6ee09742cd34b683a9f01ee901efc2914b99f70943dcc2056a1067f045"
+    ],
+    "links": [],
+    "body": {
+     "title": "Open mic",
+     "start": 1780432000000,
+     "tz": "America/New_York"
+    },
+    "at": 1780000000060
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkkR2HMq9xJ6NiexPumkFnkabGMwvk3vpokjE1VZsNwj79#z6MkkR2HMq9xJ6NiexPumkFnkabGMwvk3vpokjE1VZsNwj79",
+     "created": "2026-05-28T20:26:40.060Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z3BwBEAhx1gWBRdYHLVY3mLh2D9nSYooW5UAh9jsPiCcD5skbdr4YsicBtFDpF2FnVsSnUxrdcL1EaPhiE3s51HB7"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/hosts",
+    "by": "1407a6af997c8daac3e01206e5e7f9161dd65c8eaa8b9374e3f058af269265aa",
+    "key": "did:key:z6MkkR2HMq9xJ6NiexPumkFnkabGMwvk3vpokjE1VZsNwj79",
+    "deps": [
+     "6bb530fb8534b731d86bca015dc795f514e5d43ba1f409a38e020b785b9ae38f"
+    ],
+    "links": [
+     "6bb530fb8534b731d86bca015dc795f514e5d43ba1f409a38e020b785b9ae38f"
+    ],
+    "body": {
+     "hosts": [
+      "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+     ]
+    },
+    "at": 1780000001060
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkkR2HMq9xJ6NiexPumkFnkabGMwvk3vpokjE1VZsNwj79#z6MkkR2HMq9xJ6NiexPumkFnkabGMwvk3vpokjE1VZsNwj79",
+     "created": "2026-05-28T20:26:41.060Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z5Y2havQT3xZfdd1GbRRgcsFdKdtXYc2f5d2YoKWWFVP12eBVKKWunTHjdNiRJMwcfHvxCqJrNnLZ1FJBqkBZZftV"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/edit",
+    "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+    "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+    "deps": [
+     "063c4df1b81255d463603d3d2289e2f7e0a47de4961b11fe2a22962400d5f711"
+    ],
+    "links": [
+     "6bb530fb8534b731d86bca015dc795f514e5d43ba1f409a38e020b785b9ae38f"
+    ],
+    "body": {
+     "title": "Open mic, co-hosted"
+    },
+    "at": 1780000002060
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "created": "2026-05-28T20:26:42.060Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z297GEMBHdyi8cMBUFMvEx7y6AHj7opyap7vUT1bbX1SchbAULP6UGj8W99Pd1dtkGuoR8C6T5TWCAbG4VxUU8vF2"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/hosts",
+    "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+    "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+    "deps": [
+     "e3b36d5ab91c3c5aac3e9707663cfa31c77ae5041f110bf5a32d9fb426dc5f57"
+    ],
+    "links": [
+     "6bb530fb8534b731d86bca015dc795f514e5d43ba1f409a38e020b785b9ae38f"
+    ],
+    "body": {
+     "hosts": []
+    },
+    "at": 1780000003060
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "created": "2026-05-28T20:26:43.060Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "ztthKZ194MHJAacQxPxDDxwtjsPWS8Uo7GEUeP5iDMdW98fw9FFH25o9XT74SScUeWYc4YazWmExcwN84Z6oPbwJ"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/state",
+    "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+    "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+    "deps": [
+     "a89eefb67ee1697a38b18b01934acd7526172f3b8988dfa15962a2579937b640"
+    ],
+    "links": [
+     "6bb530fb8534b731d86bca015dc795f514e5d43ba1f409a38e020b785b9ae38f"
+    ],
+    "body": {
+     "to": "ended"
+    },
+    "at": 1780000004060
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "created": "2026-05-28T20:26:44.060Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z5gJNt4nVuvZrUPABvogLct13gbCyqXsQqGWd5Qpxckzmbk83AoDQmRGTnAwoUy9qjjpHjQcyMwSv7jfBMR5X7EkX"
+    }
+   ]
+  },
+  {
+   "e": {
+    "v": 3,
+    "type": "ev/state",
+    "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+    "key": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+    "deps": [
+     "6c3c229b8dd082800256fd6e7996045b862dbafc7ba185a84b912652f31e4685"
+    ],
+    "links": [
+     "6bb530fb8534b731d86bca015dc795f514e5d43ba1f409a38e020b785b9ae38f"
+    ],
+    "body": {
+     "to": "upcoming"
+    },
+    "at": 1780000005060
+   },
+   "proof": [
+    {
+     "type": "DataIntegrityProof",
+     "cryptosuite": "eddsa-jcs-2022",
+     "verificationMethod": "did:key:z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2#z6MkodJHzY8Bn6PycRu3pon7V3vzfk12nbndWcBz2mxMAsa2",
+     "created": "2026-05-28T20:26:45.060Z",
+     "proofPurpose": "assertionMethod",
+     "proofValue": "z5h7jsJubC4yankFWC9wqH8zNvznb2GE8J2r2JZupkf1quUzw55q3ar9nTWGnTvG9LhEUu1NPSEZwn26bDso1EtGs"
+    }
+   ]
+  }
+ ],
+ "events": [
+  {
+   "id": "d857138cc1acbc6cdf402f9f996774cc90655aa6428d792a5ec19cb48785beff",
+   "title": "Morning circle (moved)",
+   "place": "Tie · host",
+   "tz": "Asia/Bangkok",
+   "scope": "public",
+   "city": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+   "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+   "start_ms": 1780090000000,
+   "end_ms": 1780100800000,
+   "hosts": [
+    "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+    "60b9563e3999dd9dd94ae9591ebe070e5554251fe02e3590d18944a47e4b0841"
+   ],
+   "crew": [
+    "537dc0ff10c75cc9fb5e7625bccfd57ffd7a91b3c0b4b928914f9b2c27fcaf87",
+    "60b9563e3999dd9dd94ae9591ebe070e5554251fe02e3590d18944a47e4b0841"
+   ],
+   "cancelled": false
+  },
+  {
+   "id": "6c7d8c69625ba30e31196cdb783f9ff2576d256948dd9d762e0979c0d29ffde5",
+   "title": "Signed after moving, with the first key",
+   "place": "Workshop",
+   "tz": "UTC",
+   "scope": "link",
+   "city": "",
+   "by": "7ef4d35c72753a155917b2ab3d75ec92fd38e5bb1ef4469c960db7221b594b93",
+   "start_ms": 1780172800000,
+   "end_ms": 1780176400000,
+   "hosts": [
+    "7ef4d35c72753a155917b2ab3d75ec92fd38e5bb1ef4469c960db7221b594b93"
+   ],
+   "crew": [],
+   "cancelled": false
+  },
+  {
+   "id": "588f1d2ab51c2cf177fe83518fa845d62733a0e8bef82a3c891a4e7bc4cf5386",
+   "title": "Evening walk",
+   "place": "",
+   "tz": "Europe/Lisbon",
+   "scope": "polis",
+   "city": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+   "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+   "start_ms": 1780259200000,
+   "end_ms": 1780270000000,
+   "hosts": [
+    "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+   ],
+   "crew": [],
+   "cancelled": true
+  },
+  {
+   "id": "6bb530fb8534b731d86bca015dc795f514e5d43ba1f409a38e020b785b9ae38f",
+   "title": "Open mic, co-hosted",
+   "place": "",
+   "tz": "America/New_York",
+   "scope": "public",
+   "city": "",
+   "by": "1407a6af997c8daac3e01206e5e7f9161dd65c8eaa8b9374e3f058af269265aa",
+   "start_ms": 1780432000000,
+   "end_ms": 1780442800000,
+   "hosts": [
+    "1407a6af997c8daac3e01206e5e7f9161dd65c8eaa8b9374e3f058af269265aa",
+    "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90"
+   ],
+   "crew": [],
+   "cancelled": false
+  },
+  {
+   "id": "063c4df1b81255d463603d3d2289e2f7e0a47de4961b11fe2a22962400d5f711",
+   "title": "",
+   "place": "",
+   "tz": "UTC",
+   "scope": "public",
+   "city": "",
+   "by": "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+   "start_ms": 1780000000050,
+   "end_ms": 1780086400000,
+   "hosts": [
+    "b7a2ad60de5c4aa9032dc41c4483e648ab828cbed40ff32eff65a39c2e294a90",
+    "60b9563e3999dd9dd94ae9591ebe070e5554251fe02e3590d18944a47e4b0841"
+   ],
+   "crew": [],
+   "cancelled": false
+  }
+ ],
+ "kept": 33
+}

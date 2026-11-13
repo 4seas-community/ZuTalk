@@ -891,6 +891,84 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
      */
     func transcriptUserReplaceText(docId: String, blockId: String, text: String) throws
 
+    func cityAccount()  -> FfiCityAccount?
+
+    /**
+     * 这场录音归到哪场活动;`event` 为空就是这场不交。录之前、录音中、
+     * 录完以后都能改;已经交上去的要先撤下。
+     */
+    func cityBindSession(sessionId: String, event: FfiCityEvent?) throws  -> FfiCityFiling?
+
+    /**
+     * 城的活动。`refresh` 时走网络重新取;否则给本机存着的那一份。
+     */
+    func cityCalendar(refresh: Bool) throws  -> FfiCityCalendar
+
+    /**
+     * 这个人能往里放东西的频道,按上一次取活动时的样子。
+     */
+    func cityChannels()  -> [FfiCityChannel]
+
+    /**
+     * 交到档案馆。走网络。没连上时留在排队,给回的那一份写着。
+     */
+    func cityFileSession(sessionId: String) throws  -> FfiCityFiling
+
+    /**
+     * 这场录音交到哪一步了,连同交上去以后改了几句。长录音别在主线程上调。
+     */
+    func cityFiling(sessionId: String)  -> FfiCityFiling?
+
+    func cityFilingOptions()  -> FfiCityFilingOptions
+
+    /**
+     * 归过活动的录音,最近动过的在前。设置里「已交到档案馆」据此列出。
+     */
+    func cityFilings()  -> [FfiCityFiling]
+
+    /**
+     * 开始登录:问这个地址是哪座城,出一个给旧设备扫的码。走网络。
+     */
+    func cityLoginBegin(server: String) throws  -> FfiCityLoginOffer
+
+    func cityLoginCancel()
+
+    /**
+     * 等旧设备的下一句话,最多挂二十几秒。走网络,调用方在后台线程上循环调。
+     */
+    func cityLoginPoll() throws  -> FfiCityLoginStep
+
+    /**
+     * 没有别的设备在手边时:直接填恢复密钥。走网络。
+     */
+    func cityLoginWithRecoveryKey(server: String, recoveryKey: String) throws  -> FfiCityAccount
+
+    /**
+     * 还在排队的录音。启动时、网络回来时照这份单子重发。
+     */
+    func cityPendingSessions()  -> [String]
+
+    /**
+     * 退出登录:钥匙和说明从这台 Mac 上删掉。交过什么的账留着。
+     */
+    func citySignOut() throws
+
+    func cityTopicChannel(notebookId: String)  -> FfiCityChannel?
+
+    /**
+     * 把交上去以后改过的句子更新过去。走网络。
+     */
+    func cityUpdateFiling(sessionId: String) throws  -> FfiCityFiling
+
+    /**
+     * 从档案馆撤下。走网络。
+     */
+    func cityWithdrawFiling(sessionId: String) throws  -> FfiCityFiling
+
+    func setCityFilingOptions(options: FfiCityFilingOptions) throws
+
+    func setCityTopicChannel(notebookId: String, channel: FfiCityChannel?) throws
+
     /**
      * 应用用户编辑。apply 成功后:
      * 1. 把 snapshot 存到磁盘(跨进程持久)
@@ -2199,6 +2277,208 @@ open func transcriptUserReplaceText(docId: String, blockId: String, text: String
         FfiConverterString.lower(docId),
         FfiConverterString.lower(blockId),
         FfiConverterString.lower(text),$0
+    )
+}
+}
+
+open func cityAccount() -> FfiCityAccount?  {
+    return try!  FfiConverterOptionTypeFfiCityAccount.lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zutalkcore_city_account(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+    /**
+     * 这场录音归到哪场活动;`event` 为空就是这场不交。录之前、录音中、
+     * 录完以后都能改;已经交上去的要先撤下。
+     */
+open func cityBindSession(sessionId: String, event: FfiCityEvent?)throws  -> FfiCityFiling?  {
+    return try  FfiConverterOptionTypeFfiCityFiling.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_city_bind_session(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),
+        FfiConverterOptionTypeFfiCityEvent.lower(event),$0
+    )
+})
+}
+
+    /**
+     * 城的活动。`refresh` 时走网络重新取;否则给本机存着的那一份。
+     */
+open func cityCalendar(refresh: Bool)throws  -> FfiCityCalendar  {
+    return try  FfiConverterTypeFfiCityCalendar_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_city_calendar(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(refresh),$0
+    )
+})
+}
+
+    /**
+     * 这个人能往里放东西的频道,按上一次取活动时的样子。
+     */
+open func cityChannels() -> [FfiCityChannel]  {
+    return try!  FfiConverterSequenceTypeFfiCityChannel.lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zutalkcore_city_channels(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+    /**
+     * 交到档案馆。走网络。没连上时留在排队,给回的那一份写着。
+     */
+open func cityFileSession(sessionId: String)throws  -> FfiCityFiling  {
+    return try  FfiConverterTypeFfiCityFiling_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_city_file_session(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),$0
+    )
+})
+}
+
+    /**
+     * 这场录音交到哪一步了,连同交上去以后改了几句。长录音别在主线程上调。
+     */
+open func cityFiling(sessionId: String) -> FfiCityFiling?  {
+    return try!  FfiConverterOptionTypeFfiCityFiling.lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zutalkcore_city_filing(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),$0
+    )
+})
+}
+
+open func cityFilingOptions() -> FfiCityFilingOptions  {
+    return try!  FfiConverterTypeFfiCityFilingOptions_lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zutalkcore_city_filing_options(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+    /**
+     * 归过活动的录音,最近动过的在前。设置里「已交到档案馆」据此列出。
+     */
+open func cityFilings() -> [FfiCityFiling]  {
+    return try!  FfiConverterSequenceTypeFfiCityFiling.lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zutalkcore_city_filings(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+    /**
+     * 开始登录:问这个地址是哪座城,出一个给旧设备扫的码。走网络。
+     */
+open func cityLoginBegin(server: String)throws  -> FfiCityLoginOffer  {
+    return try  FfiConverterTypeFfiCityLoginOffer_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_city_login_begin(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(server),$0
+    )
+})
+}
+
+open func cityLoginCancel()  {try! rustCall() {
+    uniffi_vt_ffi_fn_method_zutalkcore_city_login_cancel(
+            self.uniffiCloneHandle(),$0
+    )
+}
+}
+
+    /**
+     * 等旧设备的下一句话,最多挂二十几秒。走网络,调用方在后台线程上循环调。
+     */
+open func cityLoginPoll()throws  -> FfiCityLoginStep  {
+    return try  FfiConverterTypeFfiCityLoginStep_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_city_login_poll(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+    /**
+     * 没有别的设备在手边时:直接填恢复密钥。走网络。
+     */
+open func cityLoginWithRecoveryKey(server: String, recoveryKey: String)throws  -> FfiCityAccount  {
+    return try  FfiConverterTypeFfiCityAccount_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_city_login_with_recovery_key(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(server),
+        FfiConverterString.lower(recoveryKey),$0
+    )
+})
+}
+
+    /**
+     * 还在排队的录音。启动时、网络回来时照这份单子重发。
+     */
+open func cityPendingSessions() -> [String]  {
+    return try!  FfiConverterSequenceString.lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zutalkcore_city_pending_sessions(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+    /**
+     * 退出登录:钥匙和说明从这台 Mac 上删掉。交过什么的账留着。
+     */
+open func citySignOut()throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_city_sign_out(
+            self.uniffiCloneHandle(),$0
+    )
+}
+}
+
+open func cityTopicChannel(notebookId: String) -> FfiCityChannel?  {
+    return try!  FfiConverterOptionTypeFfiCityChannel.lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zutalkcore_city_topic_channel(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(notebookId),$0
+    )
+})
+}
+
+    /**
+     * 把交上去以后改过的句子更新过去。走网络。
+     */
+open func cityUpdateFiling(sessionId: String)throws  -> FfiCityFiling  {
+    return try  FfiConverterTypeFfiCityFiling_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_city_update_filing(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),$0
+    )
+})
+}
+
+    /**
+     * 从档案馆撤下。走网络。
+     */
+open func cityWithdrawFiling(sessionId: String)throws  -> FfiCityFiling  {
+    return try  FfiConverterTypeFfiCityFiling_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_city_withdraw_filing(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),$0
+    )
+})
+}
+
+open func setCityFilingOptions(options: FfiCityFilingOptions)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_set_city_filing_options(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeFfiCityFilingOptions_lower(options),$0
+    )
+}
+}
+
+open func setCityTopicChannel(notebookId: String, channel: FfiCityChannel?)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_set_city_topic_channel(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(notebookId),
+        FfiConverterOptionTypeFfiCityChannel.lower(channel),$0
     )
 }
 }
@@ -4385,6 +4665,594 @@ public func FfiConverterTypeFfiBackupStatus_lift(_ buf: RustBuffer) throws -> Ff
 #endif
 public func FfiConverterTypeFfiBackupStatus_lower(_ value: FfiBackupStatus) -> RustBuffer {
     return FfiConverterTypeFfiBackupStatus.lower(value)
+}
+
+
+/**
+ * 登录着的居民。
+ */
+public struct FfiCityAccount: Equatable, Hashable {
+    public var server: String
+    public var cityId: String
+    public var cityName: String
+    public var personId: String
+    public var personName: String
+    /**
+     * 城签给这个人的身份:resident、founder、coordinator、curator、inviter。
+     * 空着就是还不是这座城的居民。
+     */
+    public var roles: [String]
+    public var signedInAtEpoch: Int64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(server: String, cityId: String, cityName: String, personId: String, personName: String,
+        /**
+         * 城签给这个人的身份:resident、founder、coordinator、curator、inviter。
+         * 空着就是还不是这座城的居民。
+         */roles: [String], signedInAtEpoch: Int64) {
+        self.server = server
+        self.cityId = cityId
+        self.cityName = cityName
+        self.personId = personId
+        self.personName = personName
+        self.roles = roles
+        self.signedInAtEpoch = signedInAtEpoch
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiCityAccount: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiCityAccount: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiCityAccount {
+        return
+            try FfiCityAccount(
+                server: FfiConverterString.read(from: &buf),
+                cityId: FfiConverterString.read(from: &buf),
+                cityName: FfiConverterString.read(from: &buf),
+                personId: FfiConverterString.read(from: &buf),
+                personName: FfiConverterString.read(from: &buf),
+                roles: FfiConverterSequenceString.read(from: &buf),
+                signedInAtEpoch: FfiConverterInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiCityAccount, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.server, into: &buf)
+        FfiConverterString.write(value.cityId, into: &buf)
+        FfiConverterString.write(value.cityName, into: &buf)
+        FfiConverterString.write(value.personId, into: &buf)
+        FfiConverterString.write(value.personName, into: &buf)
+        FfiConverterSequenceString.write(value.roles, into: &buf)
+        FfiConverterInt64.write(value.signedInAtEpoch, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiCityAccount_lift(_ buf: RustBuffer) throws -> FfiCityAccount {
+    return try FfiConverterTypeFfiCityAccount.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiCityAccount_lower(_ value: FfiCityAccount) -> RustBuffer {
+    return FfiConverterTypeFfiCityAccount.lower(value)
+}
+
+
+public struct FfiCityCalendar: Equatable, Hashable {
+    public var events: [FfiCityEvent]
+    /**
+     * 0 是还没取过。
+     */
+    public var fetchedAtEpoch: Int64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(events: [FfiCityEvent],
+        /**
+         * 0 是还没取过。
+         */fetchedAtEpoch: Int64) {
+        self.events = events
+        self.fetchedAtEpoch = fetchedAtEpoch
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiCityCalendar: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiCityCalendar: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiCityCalendar {
+        return
+            try FfiCityCalendar(
+                events: FfiConverterSequenceTypeFfiCityEvent.read(from: &buf),
+                fetchedAtEpoch: FfiConverterInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiCityCalendar, into buf: inout [UInt8]) {
+        FfiConverterSequenceTypeFfiCityEvent.write(value.events, into: &buf)
+        FfiConverterInt64.write(value.fetchedAtEpoch, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiCityCalendar_lift(_ buf: RustBuffer) throws -> FfiCityCalendar {
+    return try FfiConverterTypeFfiCityCalendar.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiCityCalendar_lower(_ value: FfiCityCalendar) -> RustBuffer {
+    return FfiConverterTypeFfiCityCalendar.lower(value)
+}
+
+
+public struct FfiCityChannel: Equatable, Hashable {
+    public var id: String
+    public var title: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, title: String) {
+        self.id = id
+        self.title = title
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiCityChannel: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiCityChannel: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiCityChannel {
+        return
+            try FfiCityChannel(
+                id: FfiConverterString.read(from: &buf),
+                title: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiCityChannel, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiCityChannel_lift(_ buf: RustBuffer) throws -> FfiCityChannel {
+    return try FfiConverterTypeFfiCityChannel.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiCityChannel_lower(_ value: FfiCityChannel) -> RustBuffer {
+    return FfiConverterTypeFfiCityChannel.lower(value)
+}
+
+
+public struct FfiCityEvent: Equatable, Hashable {
+    public var id: String
+    public var title: String
+    public var place: String
+    public var startMs: Int64
+    public var endMs: Int64
+    /**
+     * 只给居民看的活动。
+     */
+    public var residentsOnly: Bool
+    /**
+     * 登录的人是这一场的主办或记录员。
+     */
+    public var mine: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, title: String, place: String, startMs: Int64, endMs: Int64,
+        /**
+         * 只给居民看的活动。
+         */residentsOnly: Bool,
+        /**
+         * 登录的人是这一场的主办或记录员。
+         */mine: Bool) {
+        self.id = id
+        self.title = title
+        self.place = place
+        self.startMs = startMs
+        self.endMs = endMs
+        self.residentsOnly = residentsOnly
+        self.mine = mine
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiCityEvent: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiCityEvent: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiCityEvent {
+        return
+            try FfiCityEvent(
+                id: FfiConverterString.read(from: &buf),
+                title: FfiConverterString.read(from: &buf),
+                place: FfiConverterString.read(from: &buf),
+                startMs: FfiConverterInt64.read(from: &buf),
+                endMs: FfiConverterInt64.read(from: &buf),
+                residentsOnly: FfiConverterBool.read(from: &buf),
+                mine: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiCityEvent, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.place, into: &buf)
+        FfiConverterInt64.write(value.startMs, into: &buf)
+        FfiConverterInt64.write(value.endMs, into: &buf)
+        FfiConverterBool.write(value.residentsOnly, into: &buf)
+        FfiConverterBool.write(value.mine, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiCityEvent_lift(_ buf: RustBuffer) throws -> FfiCityEvent {
+    return try FfiConverterTypeFfiCityEvent.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiCityEvent_lower(_ value: FfiCityEvent) -> RustBuffer {
+    return FfiConverterTypeFfiCityEvent.lower(value)
+}
+
+
+public struct FfiCityFiling: Equatable, Hashable {
+    public var sessionId: String
+    public var eventId: String
+    public var eventTitle: String
+    public var eventStartMs: Int64
+    public var channelTitle: String?
+    public var state: FfiCityFilingState
+    public var filedAtEpoch: Int64?
+    public var signerName: String
+    public var languages: [FfiCityLanguageCount]
+    public var speakers: UInt32
+    public var marks: UInt32
+    /**
+     * 交上去以后在这台 Mac 上改过、还没更新过去的句数。
+     */
+    public var changedSentences: UInt32
+    public var errorCode: String?
+    /**
+     * 档案馆里这件素材的网址。
+     */
+    public var webUrl: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(sessionId: String, eventId: String, eventTitle: String, eventStartMs: Int64, channelTitle: String?, state: FfiCityFilingState, filedAtEpoch: Int64?, signerName: String, languages: [FfiCityLanguageCount], speakers: UInt32, marks: UInt32,
+        /**
+         * 交上去以后在这台 Mac 上改过、还没更新过去的句数。
+         */changedSentences: UInt32, errorCode: String?,
+        /**
+         * 档案馆里这件素材的网址。
+         */webUrl: String?) {
+        self.sessionId = sessionId
+        self.eventId = eventId
+        self.eventTitle = eventTitle
+        self.eventStartMs = eventStartMs
+        self.channelTitle = channelTitle
+        self.state = state
+        self.filedAtEpoch = filedAtEpoch
+        self.signerName = signerName
+        self.languages = languages
+        self.speakers = speakers
+        self.marks = marks
+        self.changedSentences = changedSentences
+        self.errorCode = errorCode
+        self.webUrl = webUrl
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiCityFiling: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiCityFiling: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiCityFiling {
+        return
+            try FfiCityFiling(
+                sessionId: FfiConverterString.read(from: &buf),
+                eventId: FfiConverterString.read(from: &buf),
+                eventTitle: FfiConverterString.read(from: &buf),
+                eventStartMs: FfiConverterInt64.read(from: &buf),
+                channelTitle: FfiConverterOptionString.read(from: &buf),
+                state: FfiConverterTypeFfiCityFilingState.read(from: &buf),
+                filedAtEpoch: FfiConverterOptionInt64.read(from: &buf),
+                signerName: FfiConverterString.read(from: &buf),
+                languages: FfiConverterSequenceTypeFfiCityLanguageCount.read(from: &buf),
+                speakers: FfiConverterUInt32.read(from: &buf),
+                marks: FfiConverterUInt32.read(from: &buf),
+                changedSentences: FfiConverterUInt32.read(from: &buf),
+                errorCode: FfiConverterOptionString.read(from: &buf),
+                webUrl: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiCityFiling, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.sessionId, into: &buf)
+        FfiConverterString.write(value.eventId, into: &buf)
+        FfiConverterString.write(value.eventTitle, into: &buf)
+        FfiConverterInt64.write(value.eventStartMs, into: &buf)
+        FfiConverterOptionString.write(value.channelTitle, into: &buf)
+        FfiConverterTypeFfiCityFilingState.write(value.state, into: &buf)
+        FfiConverterOptionInt64.write(value.filedAtEpoch, into: &buf)
+        FfiConverterString.write(value.signerName, into: &buf)
+        FfiConverterSequenceTypeFfiCityLanguageCount.write(value.languages, into: &buf)
+        FfiConverterUInt32.write(value.speakers, into: &buf)
+        FfiConverterUInt32.write(value.marks, into: &buf)
+        FfiConverterUInt32.write(value.changedSentences, into: &buf)
+        FfiConverterOptionString.write(value.errorCode, into: &buf)
+        FfiConverterOptionString.write(value.webUrl, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiCityFiling_lift(_ buf: RustBuffer) throws -> FfiCityFiling {
+    return try FfiConverterTypeFfiCityFiling.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiCityFiling_lower(_ value: FfiCityFiling) -> RustBuffer {
+    return FfiConverterTypeFfiCityFiling.lower(value)
+}
+
+
+public struct FfiCityFilingOptions: Equatable, Hashable {
+    public var speakerNames: Bool
+    public var marks: Bool
+    /**
+     * 停止录音后自己去交;关着就等人按。
+     */
+    public var automatic: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(speakerNames: Bool, marks: Bool,
+        /**
+         * 停止录音后自己去交;关着就等人按。
+         */automatic: Bool) {
+        self.speakerNames = speakerNames
+        self.marks = marks
+        self.automatic = automatic
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiCityFilingOptions: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiCityFilingOptions: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiCityFilingOptions {
+        return
+            try FfiCityFilingOptions(
+                speakerNames: FfiConverterBool.read(from: &buf),
+                marks: FfiConverterBool.read(from: &buf),
+                automatic: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiCityFilingOptions, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.speakerNames, into: &buf)
+        FfiConverterBool.write(value.marks, into: &buf)
+        FfiConverterBool.write(value.automatic, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiCityFilingOptions_lift(_ buf: RustBuffer) throws -> FfiCityFilingOptions {
+    return try FfiConverterTypeFfiCityFilingOptions.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiCityFilingOptions_lower(_ value: FfiCityFilingOptions) -> RustBuffer {
+    return FfiConverterTypeFfiCityFilingOptions.lower(value)
+}
+
+
+public struct FfiCityLanguageCount: Equatable, Hashable {
+    public var language: String
+    public var sentences: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(language: String, sentences: UInt32) {
+        self.language = language
+        self.sentences = sentences
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiCityLanguageCount: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiCityLanguageCount: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiCityLanguageCount {
+        return
+            try FfiCityLanguageCount(
+                language: FfiConverterString.read(from: &buf),
+                sentences: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiCityLanguageCount, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.language, into: &buf)
+        FfiConverterUInt32.write(value.sentences, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiCityLanguageCount_lift(_ buf: RustBuffer) throws -> FfiCityLanguageCount {
+    return try FfiConverterTypeFfiCityLanguageCount.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiCityLanguageCount_lower(_ value: FfiCityLanguageCount) -> RustBuffer {
+    return FfiConverterTypeFfiCityLanguageCount.lower(value)
+}
+
+
+/**
+ * 给旧设备扫的码。
+ */
+public struct FfiCityLoginOffer: Equatable, Hashable {
+    /**
+     * 二维码与「复制码」的内容。
+     */
+    public var code: String
+    public var server: String
+    public var cityName: String
+    public var expiresAtEpoch: Int64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * 二维码与「复制码」的内容。
+         */code: String, server: String, cityName: String, expiresAtEpoch: Int64) {
+        self.code = code
+        self.server = server
+        self.cityName = cityName
+        self.expiresAtEpoch = expiresAtEpoch
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiCityLoginOffer: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiCityLoginOffer: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiCityLoginOffer {
+        return
+            try FfiCityLoginOffer(
+                code: FfiConverterString.read(from: &buf),
+                server: FfiConverterString.read(from: &buf),
+                cityName: FfiConverterString.read(from: &buf),
+                expiresAtEpoch: FfiConverterInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiCityLoginOffer, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.code, into: &buf)
+        FfiConverterString.write(value.server, into: &buf)
+        FfiConverterString.write(value.cityName, into: &buf)
+        FfiConverterInt64.write(value.expiresAtEpoch, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiCityLoginOffer_lift(_ buf: RustBuffer) throws -> FfiCityLoginOffer {
+    return try FfiConverterTypeFfiCityLoginOffer.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiCityLoginOffer_lower(_ value: FfiCityLoginOffer) -> RustBuffer {
+    return FfiConverterTypeFfiCityLoginOffer.lower(value)
 }
 
 
@@ -8986,6 +9854,206 @@ public func FfiConverterTypeCoreError_lower(_ value: CoreError) -> RustBuffer {
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 
+public enum FfiCityFilingState: Equatable, Hashable {
+
+    /**
+     * 选好了活动,还没交。
+     */
+    case bound
+    /**
+     * 该交了:正在发,或者在等网络。
+     */
+    case queued
+    case filed
+    case failed
+    case withdrawn
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiCityFilingState: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiCityFilingState: FfiConverterRustBuffer {
+    typealias SwiftType = FfiCityFilingState
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiCityFilingState {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        case 1: return .bound
+
+        case 2: return .queued
+
+        case 3: return .filed
+
+        case 4: return .failed
+
+        case 5: return .withdrawn
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: FfiCityFilingState, into buf: inout [UInt8]) {
+        switch value {
+
+
+        case .bound:
+            writeInt(&buf, Int32(1))
+
+
+        case .queued:
+            writeInt(&buf, Int32(2))
+
+
+        case .filed:
+            writeInt(&buf, Int32(3))
+
+
+        case .failed:
+            writeInt(&buf, Int32(4))
+
+
+        case .withdrawn:
+            writeInt(&buf, Int32(5))
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiCityFilingState_lift(_ buf: RustBuffer) throws -> FfiCityFilingState {
+    return try FfiConverterTypeFfiCityFilingState.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiCityFilingState_lower(_ value: FfiCityFilingState) -> RustBuffer {
+    return FfiConverterTypeFfiCityFilingState.lower(value)
+}
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+
+public enum FfiCityLoginStep: Equatable, Hashable {
+
+    /**
+     * 还没有新消息,接着问。
+     */
+    case waiting
+    /**
+     * 旧设备扫过了:两边各显示这个六位数,等那一边的人确认。
+     */
+    case check(digits: String
+    )
+    case done(account: FfiCityAccount
+    )
+    /**
+     * 那一边点了「不一致」,或者这一边取消了。
+     */
+    case cancelled
+    /**
+     * 五分钟没办成,码作废了。
+     */
+    case expired
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiCityLoginStep: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiCityLoginStep: FfiConverterRustBuffer {
+    typealias SwiftType = FfiCityLoginStep
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiCityLoginStep {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        case 1: return .waiting
+
+        case 2: return .check(digits: try FfiConverterString.read(from: &buf)
+        )
+
+        case 3: return .done(account: try FfiConverterTypeFfiCityAccount.read(from: &buf)
+        )
+
+        case 4: return .cancelled
+
+        case 5: return .expired
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: FfiCityLoginStep, into buf: inout [UInt8]) {
+        switch value {
+
+
+        case .waiting:
+            writeInt(&buf, Int32(1))
+
+
+        case let .check(digits):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(digits, into: &buf)
+
+
+        case let .done(account):
+            writeInt(&buf, Int32(3))
+            FfiConverterTypeFfiCityAccount.write(account, into: &buf)
+
+
+        case .cancelled:
+            writeInt(&buf, Int32(4))
+
+
+        case .expired:
+            writeInt(&buf, Int32(5))
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiCityLoginStep_lift(_ buf: RustBuffer) throws -> FfiCityLoginStep {
+    return try FfiConverterTypeFfiCityLoginStep.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiCityLoginStep_lower(_ value: FfiCityLoginStep) -> RustBuffer {
+    return FfiConverterTypeFfiCityLoginStep.lower(value)
+}
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+
 public enum FfiDocumentKind: Equatable, Hashable {
 
     case transcript
@@ -10992,6 +12060,102 @@ fileprivate struct FfiConverterOptionTypeFfiBackupRestored: FfiConverterRustBuff
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeFfiCityAccount: FfiConverterRustBuffer {
+    typealias SwiftType = FfiCityAccount?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeFfiCityAccount.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeFfiCityAccount.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeFfiCityChannel: FfiConverterRustBuffer {
+    typealias SwiftType = FfiCityChannel?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeFfiCityChannel.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeFfiCityChannel.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeFfiCityEvent: FfiConverterRustBuffer {
+    typealias SwiftType = FfiCityEvent?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeFfiCityEvent.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeFfiCityEvent.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeFfiCityFiling: FfiConverterRustBuffer {
+    typealias SwiftType = FfiCityFiling?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeFfiCityFiling.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeFfiCityFiling.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeFfiInviteDigestRoute: FfiConverterRustBuffer {
     typealias SwiftType = FfiInviteDigestRoute?
 
@@ -11252,6 +12416,106 @@ fileprivate struct FfiConverterSequenceTypeFfiBackupHeld: FfiConverterRustBuffer
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeFfiBackupHeld.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeFfiCityChannel: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiCityChannel]
+
+    public static func write(_ value: [FfiCityChannel], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiCityChannel.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiCityChannel] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiCityChannel]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiCityChannel.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeFfiCityEvent: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiCityEvent]
+
+    public static func write(_ value: [FfiCityEvent], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiCityEvent.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiCityEvent] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiCityEvent]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiCityEvent.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeFfiCityFiling: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiCityFiling]
+
+    public static func write(_ value: [FfiCityFiling], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiCityFiling.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiCityFiling] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiCityFiling]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiCityFiling.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeFfiCityLanguageCount: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiCityLanguageCount]
+
+    public static func write(_ value: [FfiCityLanguageCount], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiCityLanguageCount.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiCityLanguageCount] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiCityLanguageCount]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiCityLanguageCount.read(from: &buf))
         }
         return seq
     }
@@ -12215,6 +13479,63 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_transcript_user_replace_text() != 59963) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_city_account() != 27993) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_city_bind_session() != 31740) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_city_calendar() != 23694) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_city_channels() != 4701) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_city_file_session() != 32491) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_city_filing() != 13322) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_city_filing_options() != 2366) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_city_filings() != 64139) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_city_login_begin() != 29930) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_city_login_cancel() != 12351) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_city_login_poll() != 24077) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_city_login_with_recovery_key() != 48689) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_city_pending_sessions() != 9277) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_city_sign_out() != 19466) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_city_topic_channel() != 43235) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_city_update_filing() != 4880) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_city_withdraw_filing() != 23187) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_set_city_filing_options() != 33348) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_set_city_topic_channel() != 61346) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_apply_edit() != 55668) {
