@@ -25,8 +25,10 @@ struct EditorRoute: Equatable, Sendable {
     }
 }
 
+/// Where the window's content area can be. Starting a recording is not one
+/// of them: it happens on Home (`MainNavigationStore.select(tab:)` sends
+/// `MainTab.record` there).
 enum MainRoute: Equatable {
-    case record
     case home
     case topics
     case trash
@@ -35,8 +37,6 @@ enum MainRoute: Equatable {
 
     var tab: MainTab {
         switch self {
-        case .record:
-            return .record
         case .home:
             return .home
         case .topics:

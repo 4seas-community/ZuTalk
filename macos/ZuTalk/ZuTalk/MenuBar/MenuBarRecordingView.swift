@@ -10,16 +10,14 @@ struct MenuBarRecordingView: View {
     let recentLines: [TranscriptLine]
     @ObservedObject private var subtitleOverlay = SubtitleOverlayCoordinator.shared
     @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
+    /// Lag and halted languages reach the sentence through these.
+    @ObservedObject private var livePresentation = ActiveBilingualTranscriptStore.shared.livePresentation
+    @ObservedObject private var commands = CaptureCommandCenter.shared
+    @ObservedObject private var network = NetworkReachability.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.md) {
             header
-            CaptureStateLabel(
-                captureState: info.captureState,
-                remoteHealth: info.remoteHealth,
-                projectionState: info.projectionState,
-                haltedTranslationLanguages: capture.haltedTranslationLanguages
-            )
             // App 缩在菜单栏里录音时,这里是唯一看得见的表面 ——
             // 这场录音在不在直播给别人看,必须在这里也说。
             LiveShareStatusLabel(sessionId: capture.sessionId)
@@ -32,8 +30,12 @@ struct MenuBarRecordingView: View {
         }
     }
 
+    /// Dot, clock, and the recording bar's own sentence. This row used to
+    /// carry a language-or-engine label, with a second row under it wording
+    /// the state of the captions a third way.
     private var header: some View {
-        HStack(spacing: Spacing.sm) {
+        let status = statusLine
+        return HStack(spacing: Spacing.sm) {
             PulsingDot(
                 color: info.isPaused ? Color.accentGold : Color.accentOrange,
                 size: 8
@@ -41,18 +43,28 @@ struct MenuBarRecordingView: View {
             Text(info.elapsedString)
                 .font(Font.monoNum12)
                 .foregroundColor(info.isPaused ? Color.accentGold : Color.textPrimary)
-            Text("·")
-                .font(Font.mono10)
-                .foregroundColor(Color.textMuted)
-            Text(info.languagePair)
-                .font(Font.mono10)
-                .foregroundColor(Color.textSecondary)
+            Text(status.text)
+                .font(Font.sans12)
+                .foregroundColor(status.reportsTextProblem ? Color.accentGold : Color.textSecondary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(Text(
-            "\(info.isPaused ? String(localized: "capture.state.paused") : String(localized: "capture.state.recording")), \(info.elapsedString)"
-        ))
+        .accessibilityLabel(Text("\(status.text), \(info.elapsedString)"))
+        .accessibilityIdentifier("menu-bar.recording-status")
+    }
+
+    /// The same value the recording bar shows. The seconds of a stop are
+    /// left out: nothing here ticks while it finishes.
+    private var statusLine: RecordingBarModel.StatusLine {
+        var model = RecordingBarModel.current(
+            capture: capture,
+            commands: commands,
+            networkOffline: network.isOffline
+        )
+        model.stoppingSeconds = nil
+        return model.statusLine
     }
 
     private var transcriptSection: some View {
@@ -94,12 +106,14 @@ struct MenuBarRecordingView: View {
         )
     }
 
+    /// Opens the recording in progress, which is what it now says. It used
+    /// to say "Open topic".
     private var openNotebookButton: some View {
         Button(action: openNotebook) {
             HStack(spacing: Spacing.sm) {
                 Image(systemName: "rectangle.stack.fill")
                     .font(.system(size: 11, weight: .semibold))
-                Text(String(localized: "menubar.recording.open_notebook"))
+                Text(String(localized: "menubar.recording.open_recording"))
                     .font(Font.sans11Medium)
                 Spacer(minLength: 0)
                 Image(systemName: "arrow.up.right")
@@ -115,7 +129,7 @@ struct MenuBarRecordingView: View {
             )
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(String(localized: "menubar.recording.open_notebook")))
+        .accessibilityLabel(Text(String(localized: "menubar.recording.open_recording")))
     }
 
     private var floatingSubtitleButton: some View {
@@ -123,9 +137,7 @@ struct MenuBarRecordingView: View {
             HStack(spacing: Spacing.sm) {
                 Image(systemName: subtitleOverlay.isPresented ? "pip.exit" : "pip.enter")
                     .font(.system(size: 11, weight: .semibold))
-                Text(String(localized: subtitleOverlay.isPresented
-                    ? "menubar.recording.close_subtitles"
-                    : "menubar.recording.open_subtitles"))
+                Text(captionWindowTitle)
                     .font(Font.sans11Medium)
                 Spacer(minLength: 0)
                 Image(systemName: "arrow.up.right")
@@ -142,11 +154,17 @@ struct MenuBarRecordingView: View {
         }
         .buttonStyle(.plain)
         .help(String(localized: "capture.toolbar.subtitle_window.hint"))
-        .accessibilityLabel(Text(String(localized: subtitleOverlay.isPresented
-            ? "menubar.recording.close_subtitles"
-            : "menubar.recording.open_subtitles")))
+        .accessibilityLabel(Text(captionWindowTitle))
         .accessibilityHint(Text(String(localized: "capture.toolbar.subtitle_window.hint")))
         .accessibilityIdentifier(AccessibilityID.menuBarSubtitleButton)
+    }
+
+    /// The caption window under the one name it has everywhere, the same
+    /// words as in the recording bar's ⋯.
+    private var captionWindowTitle: String {
+        String(localized: subtitleOverlay.isPresented
+            ? "recording_bar.more.caption_window.close"
+            : "recording_bar.more.caption_window.open")
     }
 
     private func openNotebook() {
@@ -171,23 +189,38 @@ struct MenuBarRecordingView: View {
 @MainActor
 private struct MenuBarRecordingControls: View {
     @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
+    @ObservedObject private var livePresentation = ActiveBilingualTranscriptStore.shared.livePresentation
     @ObservedObject private var commands = CaptureCommandCenter.shared
+    @ObservedObject private var network = NetworkReachability.shared
+
+    /// Why the text needs attention and whether Reconnect helps, exactly as
+    /// the line under the main window's header puts it. The note about a
+    /// paused connection still being billed stays in the main window: it
+    /// asks for nothing that can be done from here.
+    private var attention: RecordingAttention? {
+        guard let attention = RecordingAttention.current(
+            capture: capture,
+            networkOffline: network.isOffline
+        ), attention.kind != .pausedWhileBilling else { return nil }
+        return attention
+    }
 
     var body: some View {
+        let attention = self.attention
         VStack(alignment: .leading, spacing: Spacing.xs) {
-            if let problem = capture.transcriptionProblemText {
-                Label(problem, systemImage: "exclamationmark.triangle.fill")
+            if let attention {
+                Label(attention.message, systemImage: attention.icon)
                     .font(Font.sans11Medium)
                     .foregroundColor(Color.accentGold)
                     .fixedSize(horizontal: false, vertical: true)
             }
             HStack(spacing: Spacing.xs) {
-                if capture.canRestartTranscription || capture.isRestartingTranscription {
+                if attention?.offersReconnect == true {
                     control(
                         title: String(localized: "capture.toolbar.restart_transcription"),
                         systemImage: "arrow.clockwise",
                         tint: Color.accentGold,
-                        disabled: capture.isRestartingTranscription
+                        disabled: attention?.isReconnecting == true
                     ) { commands.restartTranscription() }
                 }
                 control(

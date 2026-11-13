@@ -1,9 +1,12 @@
 // DevicesSettingsSection.swift
-// 设置 › 设备:自己的几台 Mac 之间同步。打开、给这台起名、看有哪几台、
-// 加一台、移除一台。
+// 「设置 › 账号」里的「我的设备」:自己的几台 Mac 之间同步。打开、给这台起名、
+// 看有哪几台、加一台、移除一台。
 //
 // 配对是两台之间的事:一台生成配对码,另一台输入。两个动作放在同一张卡片里,
 // 因为用户站在哪台 Mac 前面都一样找得到。
+//
+// 备份不在这里了,在「高级 › 备份与恢复」;但备份码、恢复码仍然粘贴到这里的
+// 那一栏(和配对码同一个输入框),所以备份那边的说明指回这里。
 
 import SwiftUI
 
@@ -17,12 +20,10 @@ struct DevicesSettingsSection: View {
     @State private var confirmingLeave = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Spacing.lg) {
-            SettingsPageHeader(
-                title: String(localized: "settings.section.devices_name"),
-                subtitle: String(localized: "settings.devices.subtitle")
-            )
-
+        SettingsGroup(
+            title: String(localized: "settings.account.devices_title"),
+            subtitle: String(localized: "settings.account.devices_subtitle")
+        ) {
             SettingsCard(title: String(localized: "settings.devices.sync_title")) {
                 SettingsRow(
                     String(localized: "settings.devices.enable"),
@@ -92,15 +93,13 @@ struct DevicesSettingsSection: View {
 
                 SettingsCard(
                     title: String(localized: "settings.devices.add_title"),
-                    subtitle: String(localized: "settings.devices.add_subtitle")
+                    subtitle: String(localized: "settings.account.devices_add_subtitle")
                 ) {
                     inviteRow
                     SettingsRowDivider()
                     joinRow
                 }
             }
-
-            BackupSettingsCard()
 
             SettingsCard(
                 title: String(localized: "nearby.settings.title"),
@@ -141,10 +140,10 @@ struct DevicesSettingsSection: View {
             SettingsCard(title: String(localized: "settings.devices.how")) {
                 SettingsFullRow {
                     VStack(alignment: .leading, spacing: Spacing.sm) {
-                        Label(String(localized: "settings.devices.how_direct"), systemImage: "arrow.left.arrow.right")
-                        Label(String(localized: "settings.devices.how_audio"), systemImage: "waveform.slash")
-                        Label(String(localized: "settings.devices.how_recording"), systemImage: "record.circle")
-                        Label(String(localized: "settings.devices.how_code"), systemImage: "key")
+                        howRow("settings.devices.how_direct", systemImage: "arrow.left.arrow.right")
+                        howRow("settings.devices.how_audio", systemImage: "waveform.slash")
+                        howRow("settings.devices.how_recording", systemImage: "record.circle")
+                        howRow("settings.devices.how_code", systemImage: "key")
                     }
                     .font(Font.sans12)
                     .foregroundColor(Color.textSecondary)
@@ -321,5 +320,16 @@ struct DevicesSettingsSection: View {
     static func countdown(until end: Date, now: Date) -> String {
         let remaining = max(0, Int(end.timeIntervalSince(now)))
         return String(format: "%d:%02d", remaining / 60, remaining % 60)
+    }
+}
+
+/// One line of 「它怎么工作」. The symbols differ in width, so each sits in
+/// a column of its own and the sentences start on one edge.
+private func howRow(_ key: String.LocalizationValue, systemImage: String) -> some View {
+    HStack(alignment: .firstTextBaseline, spacing: Spacing.sm) {
+        Image(systemName: systemImage)
+            .frame(width: 18)
+            .accessibilityHidden(true)
+        Text(String(localized: key))
     }
 }

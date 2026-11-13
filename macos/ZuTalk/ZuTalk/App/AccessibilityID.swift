@@ -48,7 +48,7 @@ enum AccessibilityID {
 
     // MARK: - Main Window
 
-    /// 开始录音(录音中是「正在录音」)。
+    /// 侧栏的「正在录音」:只在录音进行中出现,点它回到那场录音。
     static let mainTabRecord = "main.tab.record"
 
     /// 全部录音。

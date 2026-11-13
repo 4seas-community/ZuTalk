@@ -1,32 +1,34 @@
 // CitySettingsSection.swift
-// 设置 › 城:登录你在城里的身份,之后录完的文字稿可以以你的名义交到那座城的
-// 档案馆。登录、交什么、录完以后什么时候交、已经交出去的,都在这一节。
-//
-// 没登录时,这是 App 里唯一出现「城」的地方。
+// 城在设置里的两块,都在「账号」一节:
+//   - `CityIdentitySection`:最上面。没登录是登录卡,登录了是「这是谁」和退出登录。
+//     ZuTalk 的登录就是这个身份(Zu 的身份,现在也就是城的扫码登录);身份体系
+//     还在定,这里只把现成的登录放到账号该在的位置,怎么登录没有动。
+//   - `CityArchiveSection`:最下面,登录以后才有。交什么、录完以后什么时候交、
+//     已经交出去的。
 //
 // 登录交过来的是这个人在城里的整把钥匙(城没有「只能交素材」的小钥匙),
 // 所以登录和退出两处都照实写:这台 Mac 能以你的名义做什么、退出删掉的是什么。
+// 登录卡上那一句只说登录今天能做的事,不替还没定的东西许诺。
 
 import SwiftUI
 
-struct CitySettingsSection: View {
+struct CityIdentitySection: View {
     @ObservedObject private var city = CityStore.shared
     @State private var confirmingSignOut = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Spacing.lg) {
-            SettingsPageHeader(
-                title: String(localized: "settings.section.city_name"),
-                subtitle: String(localized: "city.settings.subtitle")
-            )
-
+        Group {
             if let account = city.account {
-                accountCard(account)
-                whatCard
-                whenCard
-                CityFilingsCard()
+                SettingsGroup(title: String(localized: "settings.account.identity_title")) {
+                    accountCard(account)
+                }
             } else {
-                CitySignInCard()
+                SettingsGroup(
+                    title: String(localized: "settings.account.signin_title"),
+                    subtitle: String(localized: "settings.account.signin_detail")
+                ) {
+                    CitySignInCard()
+                }
             }
         }
         // 走开就不等了:码只有五分钟,留一个没人看的码在后台等没有意义。
@@ -83,6 +85,25 @@ struct CitySettingsSection: View {
                 description: String(localized: "city.settings.stored_detail")
             ) {
                 EmptyView()
+            }
+        }
+    }
+}
+
+/// 「城的档案馆」:交什么、录完以后什么时候交、已经交出去的每一场。
+/// 没登录就什么都没有 —— 没登录的人在设置里看不到「档案馆」三个字。
+struct CityArchiveSection: View {
+    @ObservedObject private var city = CityStore.shared
+
+    var body: some View {
+        if city.account != nil {
+            SettingsGroup(
+                title: String(localized: "city.archive.title"),
+                subtitle: String(localized: "city.archive.subtitle")
+            ) {
+                whatCard
+                whenCard
+                CityFilingsCard()
             }
         }
     }

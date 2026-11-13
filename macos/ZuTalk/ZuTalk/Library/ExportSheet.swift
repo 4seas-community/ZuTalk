@@ -65,8 +65,9 @@ struct ExportSheet: View {
 
     private func performExport() {
         guard let core = CoreClient.shared.core else {
-            lastError = "Core not initialized"
-            ToastCenter.shared.error("Core not initialized")
+            // These three used to be English whatever the interface language.
+            lastError = String(localized: "export.toast.not_ready")
+            ToastCenter.shared.error(String(localized: "export.toast.not_ready"))
             return
         }
 
@@ -113,7 +114,10 @@ struct ExportSheet: View {
                             detail: "\(detail)\n\(size)"
                         )
                     } else {
-                        ToastCenter.shared.success("Exported", detail: size)
+                        ToastCenter.shared.success(
+                            String(localized: "export.toast.done"),
+                            detail: size
+                        )
                     }
                     dismiss()
                 }
@@ -121,7 +125,10 @@ struct ExportSheet: View {
                 DispatchQueue.main.async {
                     isExporting = false
                     lastError = String(format: String(localized: "export.error_format"), "\(error)")
-                    ToastCenter.shared.error("Export failed", detail: "\(error)")
+                    ToastCenter.shared.error(
+                        String(localized: "export.toast.failed"),
+                        detail: "\(error)"
+                    )
                 }
             }
         }

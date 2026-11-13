@@ -15,13 +15,13 @@ struct RecordingInfo: Equatable {
     var remoteRealtimeEnabled: Bool = false
     var elapsed: TimeInterval = 0
     var isPaused: Bool = false
-    var languagePair: String = "EN · 中"
-    var engine: String = "SONIOX RT5"
+    /// Which languages, or the engine's code name when there are none. Kept
+    /// for the store that fills it in; no surface shows it any more — the
+    /// popover says the recording bar's sentence instead.
+    var languagePair: String = ""
     var captureState: NotebookCaptureState = .recording
     var remoteHealth: NotebookRemoteHealth = .off
     var projectionState: NotebookProjectionState = .pending
-    var latencyMs: Int = 187
-    var encryptionLabel: String = "AES-256"
 
     var elapsedString: String {
         let h = Int(elapsed) / 3600
@@ -72,10 +72,12 @@ struct ProcessingInfo: Equatable {
     var progress: Double
     var sessionId: String
 
+    /// In the interface language. Both were hard-coded English, shown as
+    /// such in every locale.
     var label: String {
         switch stage {
-        case .transcribing: return "Transcribing…"
-        case .completed: return "Ready in Home"
+        case .transcribing: return String(localized: "menubar.processing.refining")
+        case .completed: return String(localized: "menubar.processing.ready")
         }
     }
 

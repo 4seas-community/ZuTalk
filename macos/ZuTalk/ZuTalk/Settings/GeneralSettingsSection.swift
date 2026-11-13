@@ -113,7 +113,7 @@ struct GeneralSettingsSection: View {
         VStack(alignment: .leading, spacing: Spacing.lg) {
             SettingsPageHeader(
                 title: String(localized: "settings.section.general_name"),
-                subtitle: String(localized: "settings.general.subtitle")
+                subtitle: String(localized: "settings.general.subtitle_plain")
             )
 
             SettingsCard {
@@ -184,7 +184,7 @@ struct GeneralSettingsSection: View {
                 SettingsRowDivider()
                 SettingsRow(
                     String(localized: "settings.general.welcome_again"),
-                    description: String(localized: "settings.general.welcome_again_hint")
+                    description: String(localized: "settings.general.welcome_again_hint_plain")
                 ) {
                     Button(String(localized: "settings.general.welcome_again_button")) {
                         MainNavigationStore.shared.presentOnboarding()

@@ -128,6 +128,52 @@ struct SettingsFullRow<Content: View>: View {
     }
 }
 
+// MARK: - SettingsGroup
+//
+// 一节里的一件事:一个看得清的标题,下面是它的几张卡片。
+//
+// 设置并成三节以后,「账号」一页里有身份、出字、设备、档案馆四件事,「高级」里
+// 有五件。卡片自己的小标题(9 号等宽)分不出这一层,人往下翻的时候找不到
+// 「我的设备从哪开始」。这一层的标题用正文的字号,四五十岁的人不用凑近看。
+
+struct SettingsGroup<Content: View>: View {
+    let title: String
+    let subtitle: String?
+    @ViewBuilder let content: () -> Content
+
+    init(
+        title: String,
+        subtitle: String? = nil,
+        @ViewBuilder content: @escaping () -> Content
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.content = content
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.md) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(Font.sans14Medium)
+                    .foregroundColor(Color.textPrimary)
+                    .accessibilityAddTraits(.isHeader)
+                if let subtitle, subtitle.isEmpty == false {
+                    Text(subtitle)
+                        .font(Font.sans12)
+                        .foregroundColor(Color.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: Spacing.lg) {
+                content()
+            }
+        }
+    }
+}
+
 // MARK: - 便捷:设置段落的顶部标题(取代原来的 SettingsSectionHeader,让 spacing 统一)
 
 struct SettingsPageHeader: View {

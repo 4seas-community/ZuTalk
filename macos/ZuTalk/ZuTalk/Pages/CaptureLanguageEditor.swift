@@ -1,14 +1,15 @@
 import SwiftUI
 
 /// The languages a recording captures: chosen, ordered, and — with three —
-/// marked as spoken in the room or only read as subtitles.
+/// marked as spoken, or as one everything is also translated into.
 ///
-/// Home's quick-record popover and a topic's recording settings each had
-/// their own copy of this, and only one of them could mark a language as
-/// subtitles only.
+/// Home's start card and a topic's recording settings each had their own
+/// copy of this, and only one of them could mark a language as translated
+/// into only.
 struct CaptureLanguageEditor: View {
     @ObservedObject var editor: NotebookCaptureProfileEditorModel
     @State private var languageSearch = ""
+    @FocusState private var isSearchFocused: Bool
 
     private var languages: [(code: String, label: String)] {
         NotebookCaptureSupportedLanguages.options()
@@ -42,6 +43,7 @@ struct CaptureLanguageEditor: View {
                     text: $languageSearch
                 )
                 .textFieldStyle(.plain)
+                .focused($isSearchFocused)
                 .accessibilityLabel(Text(String(localized: "capture.settings.languages.search")))
             }
             .padding(.horizontal, Spacing.sm)
@@ -59,6 +61,10 @@ struct CaptureLanguageEditor: View {
                 languageSearchResults
             }
         }
+        // On Home this editor sits under the Start button, the window's
+        // default action: Return while searching for a language must not
+        // start a recording.
+        .preference(key: TextEntryFocusKey.self, value: isSearchFocused)
     }
 
     private var languageSearchResults: some View {
@@ -135,27 +141,20 @@ struct CaptureLanguageEditor: View {
         .montereyScrollIndicators(true)
     }
 
-    /// With three languages, what the room speaks decides how many
-    /// connections a recording opens. Says which languages are listened for,
-    /// which are only read, and what that costs.
+    /// With three languages, says which are spoken and which everything is
+    /// also translated into. How many connections that opens is the app's
+    /// business, not something to weigh before recording
+    /// (docs/product/interface-layers.md keeps that number in Settings).
     private var languageRolesSummary: some View {
         let subtitleOnly = draft.subtitleOnlyLanguages
         let spoken = draft.selectedLanguages.filter { subtitleOnly.contains($0) == false }
-        let connections = NotebookCaptureToolbar.remoteLaneCount(
-            selectedLanguages: draft.selectedLanguages,
-            subtitleOnlyLanguages: subtitleOnly
-        )
         let text = subtitleOnly.isEmpty
-            ? String(
-                format: String(localized: "capture.settings.languages.roles.all_spoken"),
-                connections
-            )
-            : String(
-                format: String(localized: "capture.settings.languages.roles.some_subtitle_only"),
+            ? String(localized: "capture.languages.roles.all_spoken")
+            : RecordingPlanSentence.spacedBetweenScripts(String(
+                format: String(localized: "capture.languages.roles.some_translated_format"),
                 ListFormatter.localizedString(byJoining: spoken.map(languageLabel)),
-                ListFormatter.localizedString(byJoining: subtitleOnly.map(languageLabel)),
-                connections
-            )
+                ListFormatter.localizedString(byJoining: subtitleOnly.map(languageLabel))
+            ))
         return Label(text, systemImage: "captions.bubble")
             .font(.system(size: 10))
             .foregroundColor(.textTertiary)
@@ -166,31 +165,25 @@ struct CaptureLanguageEditor: View {
     private func selectedLanguageChip(language: String, index: Int) -> some View {
         let subtitleOnly = draft.subtitleOnlyLanguages.contains(language)
         let spokenCount = draft.selectedLanguages.count - draft.subtitleOnlyLanguages.count
+        let role = RecordingPlanSentence.spacedBetweenScripts(String(
+            format: String(
+                localized: subtitleOnly
+                    ? "capture.languages.role.translated_format"
+                    : "capture.languages.role.spoken_format"
+            ),
+            languageLabel(language)
+        ))
         return HStack(spacing: 2) {
             if draft.selectedLanguages.count > 2 {
                 languageChipButton(
                     systemImage: subtitleOnly ? "captions.bubble" : "waveform",
-                    label: String(
-                        format: String(
-                            localized: subtitleOnly
-                                ? "capture.settings.languages.role.subtitle_only"
-                                : "capture.settings.languages.role.spoken"
-                        ),
-                        languageLabel(language)
-                    ),
+                    label: role,
                     disabled: subtitleOnly == false && spokenCount <= 1,
                     action: {
                         editor.scheduleUpdate(.setSubtitleOnly(language, subtitleOnly == false))
                     }
                 )
-                .help(String(
-                    format: String(
-                        localized: subtitleOnly
-                            ? "capture.settings.languages.role.subtitle_only"
-                            : "capture.settings.languages.role.spoken"
-                    ),
-                    languageLabel(language)
-                ))
+                .help(role)
             }
             Text(languageLabel(language))
                 .font(.captionMedium)

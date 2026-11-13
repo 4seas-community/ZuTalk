@@ -13,50 +13,47 @@ private func L(_ key: String.LocalizationValue) -> String {
 
 // MARK: - Settings Section
 //
-// 五节,按「这件事关于什么」分,不按「这是哪种技术」分:
-//   通用     — 语言、外观、更新、整理标记(可选的语言模型)、快捷键
-//   实时字幕 — 让字幕跑起来的东西:Soniox 密钥或社区邀请
-//   共享     — 此刻在外面的链接,一处看清、随手撤销
-//   设备     — 自己的几台 Mac 之间同步
-//   城       — 登录你在城里的身份,把文字稿交到那座城的档案馆
-// 主题自己的设置(语言、专有词与背景、音频保留)在主题里,不在这里。
+// 三节,按「人会去哪找」分(docs/product/interface-layers.md):
+//   账号 — 你是谁、出字靠什么、你的设备、城的档案馆
+//   通用 — 界面语言、外观、更新、快捷键
+//   高级 — 自己的密钥、正在分享的链接、备份与恢复、诊断信息;大多数人用不到
+// 0.8.1 是五节(通用 / 实时字幕 / 共享 / 设备 / 城),一个人要认识八样像身份的
+// 东西,散在五处。功能一样没少,只是挪到人会去找的地方。
+// 主题自己的选项(语言、专有词与背景、音频保留)在主题里,不在这里。
 
 enum SettingsSection: String, CaseIterable, Identifiable {
+    case account = "Account"
     case general = "General"
-    case captions = "Captions"
-    case sharing = "Sharing"
-    case devices = "Devices"
-    case city = "City"
+    case advanced = "Advanced"
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
+        case .account:  return String(localized: "settings.section.account_name")
         case .general:  return String(localized: "settings.section.general_name")
-        case .captions: return String(localized: "settings.section.captions_name")
-        case .sharing:  return String(localized: "settings.section.sharing_name")
-        case .devices:  return String(localized: "settings.section.devices_name")
-        case .city:     return String(localized: "settings.section.city_name")
+        case .advanced: return String(localized: "settings.section.advanced_name")
         }
     }
 
     var icon: String {
         switch self {
+        case .account:  return "person.crop.circle"
         case .general:  return "gearshape"
-        case .captions: return "captions.bubble"
-        case .sharing:  return "square.and.arrow.up"
-        case .devices:  return "laptopcomputer"
-        case .city:     return "building.columns"
+        case .advanced: return "wrench.and.screwdriver"
         }
     }
 }
 
-/// 从别处点进设置时要落在哪一节 —— 比如「添加自己的密钥」直接落到实时字幕。
+/// 从别处点进设置时要落在哪一节。没人指定的时候是「账号」:人打开设置,
+/// 最常找的是「我是谁、出字靠什么」。
 @MainActor
 final class SettingsRouter: ObservableObject {
     static let shared = SettingsRouter()
-    @Published var section: SettingsSection = .general
-    private init() {}
+    static let defaultSection: SettingsSection = .account
+    @Published var section: SettingsSection = SettingsRouter.defaultSection
+    /// The app uses `shared`; tests make their own to see a fresh one.
+    init() {}
 }
 
 // MARK: - FullSettingsView
@@ -82,6 +79,9 @@ struct FullSettingsView: View {
                     .frame(maxWidth: 760, alignment: .topLeading)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
             }
+            // 换一节就回到顶上。三节都比以前长,「用自己的密钥…」从「账号」
+            // 中间跳到「高级」时,不该落在「高级」的中间。
+            .id(router.section)
             .background(Color.bgRoot)
         }
         .background(Color.bgRoot)
@@ -138,6 +138,8 @@ struct FullSettingsView: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(router.section == section ? .isSelected : [])
+        .accessibilityIdentifier("settings.section.\(section.rawValue.lowercased())")
     }
 
     // MARK: - Content
@@ -145,20 +147,15 @@ struct FullSettingsView: View {
     @ViewBuilder
     private var content: some View {
         switch router.section {
+        case .account:
+            AccountSettingsSection()
         case .general:
             VStack(alignment: .leading, spacing: Spacing.xl) {
                 GeneralSettingsSection()
-                ProviderSettingsView(scope: .languageModel)
                 ShortcutsSection()
             }
-        case .captions:
-            ProviderSettingsView(scope: .captions)
-        case .sharing:
-            SharingSettingsSection()
-        case .devices:
-            DevicesSettingsSection()
-        case .city:
-            CitySettingsSection()
+        case .advanced:
+            AdvancedSettingsSection()
         }
     }
 }

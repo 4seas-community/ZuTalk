@@ -91,10 +91,12 @@ final class MainNavigationStore: ObservableObject {
     /// A recording opened straight onto its notes or its files, from a list
     /// row's menu. The recording page applies it once it has loaded.
     @Published var pendingSessionSurface: SessionSupplementarySurface?
-    /// The topic the Record page should have chosen when it opens — set by a
-    /// topic's own Record button, which leads there instead of starting a
-    /// second way.
+    /// The topic Home's start card should have chosen — set by a topic's own
+    /// Record button, which leads there instead of starting a second way.
     @Published var recordTopicPreselection: String?
+    /// Counts the times something asked for the place recordings start. Home
+    /// brings its start card back into view when this moves.
+    @Published private(set) var startCardRequests = 0
 
     private let activeNotebookIDProvider: @MainActor () -> String?
     private let captureRouteContextProvider: @MainActor () -> CaptureRouteContext
@@ -138,7 +140,14 @@ final class MainNavigationStore: ObservableObject {
         recordSnapshot()
     }
 
-    func select(tab: MainTab) {
+    func select(tab requested: MainTab) {
+        // Recording starts on Home. Whatever still asks for a record page —
+        // the caption window with nothing recording, a topic's Record
+        // button — lands there with the start card in view.
+        let tab: MainTab = requested == .record ? .home : requested
+        if requested == .record {
+            startCardRequests += 1
+        }
         let route = route(for: tab)
         if tab != .editor {
             activePrimaryTab = tab
@@ -152,21 +161,24 @@ final class MainNavigationStore: ObservableObject {
         select(tab: .config)
     }
 
-    /// Settings, landing on one section — "add your own key" lands on live
-    /// captions rather than wherever settings was last left.
+    /// Settings, landing on one section — "sign in" lands on Account
+    /// rather than wherever settings was last left.
     func openSettings(section: SettingsSection) {
         SettingsRouter.shared.section = section
         select(tab: .config)
     }
 
-    /// The one place recordings start, with a topic already chosen.
+    /// The one place recordings start — Home's start card — with a topic
+    /// already chosen and the options open, so the person sees where the
+    /// recording is going.
     func openRecordPage(topicID: String?) {
         recordTopicPreselection = topicID
         select(tab: .record)
     }
 
-    /// The recording in progress, reached from the sidebar's first item. The
-    /// sidebar keeps that item highlighted while its live page is open.
+    /// The recording in progress, reached from the item the sidebar shows
+    /// above Home while something records. `.record` as the primary tab means
+    /// only this: that item stays highlighted while its live page is open.
     func openLiveRecording() {
         activePrimaryTab = .record
         openActiveNotebookForCapture()
@@ -489,6 +501,7 @@ final class MainNavigationStore: ObservableObject {
         activeEditorRoute = nil
         activeNotebookTitle = nil
         pendingEditorView = .notes
+        recordTopicPreselection = nil
         didAttemptLaunchNotebookRestore = false
         recordSnapshot()
     }
@@ -570,7 +583,9 @@ final class MainNavigationStore: ObservableObject {
         if let core = coreProvider() {
             if let quickCaptureNotebook = try? core.getQuickCaptureNotebook(),
                quickCaptureNotebook.id == notebookID {
-                return String(localized: "home.record.unfiled")
+                // A recording in no topic is just a recording: its page sits
+                // under Home, and is named for it until the path arrives.
+                return String(localized: "sidebar.home")
             }
             if let notebooks = try? core.listNotebooks(),
                let title = notebooks.first(where: { $0.id == notebookID })?.title {
@@ -583,9 +598,7 @@ final class MainNavigationStore: ObservableObject {
 
     private func route(for tab: MainTab) -> MainRoute {
         switch tab {
-        case .record:
-            return .record
-        case .home:
+        case .home, .record:
             return .home
         case .topics:
             return .topics

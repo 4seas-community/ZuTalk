@@ -21,12 +21,58 @@ struct RecordingBarModel: Equatable {
         case stopped
     }
 
+    /// The one sentence beside the clock (docs/product/interface-layers.md).
+    ///
+    /// Whether the text was keeping up used to be said in six places, in two
+    /// wordings, with two thresholds for "behind". It is said here once:
+    /// first that the recording itself is fine, then what the text is doing.
+    /// The cases are in priority order; `RecordingBarModel.statusLine` picks
+    /// the first that applies.
+    enum StatusLine: Equatable {
+        case stopping(seconds: Int?)
+        case pausing
+        case resuming
+        case paused
+        case offline
+        case textStopped
+        case someTextStopped
+        case textBehind
+        case connectingText
+        case audioOnly
+        case recording
+
+        /// The text needs a look. The recording itself never does here: a
+        /// recording in trouble stops, and the bar goes with it.
+        var reportsTextProblem: Bool {
+            switch self {
+            case .offline, .textStopped, .someTextStopped, .textBehind:
+                return true
+            case .stopping, .pausing, .resuming, .paused, .connectingText, .audioOnly, .recording:
+                return false
+            }
+        }
+
+        var text: String {
+            switch self {
+            case .stopping(let seconds): return RecordingBarContent.savingText(seconds: seconds)
+            case .pausing: return String(localized: "capture.state.pausing")
+            case .resuming: return String(localized: "capture.state.resuming")
+            case .paused: return String(localized: "capture.state.paused")
+            case .offline: return String(localized: "recording_bar.status.offline")
+            case .textStopped: return String(localized: "recording_bar.status.text_stopped")
+            case .someTextStopped: return String(localized: "recording_bar.status.some_text_stopped")
+            case .textBehind: return String(localized: "recording_bar.status.text_behind")
+            case .connectingText: return String(localized: "recording_bar.status.connecting")
+            case .audioOnly: return String(localized: "recording_bar.status.audio_only")
+            case .recording: return String(localized: "recording_bar.status.recording")
+            }
+        }
+    }
+
     var phase: Phase
     var elapsed: TimeInterval
     /// Whole seconds since Stop began, while it is still finishing.
     var stoppingSeconds: Int? = nil
-    /// The topic the recording files into; nil for one that belongs to none.
-    var topicTitle: String?
     var captions: Captions
     /// Captions were asked for and this Mac has no network. Said instead of
     /// "connecting", which reads as the service being slow.
@@ -35,8 +81,10 @@ struct RecordingBarModel: Equatable {
     var lagNotice: String?
     /// Why captions are not running normally, in words someone can act on.
     var problem: String?
-    var canReconnect: Bool
-    var isReconnecting: Bool
+    /// "Thai translation stopped": a language whose text ended while the
+    /// rest carries on. Remote health stays "live" through this, so it is
+    /// carried separately.
+    var haltedNotice: String? = nil
     var canPause: Bool
     var canStop: Bool
     var stopNeedsRetry: Bool
@@ -44,11 +92,41 @@ struct RecordingBarModel: Equatable {
     /// Paused while a provider connection is still open and billing.
     var pausedWhileBilling: Bool
 
+    var statusLine: StatusLine {
+        switch phase {
+        case .stopping: return .stopping(seconds: stoppingSeconds)
+        case .pausing: return .pausing
+        case .resuming: return .resuming
+        case .paused: return .paused
+        case .recording: break
+        }
+        if offline { return .offline }
+        if captions == .stopped { return .textStopped }
+        if captions == .partial || haltedNotice != nil { return .someTextStopped }
+        if lagNotice != nil { return .textBehind }
+        if captions == .connecting { return .connectingText }
+        if captions == .off { return .audioOnly }
+        return .recording
+    }
+
+    /// The exact version of what the sentence rounds off — which language,
+    /// how many seconds, why — for whoever hovers to find out. Nil when the
+    /// sentence already says all there is.
+    var statusDetail: String? {
+        if phase == .stopping { return nil }
+        if offline { return String(localized: "network.offline.recording_banner") }
+        if let problem { return problem }
+        if let haltedNotice { return haltedNotice }
+        if let lagNotice {
+            return lagNotice + "\n" + String(localized: "capture.toolbar.translation_lag_hint")
+        }
+        return nil
+    }
+
     @MainActor
     static func current(
         capture: ActiveBilingualTranscriptStore,
         commands: CaptureCommandCenter,
-        topicTitle: String?,
         networkOffline: Bool,
         now: Date = Date(),
         clock: Date = Date()
@@ -78,13 +156,11 @@ struct RecordingBarModel: Equatable {
             stoppingSeconds: phase == .stopping
                 ? capture.stoppingSince.map { max(0, Int(clock.timeIntervalSince($0))) }
                 : nil,
-            topicTitle: topicTitle,
             captions: captions,
             offline: networkOffline && captions != .off,
             lagNotice: capture.liveLagNotice,
             problem: capture.transcriptionProblemText,
-            canReconnect: capture.canRestartTranscription,
-            isReconnecting: capture.isRestartingTranscription,
+            haltedNotice: RecordingAttention.haltedNotice(capture.haltedTranslationLanguages),
             canPause: commands.canPause,
             canStop: commands.canStop,
             stopNeedsRetry: capture.stopRecoveryRequired,
@@ -94,22 +170,80 @@ struct RecordingBarModel: Equatable {
     }
 }
 
+/// What ⋯ holds: the second layer of the bar, one click in. These were
+/// buttons on the live page, shown to everyone all the time; the page is now
+/// only the transcript.
+struct RecordingBarMenu: Equatable {
+    var captionWindowOpen = false
+    var readingLayout: NotebookTranscriptPresentationMode = .bilingualColumns
+    /// 「给观众看字幕…」 is offered here whenever the bar's own button for it
+    /// is not showing, so the panel is always reachable from one of the two.
+    var offersAudienceCaptions = false
+    /// The recording the audience panel is for.
+    var sessionId: String?
+    /// The title its viewers see.
+    var audienceTitle = ""
+
+    @MainActor
+    static func current(
+        capture: ActiveBilingualTranscriptStore,
+        captionWindowOpen: Bool,
+        readingLayout: TranscriptReadingLayout,
+        audienceTitle: String,
+        showsShareButton: Bool
+    ) -> RecordingBarMenu {
+        RecordingBarMenu(
+            captionWindowOpen: captionWindowOpen,
+            readingLayout: readingLayout.mode(for: capture.notebookId),
+            offersAudienceCaptions: offersAudienceCaptions(
+                sessionId: capture.sessionId,
+                showsShareButton: showsShareButton
+            ),
+            sessionId: capture.sessionId,
+            audienceTitle: audienceTitle
+        )
+    }
+
+    /// Exactly one of the two entries to the audience panel is on screen:
+    /// the bar's button for someone hosting, this item for everyone else.
+    static func offersAudienceCaptions(sessionId: String?, showsShareButton: Bool) -> Bool {
+        sessionId != nil && showsShareButton == false
+    }
+}
+
 struct RecordingBarActions {
     var openRecording: () -> Void
     var mark: () -> Void
     var togglePause: () -> Void
     var stop: () -> Void
-    var reconnect: () -> Void
+    var toggleCaptionWindow: () -> Void = {}
+    var setReadingLayout: (NotebookTranscriptPresentationMode) -> Void = { _ in }
+    var copyText: () -> Void = {}
 
     @MainActor
     static var live: RecordingBarActions {
         let commands = CaptureCommandCenter.shared
+        let capture = ActiveBilingualTranscriptStore.shared
         return RecordingBarActions(
             openRecording: { MainNavigationStore.shared.openActiveNotebookForCapture() },
             mark: { commands.mark() },
             togglePause: { commands.togglePause() },
             stop: { commands.stop() },
-            reconnect: { commands.restartTranscription() }
+            toggleCaptionWindow: { WindowCommandRouter.shared.requestToggleSubtitleOverlay() },
+            setReadingLayout: { layout in
+                guard let notebookId = capture.notebookId else { return }
+                TranscriptReadingLayout.shared.choose(layout, for: notebookId)
+            },
+            copyText: {
+                guard let sessionId = capture.sessionId else { return }
+                // Copying reads the stored rows; words that are all still
+                // speculative leave nothing to copy, which is not a failure.
+                guard capture.timeline.frame.hasStoredRows else {
+                    ToastCenter.shared.info(String(localized: "capture.transcript.copy_empty_hint"))
+                    return
+                }
+                NotebookTranscriptCopy.copy(sessionId: sessionId, isLive: true)
+            }
         )
     }
 }
@@ -128,15 +262,23 @@ struct RecordingBar: View {
     @ObservedObject private var clock = ActiveBilingualTranscriptStore.shared.clock
     @ObservedObject private var commands = CaptureCommandCenter.shared
     @ObservedObject private var network = NetworkReachability.shared
+    /// Flipping 「我在主持活动」 shows or hides the audience button at once.
+    @ObservedObject private var hostMode = HostMode.shared
+    @ObservedObject private var share = ShareActivityStore.shared
+    @ObservedObject private var nearby = NearbyStore.shared
+    @ObservedObject private var subtitleOverlay = SubtitleOverlayCoordinator.shared
+    @ObservedObject private var readingLayout = TranscriptReadingLayout.shared
     @State private var topicTitle: String?
     @State private var markTick = Date()
 
     var body: some View {
         if capture.isCaptureActive {
             HStack(spacing: Spacing.sm) {
-                // Sharing this recording live starts here, and while it is
-                // live the same button says so and how many are watching.
-                if let sessionId = capture.sessionId {
+                // A hosting tool: showing this recording to an audience
+                // starts here, and while it is live the same button says so
+                // and how many are watching. Everyone else finds the same
+                // panel under ⋯.
+                if let sessionId = capture.sessionId, showsShareButton {
                     LiveShareButton(
                         sessionId: sessionId,
                         title: LiveShareText.title(topic: topicTitle),
@@ -163,15 +305,29 @@ struct RecordingBar: View {
         }
     }
 
+    private var showsShareButton: Bool {
+        guard let sessionId = capture.sessionId else { return false }
+        return LiveShareButton.showsInBar(
+            hostMode: hostMode,
+            live: LiveShareButton.isLive(sessionId: sessionId, share: share, nearby: nearby)
+        )
+    }
+
     private func content(clock: Date) -> RecordingBarContent {
         RecordingBarContent(
             model: .current(
                 capture: capture,
                 commands: commands,
-                topicTitle: topicTitle,
                 networkOffline: network.isOffline,
                 now: markTick,
                 clock: clock
+            ),
+            menu: .current(
+                capture: capture,
+                captionWindowOpen: subtitleOverlay.isPresented,
+                readingLayout: readingLayout,
+                audienceTitle: LiveShareText.title(topic: topicTitle),
+                showsShareButton: showsShareButton
             ),
             actions: .live,
             compact: compact
@@ -196,37 +352,32 @@ struct RecordingBar: View {
     }
 }
 
+/// Dot, clock, one sentence; then Mark, Pause, Stop and ⋯.
+///
+/// The bar used to carry the phase, the topic's name, a captions chip, a lag
+/// label and a Reconnect button beside these — nineteen controls on screen
+/// while recording, counting the live page's. What is left is what someone
+/// needs to record, glance, and stop.
 struct RecordingBarContent: View {
     let model: RecordingBarModel
+    var menu = RecordingBarMenu()
     let actions: RecordingBarActions
     var compact = false
+    @State private var showsAudiencePanel = false
 
     var body: some View {
-        row(compact: compact)
-    }
-
-    private func row(compact: Bool) -> some View {
         HStack(spacing: Spacing.sm) {
-            identity(compact: compact)
+            identity
             // Where this recording will be filed, when a city event was chosen.
             CityDestinationChip(compact: compact)
-            if compact == false {
-                captionsChip
-                if let lag = model.lagNotice {
-                    Label(lag, systemImage: "tortoise.fill")
-                        .font(.bodySM)
-                        .foregroundColor(.signalAmber)
-                        .lineLimit(1)
-                        .help(String(localized: "capture.toolbar.translation_lag_hint"))
-                }
-            }
-            controls(compact: compact)
+            controls
         }
         .fixedSize()
     }
 
-    private func identity(compact: Bool) -> some View {
-        Button(action: actions.openRecording) {
+    private var identity: some View {
+        let status = model.statusLine
+        return Button(action: actions.openRecording) {
             HStack(spacing: Spacing.sm) {
                 PulsingDot(color: dotColor, size: 8)
                     .accessibilityHidden(true)
@@ -234,14 +385,13 @@ struct RecordingBarContent: View {
                     .font(.monoNum12)
                     .foregroundColor(.textPrimary)
                 if compact == false {
-                    Text(phaseText)
+                    // Capped so a long translation cannot push the controls
+                    // out of the header; the tooltip always has it in full.
+                    Text(status.text)
                         .font(.bodySM)
-                        .foregroundColor(model.phase == .recording ? .textSecondary : .signalAmber)
-                    Text(model.topicTitle ?? String(localized: "recording_bar.unfiled"))
-                        .font(.bodyMedium)
-                        .foregroundColor(.textPrimary)
+                        .foregroundColor(status.reportsTextProblem ? .signalAmber : .textSecondary)
                         .lineLimit(1)
-                        .frame(maxWidth: 220, alignment: .leading)
+                        .frame(maxWidth: Self.sentenceMaxWidth, alignment: .leading)
                 }
             }
             .padding(.horizontal, Spacing.sm + 2)
@@ -250,44 +400,23 @@ struct RecordingBarContent: View {
             .clipShape(Capsule())
         }
         .buttonStyle(.plain)
-        .help(String(localized: "recording_bar.open_hint"))
+        .help(statusHelp)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(accessibilitySummary))
-        .accessibilityHint(Text(String(localized: "recording_bar.open_hint")))
+        .accessibilityHint(Text(String(localized: "recording_bar.status.open_hint")))
         .accessibilityIdentifier("recording-bar.open")
     }
 
-    private var captionsChip: some View {
-        Label(captionsText, systemImage: captionsIcon)
-            .font(.bodySM)
-            .foregroundColor(captionsColor)
-            .lineLimit(1)
-            .help(model.offline
-                ? String(localized: "network.offline.recording_banner")
-                : model.problem ?? captionsText)
-    }
-
-    private func controls(compact: Bool) -> some View {
+    private var controls: some View {
         HStack(spacing: Spacing.xs) {
-            if model.canReconnect || model.isReconnecting {
-                barButton(
-                    title: String(localized: "capture.toolbar.restart_transcription"),
-                    systemImage: model.isReconnecting ? "hourglass" : "arrow.clockwise",
-                    tint: .signalAmber,
-                    compact: compact,
-                    disabled: model.isReconnecting,
-                    help: String(localized: "capture.toolbar.restart_transcription_hint"),
-                    action: actions.reconnect
-                )
-                .accessibilityIdentifier("recording-bar.reconnect")
-            }
+            // No Reconnect here: when the text needs it, the line under the
+            // header (`RecordingProblemBanner`) says why and offers it once.
             barButton(
                 title: model.justMarked
                     ? String(localized: "recording_bar.marked")
                     : String(localized: "recording_bar.mark"),
                 systemImage: model.justMarked ? "bookmark.fill" : "bookmark",
                 tint: model.justMarked ? .brandAccent : .textPrimary,
-                compact: compact,
                 disabled: model.phase == .stopping,
                 help: String(localized: "recording_bar.mark_hint"),
                 action: actions.mark
@@ -301,30 +430,122 @@ struct RecordingBarContent: View {
                     ? "play.fill"
                     : "pause.fill",
                 tint: .textPrimary,
-                compact: compact,
                 disabled: model.canPause == false,
                 help: String(localized: "recording_bar.pause_hint"),
                 action: actions.togglePause
             )
             .accessibilityIdentifier("recording-bar.pause")
             barButton(
-                title: model.phase == .stopping
-                    ? String(localized: "capture.state.saving_recording")
-                    : model.stopNeedsRetry
-                        ? String(localized: "recording_bar.retry_stop")
-                        : String(localized: "capture.toolbar.stop"),
-                // Not the reconnect button's ↻: the two can sit side by side,
-                // and a bare "Retry" beside "Reconnect" does not say which.
+                // While it saves, the sentence beside the clock says so and
+                // counts; the button only shows that it is busy.
+                title: model.stopNeedsRetry && model.phase != .stopping
+                    ? String(localized: "recording_bar.retry_stop")
+                    : String(localized: "capture.toolbar.stop"),
+                // Not a bare ↻: that reads as reconnecting, which is the
+                // banner's action, not this button's.
                 systemImage: model.phase == .stopping
                     ? "hourglass"
                     : model.stopNeedsRetry ? "exclamationmark.arrow.circlepath" : "stop.fill",
                 tint: .signalRed,
-                compact: compact,
                 disabled: model.canStop == false,
                 help: String(localized: "recording_bar.stop_hint"),
                 action: actions.stop
             )
             .accessibilityIdentifier("recording-bar.stop")
+            moreMenu
+        }
+    }
+
+    /// The caption window, the reading layout and Copy moved here from the
+    /// live page. They stay one click away, where they do not have to be
+    /// understood before pressing Stop.
+    private var moreMenu: some View {
+        moreMenuButton
+            .help(String(localized: "recording_bar.more"))
+            .accessibilityLabel(Text(String(localized: "recording_bar.more")))
+            .accessibilityIdentifier("recording-bar.more")
+            // Anchored here rather than on the audience button: this is the
+            // entry for someone who has no such button. It stays put when the
+            // share starts and the button appears beside the bar.
+            .popover(isPresented: $showsAudiencePanel, arrowEdge: .bottom) {
+                if let sessionId = menu.sessionId {
+                    LiveSharePopover(sessionId: sessionId, title: menu.audienceTitle)
+                }
+            }
+    }
+
+    /// A round button the size of the others. A borderless menu draws its
+    /// own small pop-up button and ignores the label's frame, which left a
+    /// 25 × 14 pt target in the middle of a 30 pt circle; the button style
+    /// (macOS 13) makes the whole label the target. Monterey keeps the
+    /// borderless form inside the same circle.
+    @ViewBuilder
+    private var moreMenuButton: some View {
+        if #available(macOS 13.0, *) {
+            Menu {
+                moreItems
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.bodyMedium)
+                    .foregroundColor(.textPrimary)
+                    .frame(width: 30, height: 30)
+                    .background(Color.textPrimary.opacity(0.1))
+                    .clipShape(Capsule())
+                    .contentShape(Capsule())
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .fixedSize()
+        } else {
+            Menu {
+                moreItems
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.bodyMedium)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .foregroundColor(.textPrimary)
+            .frame(width: 30, height: 30)
+            .background(Color.textPrimary.opacity(0.1))
+            .clipShape(Capsule())
+        }
+    }
+
+    @ViewBuilder
+    private var moreItems: some View {
+        Button(
+            String(localized: menu.captionWindowOpen
+                ? "recording_bar.more.caption_window.close"
+                : "recording_bar.more.caption_window.open"),
+            action: actions.toggleCaptionWindow
+        )
+        .accessibilityIdentifier(AccessibilityID.floatingSubtitleButton)
+        Divider()
+        Picker(
+            String(localized: "capture.transcript.presentation.label"),
+            selection: Binding(
+                get: { menu.readingLayout },
+                set: { actions.setReadingLayout($0) }
+            )
+        ) {
+            Text(String(localized: "capture.transcript.presentation.language_columns"))
+                .tag(NotebookTranscriptPresentationMode.bilingualColumns)
+            Text(String(localized: "capture.transcript.presentation.timeline"))
+                .tag(NotebookTranscriptPresentationMode.sourceTimeline)
+        }
+        .pickerStyle(.inline)
+        .labelsHidden()
+        Divider()
+        Button(String(localized: "recording_bar.more.copy_text"), action: actions.copyText)
+            .accessibilityIdentifier("recording-bar.more.copy")
+        if menu.offersAudienceCaptions {
+            Divider()
+            Button(String(localized: "recording_bar.more.audience")) {
+                showsAudiencePanel = true
+            }
+            .accessibilityIdentifier("recording-bar.more.audience")
         }
     }
 
@@ -332,7 +553,6 @@ struct RecordingBarContent: View {
         title: String,
         systemImage: String,
         tint: Color,
-        compact: Bool,
         disabled: Bool,
         help: String,
         action: @escaping () -> Void
@@ -369,16 +589,6 @@ struct RecordingBarContent: View {
         }
     }
 
-    private var phaseText: String {
-        switch model.phase {
-        case .recording: return String(localized: "capture.state.recording")
-        case .paused: return String(localized: "capture.state.paused")
-        case .pausing: return String(localized: "capture.state.pausing")
-        case .resuming: return String(localized: "capture.state.resuming")
-        case .stopping: return Self.savingText(seconds: model.stoppingSeconds)
-        }
-    }
-
     /// Long recordings take a few seconds to seal; the count says it is
     /// working rather than stuck.
     static func savingText(seconds: Int?) -> String {
@@ -391,43 +601,100 @@ struct RecordingBarContent: View {
         )
     }
 
-    private var captionsText: String {
-        if model.offline { return String(localized: "network.offline.short") }
-        switch model.captions {
-        case .off: return String(localized: "recording_bar.captions.off")
-        case .connecting: return String(localized: "capture.remote.connecting")
-        case .live: return String(localized: "capture.remote.live")
-        case .partial: return String(localized: "capture.remote.degraded")
-        case .stopped: return String(localized: "capture.remote.unavailable")
-        }
-    }
+    /// Wider than the sentence in any of the eight languages today.
+    private static let sentenceMaxWidth: CGFloat = 300
 
-    private var captionsIcon: String {
-        if model.offline { return "wifi.slash" }
-        switch model.captions {
-        case .off: return "mic.fill"
-        case .connecting: return "ellipsis.bubble"
-        case .live: return "captions.bubble.fill"
-        case .partial, .stopped: return "exclamationmark.bubble.fill"
-        }
-    }
-
-    private var captionsColor: Color {
-        if model.offline { return .signalAmber }
-        switch model.captions {
-        case .off, .connecting: return .textSecondary
-        case .live: return .signalGreen
-        case .partial, .stopped: return .signalAmber
-        }
+    /// The sentence never counts seconds or names a language; the tooltip
+    /// does, for whoever wants to know. It leads with the sentence itself,
+    /// which a narrow window does not show at all.
+    private var statusHelp: String {
+        var lines = [model.statusLine.text]
+        if let detail = model.statusDetail { lines.append(detail) }
+        lines.append(String(localized: "recording_bar.status.open_hint"))
+        return lines.joined(separator: "\n")
     }
 
     private var accessibilitySummary: String {
         [
-            phaseText,
+            model.statusLine.text,
             CaptureCommandCenter.clock(model.elapsed),
-            model.topicTitle ?? String(localized: "recording_bar.unfiled"),
-            captionsText,
         ].joined(separator: ", ")
+    }
+}
+
+/// What about the recording's text needs a person, in the words the line
+/// under the header uses: the reason, and whether Reconnect would help. The
+/// menu bar popover says the same thing from here instead of wording it a
+/// second way.
+struct RecordingAttention: Equatable {
+    enum Kind: Equatable {
+        case offline
+        case problem
+        case translationHalted
+        case pausedWhileBilling
+    }
+
+    var kind: Kind
+    var message: String
+    var icon: String
+    /// Offered unless there is no network: the lanes already retry then, and
+    /// pressing it changes nothing.
+    var offersReconnect: Bool
+    var isReconnecting: Bool
+
+    @MainActor
+    static func current(
+        capture: ActiveBilingualTranscriptStore,
+        networkOffline: Bool
+    ) -> RecordingAttention? {
+        // No network explains every caption problem underneath it, and its
+        // remedy is the user's own Wi-Fi, so it is said first.
+        let offline = networkOffline && capture.remoteHealth != .off
+        let kind: Kind
+        let message: String
+        if offline {
+            kind = .offline
+            message = String(localized: "network.offline.recording_banner")
+        } else if let problem = capture.transcriptionProblemText {
+            kind = .problem
+            message = problem
+        } else if let halted = haltedNotice(capture.haltedTranslationLanguages) {
+            kind = .translationHalted
+            message = halted + " " + String(localized: "capture.translation.halted.detail")
+        } else if capture.captureState == .paused,
+                  capture.remoteHealth == .live
+                    || capture.remoteHealth == .connecting
+                    || capture.remoteHealth == .degraded {
+            kind = .pausedWhileBilling
+            message = String(localized: "capture.toolbar.pause_billing_detail")
+        } else {
+            return nil
+        }
+        let icon: String
+        if offline {
+            icon = "wifi.slash"
+        } else if capture.captureState == .paused, capture.transcriptionProblemText == nil {
+            icon = "clock.badge.exclamationmark"
+        } else {
+            icon = "exclamationmark.triangle.fill"
+        }
+        return RecordingAttention(
+            kind: kind,
+            message: message,
+            icon: icon,
+            offersReconnect: offline == false
+                && (capture.canRestartTranscription || capture.isRestartingTranscription),
+            isReconnecting: capture.isRestartingTranscription
+        )
+    }
+
+    /// "Thai translation stopped", naming every language it happened to.
+    static func haltedNotice(_ languages: [String]) -> String? {
+        guard languages.isEmpty == false else { return nil }
+        let names = languages
+            .map { Locale.current.localizedString(forLanguageCode: $0) ?? $0.uppercased() }
+            .joined(separator: ", ")
+        return String(format: String(localized: "capture.translation.halted"), names)
     }
 }
 
@@ -440,38 +707,36 @@ struct RecordingProblemBanner: View {
     @ObservedObject private var commands = CaptureCommandCenter.shared
     @ObservedObject private var network = NetworkReachability.shared
 
-    /// No network explains every caption problem underneath it, and its
-    /// remedy is the user's own Wi-Fi, so it is said first and Reconnect is
-    /// not offered: the lanes already retry, and pressing it changes nothing.
-    private var offline: Bool {
-        network.isOffline && capture.remoteHealth != .off
-    }
-
     var body: some View {
-        if capture.isCaptureActive, let message {
+        if capture.isCaptureActive,
+           let attention = RecordingAttention.current(
+               capture: capture,
+               networkOffline: network.isOffline
+           ) {
             HStack(spacing: Spacing.sm) {
-                Image(systemName: icon)
+                Image(systemName: attention.icon)
                     .foregroundColor(.signalAmber)
                     .accessibilityHidden(true)
-                Text(message)
+                Text(attention.message)
                     .font(.bodySM)
                     .foregroundColor(.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: Spacing.md)
-                if offline == false,
-                   capture.canRestartTranscription || capture.isRestartingTranscription {
+                if attention.offersReconnect {
                     Button {
                         commands.restartTranscription()
                     } label: {
                         Label(
                             String(localized: "capture.toolbar.restart_transcription"),
-                            systemImage: capture.isRestartingTranscription ? "hourglass" : "arrow.clockwise"
+                            systemImage: attention.isReconnecting ? "hourglass" : "arrow.clockwise"
                         )
                         .font(.bodyMedium)
                     }
                     .buttonStyle(.bordered)
-                    .disabled(capture.isRestartingTranscription)
+                    .disabled(attention.isReconnecting)
                     .help(String(localized: "capture.toolbar.restart_transcription_hint"))
+                    // The bar's own Reconnect button is gone; this is the one.
+                    .accessibilityIdentifier("recording-bar.reconnect")
                 }
             }
             .padding(.horizontal, Spacing.lg)
@@ -486,37 +751,6 @@ struct RecordingProblemBanner: View {
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("recording-bar.problem")
         }
-    }
-
-    private var message: String? {
-        if offline {
-            return String(localized: "network.offline.recording_banner")
-        }
-        if let problem = capture.transcriptionProblemText {
-            return problem
-        }
-        let halted = capture.haltedTranslationLanguages
-        if halted.isEmpty == false {
-            let names = halted
-                .map { Locale.current.localizedString(forLanguageCode: $0) ?? $0.uppercased() }
-                .joined(separator: ", ")
-            return String(format: String(localized: "capture.translation.halted"), names)
-                + " " + String(localized: "capture.translation.halted.detail")
-        }
-        if capture.captureState == .paused,
-           capture.remoteHealth == .live
-            || capture.remoteHealth == .connecting
-            || capture.remoteHealth == .degraded {
-            return String(localized: "capture.toolbar.pause_billing_detail")
-        }
-        return nil
-    }
-
-    private var icon: String {
-        if offline { return "wifi.slash" }
-        return capture.captureState == .paused && capture.transcriptionProblemText == nil
-            ? "clock.badge.exclamationmark"
-            : "exclamationmark.triangle.fill"
     }
 }
 
@@ -537,7 +771,7 @@ struct CaptionsChoiceChip: View {
             if available {
                 commands.setRealtimeCaptionsEnabled(!commands.realtimeCaptionsEnabled)
             } else {
-                MainNavigationStore.shared.openSettings(section: .captions)
+                MainNavigationStore.shared.openSettings(section: .account)
             }
         } label: {
             Label(

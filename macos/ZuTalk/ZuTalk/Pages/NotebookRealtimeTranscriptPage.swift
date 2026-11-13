@@ -17,7 +17,6 @@ struct NotebookRealtimeTranscriptPage: View {
     var isVisible = true
     @StateObject private var history = NotebookCaptureHistoryStore()
     @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
-    @ObservedObject private var subtitleOverlay = SubtitleOverlayCoordinator.shared
     @ObservedObject private var marks = SessionMarkStore.shared
 
     var body: some View {
@@ -76,21 +75,24 @@ struct NotebookRealtimeTranscriptPage: View {
 
     private var visiblePage: some View {
         VStack(spacing: 0) {
-            if showsCaptureSetup {
-                // Languages and captions for the next recording, and Record.
-                // The settings tab is one click away in the tab bar; a button
-                // here used to open it a second way.
-                HStack(spacing: Spacing.md) {
-                    Spacer(minLength: Spacing.md)
-                    NotebookCaptureToolbar(
-                        notebookId: notebookId,
-                        profileEditor: editor
-                    )
-                    floatingSubtitleButton
+            if showsCaptureSetup, consolePresentation.showsConsole(
+                stopNeedsAttention: capture.stopRecoveryRequired || capture.isAudioDrainDelayed
+            ) {
+                if consolePresentation == .inactiveEditor {
+                    // Captions for the next recording, and Record. The
+                    // settings tab is one click away in the tab bar; a button
+                    // here used to open it a second way.
+                    HStack(spacing: Spacing.md) {
+                        Spacer(minLength: Spacing.md)
+                        NotebookCaptureToolbar(
+                            notebookId: notebookId,
+                            profileEditor: editor
+                        )
+                    }
+                    .padding(.horizontal, Spacing.xl)
+                    .padding(.vertical, Spacing.sm)
+                    .background(Color.bgSunken.opacity(0.42))
                 }
-                .padding(.horizontal, Spacing.xl)
-                .padding(.vertical, Spacing.sm)
-                .background(Color.bgSunken.opacity(0.42))
 
                 NotebookRealtimeCaptureConsole(
                     notebookId: notebookId,
@@ -104,9 +106,22 @@ struct NotebookRealtimeTranscriptPage: View {
         }
     }
 
+    /// While this page's recording is in progress nothing sits above the
+    /// transcript: how the recording and its text are doing is the recording
+    /// bar's one sentence, and the caption window, the reading layout and
+    /// Copy are under its ⋯ (docs/product/interface-layers.md).
+    private var consolePresentation: NotebookRealtimeConsolePresentation {
+        NotebookRealtimeConsolePresentation.resolve(
+            isCaptureActive: capture.isCaptureActive,
+            captureState: capture.captureState,
+            activeNotebookId: capture.notebookId,
+            notebookId: notebookId
+        )
+    }
+
     // The transcript keeps the floor; the rail is where the listener's own
-    // record accumulates beside it. A finished recording with nothing marked
-    // gives the rail's width back to the transcript.
+    // record accumulates beside it. With nothing marked — during the
+    // recording as much as after it — the transcript has the rail's width.
     @ViewBuilder
     private var transcriptAndRail: some View {
         if #available(macOS 13.0, *) {
@@ -135,8 +150,10 @@ struct NotebookRealtimeTranscriptPage: View {
 
     private static let railWidth: CGFloat = 300
 
+    /// The rail used to stand empty beside a live transcript from the first
+    /// second, explaining a shortcut. It now arrives with the first mark.
     private var showsMarksRail: Bool {
-        isMarkingLive || marks.marks.isEmpty == false
+        marks.marks.isEmpty == false
     }
 
     private var historyView: some View {
@@ -207,51 +224,6 @@ struct NotebookRealtimeTranscriptPage: View {
         guard capture.notebookId == notebookId else { return [] }
         return capture.utteranceSpeakerIds
     }
-
-    private var floatingSubtitleButton: some View {
-        let isAvailable = capture.isCaptureActive && capture.notebookId == notebookId
-        let isPresented = subtitleOverlay.isPresented
-        let title = isPresented
-            ? String(localized: "capture.toolbar.subtitle_window.close")
-            : String(localized: "capture.toolbar.subtitle_window.open")
-
-        return Button {
-            WindowCommandRouter.shared.requestToggleSubtitleOverlay()
-        } label: {
-            Image(systemName: isPresented ? "pip.exit" : "pip.enter")
-                .font(.system(size: 12, weight: .semibold))
-                .frame(width: 30, height: 30)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .foregroundColor(isPresented ? .brandAccent : .textPrimary)
-        .background(
-            RoundedRectangle(cornerRadius: Radius.xs)
-                .fill(isPresented ? Color.brandAccent.opacity(0.14) : Color.bgElevated.opacity(0.65))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: Radius.xs)
-                .strokeBorder(
-                    isPresented ? Color.brandAccent.opacity(0.5) : Color.borderGhost.opacity(0.25),
-                    lineWidth: 0.5
-                )
-        )
-        .disabled(isAvailable == false)
-        .opacity(isAvailable ? 1 : 0.45)
-        .help(
-            isAvailable
-                ? String(localized: "capture.toolbar.subtitle_window.hint")
-                : String(localized: "capture.toolbar.subtitle_window.unavailable_hint")
-        )
-        .accessibilityLabel(Text(title))
-        .accessibilityHint(Text(
-            isAvailable
-                ? String(localized: "capture.toolbar.subtitle_window.hint")
-                : String(localized: "capture.toolbar.subtitle_window.unavailable_hint")
-        ))
-        .accessibilityIdentifier(AccessibilityID.floatingSubtitleButton)
-    }
-
 }
 
 /// High-frequency capture configuration. Its bindings target the Notebook's
@@ -274,6 +246,20 @@ enum NotebookRealtimeConsolePresentation: Equatable {
         return captureState == .draining || !captureState.isActive
             ? .drainingSummary
             : .activeRunSummary
+    }
+
+    /// Whether the console has anything to put above the transcript.
+    ///
+    /// A recording in progress has not: the recording bar's sentence is the
+    /// one place its state is said. A stop is the same while it goes
+    /// normally — the bar counts it out — and gets a line here only when it
+    /// needs a person (it failed, or the audio is still being saved).
+    func showsConsole(stopNeedsAttention: Bool) -> Bool {
+        switch self {
+        case .inactiveEditor, .activeElsewhereSummary: return true
+        case .activeRunSummary: return false
+        case .drainingSummary: return stopNeedsAttention
+        }
     }
 }
 
@@ -395,10 +381,6 @@ private struct NotebookAdaptiveSingleMountLayout: Layout {
     }
 }
 
-private func notebookCaptureProviderDisplayName(_ providerId: String) -> String {
-    ProviderCredentialAccount(scope: providerId)?.displayName ?? providerId
-}
-
 /// Soniox realtime language set. Speaker diarization is independent from this
 /// list and applies equally to every language; these codes define the ordered
 /// language lanes for one capture.
@@ -440,7 +422,9 @@ enum NotebookCaptureSupportedLanguages {
             let names = nativeName.caseInsensitiveCompare(localizedName) == .orderedSame
                 ? nativeName
                 : "\(nativeName) · \(localizedName)"
-            return (code, "\(names) · \(code.uppercased())")
+            // No "· TH" after it: a language code is ours, not a word the
+            // person choosing a language knows. Typing one still finds it.
+            return (code, names)
         }
     }
 }
@@ -483,86 +467,38 @@ private struct NotebookRealtimeCaptureConsole: View {
         .accessibilityLabel(Text(String(localized: "capture.realtime.controls.profile_group")))
     }
 
-    /// Keep this row to one thin status line. The transcript itself already
-    /// makes the selected languages evident, so repeating them here adds noise.
+    /// What is left of the active-run row. It used to say the configuration
+    /// was frozen, name the provider and its model, and report captions
+    /// health and lag — all of it either internal or the recording bar's
+    /// sentence a second time. Two things remain, neither about the text:
+    /// that this topic cannot start a recording because another one is
+    /// running, and a stop that needs a person.
     private var activeRunSummary: some View {
-        let profile = capture.profile
-        return HStack(alignment: .center, spacing: Spacing.md) {
-            scopeCopy
+        HStack(alignment: .center, spacing: Spacing.sm) {
             if presentation == .activeElsewhereSummary {
-                Label(
-                    String(localized: "capture.toolbar.active_other_notebook"),
-                    systemImage: "lock.fill"
-                )
-                .font(.captionMedium)
-                .foregroundColor(.textSecondary)
-            } else {
-                summaryChip(
-                    activeRemoteStatus(for: profile),
-                    systemImage: profile.remoteRealtimeEnabled ? "network" : "lock.fill"
-                )
+                Image(systemName: "lock.fill")
+                    .accessibilityHidden(true)
+                Text(String(localized: "capture.toolbar.active_other_notebook"))
+            } else if capture.stopRecoveryRequired {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .accessibilityHidden(true)
+                Text(String(localized: "capture.toast.stop_failed"))
+            } else if capture.isAudioDrainDelayed {
+                Image(systemName: "externaldrive.badge.timemachine")
+                    .accessibilityHidden(true)
+                Text(String(localized: "capture.state.audio_drain_delayed"))
             }
-            Spacer(minLength: Spacing.sm)
-            if presentation == .drainingSummary {
-                HStack(spacing: Spacing.xs) {
-                    if capture.stopRecoveryRequired {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .accessibilityHidden(true)
-                        Text(String(localized: "capture.toast.stop_failed"))
-                    } else if capture.isAudioDrainDelayed {
-                        Image(systemName: "externaldrive.badge.timemachine")
-                            .accessibilityHidden(true)
-                        Text(String(localized: "capture.state.audio_drain_delayed"))
-                    } else {
-                        ProgressView()
-                            .controlSize(.small)
-                        if let since = capture.stoppingSince {
-                            TimelineView(.periodic(from: since, by: 1)) { context in
-                                Text(RecordingBarContent.savingText(
-                                    seconds: Int(context.date.timeIntervalSince(since))
-                                ))
-                            }
-                        } else {
-                            Text(String(localized: "capture.state.draining"))
-                        }
-                    }
-                }
-                .font(.captionMedium)
-                .foregroundColor(.textSecondary)
-                .accessibilityElement(children: .combine)
-            }
+            Spacer(minLength: 0)
         }
+        .font(.captionMedium)
+        .foregroundColor(.textSecondary)
+        .accessibilityElement(children: .combine)
     }
 
     private var inactiveProfileEditor: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
             inactiveProfileControls
         }
-    }
-
-    private var scopeCopy: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Label(scopeTitle, systemImage: capture.isCaptureActive ? "lock.fill" : "record.circle")
-                .font(.captionMedium)
-                .foregroundColor(.textPrimary)
-            Text(scopeDetail)
-                .font(.system(size: 10))
-                .foregroundColor(.textTertiary)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    private var scopeTitle: String {
-        if capture.notebookId == notebookId {
-            return String(localized: "capture.realtime.controls.current_title")
-        }
-        return String(localized: "capture.toolbar.active_other_notebook")
-    }
-
-    private var scopeDetail: String {
-        String(localized: "capture.settings.active_locked")
     }
 
     private var inactiveProfileControls: some View {
@@ -676,45 +612,8 @@ private struct NotebookRealtimeCaptureConsole: View {
         Divider().background(Color.borderGhost.opacity(0.24))
     }
 
-    private func summaryChip(_ title: String, systemImage: String) -> some View {
-        Label(title, systemImage: systemImage)
-            .font(.captionMedium)
-            .foregroundColor(.textPrimary)
-            .padding(.horizontal, Spacing.sm)
-            .frame(minHeight: 28)
-            .background(Color.bgSunken.opacity(0.42))
-            .clipShape(Capsule())
-    }
-
     private func languageLabel(_ code: String) -> String {
         languages.first(where: { $0.code == code })?.label ?? code.uppercased()
-    }
-
-    private var remoteHealthTitle: String {
-        switch capture.remoteHealth {
-        case .off: String(localized: "capture.remote.off")
-        case .connecting: String(localized: "capture.remote.connecting")
-        case .live: String(localized: "capture.remote.live")
-        case .degraded: String(localized: "capture.remote.degraded")
-        case .unavailable: String(localized: "capture.remote.unavailable")
-        }
-    }
-
-    private func activeRemoteStatus(for profile: NotebookCaptureProfileDTO) -> String {
-        guard profile.remoteRealtimeEnabled,
-              let providerId = capture.realtimeProviderId,
-              let modelId = capture.realtimeModelId
-        else { return remoteHealthTitle }
-        let providerName = notebookCaptureProviderDisplayName(providerId)
-        if let lagMs = capture.realtimeLagMs, lagMs >= 1_000 {
-            let lagSeconds = Int((lagMs + 999) / 1_000)
-            let catchingUp = String(
-                format: String(localized: "capture.remote.catching_up"),
-                lagSeconds
-            )
-            return "\(providerName) · \(modelId) · \(catchingUp)"
-        }
-        return "\(providerName) · \(modelId) · \(remoteHealthTitle)"
     }
 
     @ViewBuilder
@@ -798,6 +697,7 @@ private struct NotebookRealtimeHistoryView: View {
     let focusSessionId: String?
     @ObservedObject var history: NotebookCaptureHistoryStore
     @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
+    @ObservedObject private var readingLayout = TranscriptReadingLayout.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var selectedSessionID: String?
     /// Not @State fields: see `LiveFollowTicket`.
@@ -806,8 +706,10 @@ private struct NotebookRealtimeHistoryView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // A way of reading is only offered when there is something to read.
-            if presentedRun != nil {
+            // A way of reading is only offered when there is something to
+            // read — and, while that something is still being recorded, from
+            // the recording bar's ⋯ instead, so this page is all transcript.
+            if let run = presentedRun, run.sessionId != activeSessionID {
                 presentationControl
                 Divider().background(Color.borderGhost.opacity(0.28))
             }
@@ -817,6 +719,12 @@ private struct NotebookRealtimeHistoryView: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(String(localized: "capture.transcript.realtime_accessibility_label")))
         .onDisappear(perform: cancelLiveFollow)
+        // The bar's ⋯ ticks the layout in effect; until someone chooses,
+        // that is the one this page worked out from its recordings.
+        .onAppear { readingLayout.noteDefault(defaultPresentationMode, for: notebookId) }
+        .montereyOnChange(of: defaultPresentationMode) { _, mode in
+            readingLayout.noteDefault(mode, for: notebookId)
+        }
     }
 
     private var availableRuns: [NotebookCaptureHistoryRunDTO] {
@@ -850,19 +758,28 @@ private struct NotebookRealtimeHistoryView: View {
         return capture.sessionId
     }
 
-    private var presentationMode: NotebookTranscriptPresentationMode {
+    /// What this topic's transcript opens in when nobody chose.
+    private var defaultPresentationMode: NotebookTranscriptPresentationMode {
         history.presentationMode(for: notebookId)
+    }
+
+    /// The choice is shared with the recording bar's ⋯ (see
+    /// `TranscriptReadingLayout`); the control below and that menu are two
+    /// entries to it.
+    private var presentationMode: NotebookTranscriptPresentationMode {
+        readingLayout.chosen[notebookId] ?? defaultPresentationMode
     }
 
     private var presentationBinding: Binding<NotebookTranscriptPresentationMode> {
         Binding(
             get: { presentationMode },
-            set: { history.setPresentationMode($0, for: notebookId) }
+            set: { readingLayout.choose($0, for: notebookId) }
         )
     }
 
-    /// Both ways of reading, visible at once. This was a menu whose arrow
-    /// only appeared on hover, labelled with the current choice alone.
+    /// Both ways of reading, visible at once, above a finished transcript.
+    /// This was a menu whose arrow only appeared on hover, labelled with the
+    /// current choice alone.
     private var presentationControl: some View {
         HStack {
             Picker(

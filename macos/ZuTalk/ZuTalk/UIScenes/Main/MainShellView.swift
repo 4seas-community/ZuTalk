@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 struct MainShellView: View {
@@ -94,8 +95,10 @@ struct MainShellView: View {
             Spacer().frame(height: Spacing.md)
 
             VStack(alignment: .leading, spacing: 2) {
-                recordSidebarItem
+                liveRecordingSidebarItem
 
+                // Home is where a recording starts and where recordings are
+                // kept, so it is first; there is no separate Record item.
                 sidebarItem(
                     icon: "waveform",
                     label: String(localized: "sidebar.home"),
@@ -105,13 +108,19 @@ struct MainShellView: View {
                     store.select(tab: .home)
                 }
 
-                sidebarItem(
-                    icon: "folder.fill",
-                    label: String(localized: "sidebar.topics"),
-                    active: store.activePrimaryTab == .topics,
-                    accId: AccessibilityID.mainTabTopics
+                // Topics are optional: the entry appears with the first topic.
+                SidebarTopicsGate(
+                    isCurrent: store.activePrimaryTab == .topics,
+                    refreshOn: store.activeTab
                 ) {
-                    store.select(tab: .topics)
+                    sidebarItem(
+                        icon: "folder.fill",
+                        label: String(localized: "sidebar.topics"),
+                        active: store.activePrimaryTab == .topics,
+                        accId: AccessibilityID.mainTabTopics
+                    ) {
+                        store.select(tab: .topics)
+                    }
                 }
             }
             .padding(.horizontal, Spacing.sm)
@@ -147,21 +156,12 @@ struct MainShellView: View {
         }
     }
 
-    /// 开始录音;录音进行中变成「正在录音」,点它回到那场录音。窗口里
-    /// 开始录音只有这一个入口,所以它排在第一位。
+    /// 录音进行中,侧栏最上面多出「正在录音」,点它回到那场录音 —— 人翻到
+    /// 别的页面以后就靠它回来。没在录的时候不占位置:开始录音在首页。
     @ViewBuilder
-    private var recordSidebarItem: some View {
+    private var liveRecordingSidebarItem: some View {
         if captureActivity.isCaptureActive {
             SidebarLiveRecordingItem(store: store)
-        } else {
-            sidebarItem(
-                icon: "record.circle",
-                label: String(localized: "sidebar.record"),
-                active: store.activePrimaryTab == .record,
-                accId: AccessibilityID.mainTabRecord
-            ) {
-                store.select(tab: .record)
-            }
         }
     }
 
@@ -255,7 +255,7 @@ struct MainShellView: View {
             // could not be filed. Absent when signed out or all is well; its
             // own view, so the window does not follow `CityStore`.
             CitySidebarLine {
-                store.openSettings(section: .city)
+                store.openSettings(section: .account)
             }
 
             if communityInvite.isEnabled, communityInvite.isActive {
@@ -277,6 +277,11 @@ struct MainShellView: View {
             .font(.bodySM)
             .foregroundColor(.textSecondary)
             .frame(minHeight: 36)
+
+            // Who is signed in, or the way to sign in. Last, where a Mac app
+            // keeps its account; its own view, so the window does not follow
+            // `CityStore`.
+            SidebarAccountRow()
         }
         // The update row appears and swaps states on its own schedule; without
         // this the footer would jump under the user's cursor.
@@ -395,12 +400,12 @@ struct MainShellView: View {
 
                 Group {
                     switch activeTab {
-                    case .home:
+                    // `.record` is never the active tab — the navigation
+                    // store sends it to Home, where recordings start.
+                    case .home, .record:
                         HomeView()
                     case .topics:
                         TopicsView()
-                    case .record:
-                        RecordStartPage()
                     case .trash:
                         TrashPage()
                     case .editor:
@@ -449,8 +454,9 @@ struct MainShellView: View {
 
             Spacer(minLength: Spacing.md)
 
-            // The recording in progress — whatever page shows.
-            RecordingBar(compact: width < 980)
+            // The recording in progress — whatever page shows. With its
+            // labels when they fit beside the path, as icons when not.
+            FittingRecordingBar(available: RecordingBarFit.available(headerWidth: width))
         }
         .animation(Motion.panelTransition, value: captureActivity.isCaptureActive)
         .sheet(item: $shareActivity.recordingShareRequest) { request in
@@ -606,12 +612,11 @@ struct MainShellView: View {
 
     private func tabIcon(for tab: MainTab) -> String {
         switch tab {
-        case .home:
-            return "house.fill"
+        case .home, .record:
+            // The same mark as the sidebar's entry: one word, one icon.
+            return "waveform"
         case .topics:
             return "folder.fill"
-        case .record:
-            return "record.circle"
         case .trash:
             return "trash"
         case .editor:
@@ -625,12 +630,10 @@ struct MainShellView: View {
 
     private func tabTitle(for tab: MainTab) -> String {
         switch tab {
-        case .home:
+        case .home, .record:
             return String(localized: "sidebar.home")
         case .topics:
             return String(localized: "sidebar.topics")
-        case .record:
-            return String(localized: "sidebar.record")
         case .trash:
             return String(localized: "sidebar.trash")
         case .editor:
@@ -642,6 +645,141 @@ struct MainShellView: View {
         case .config:
             return String(localized: "sidebar.tab.settings")
         }
+    }
+}
+
+/// Whether there is a topic at all — the one fact the sidebar needs about
+/// the library. It counts on appearing and whenever the library says it
+/// changed, so the window never has to follow the library's own stores.
+@MainActor
+final class SidebarTopicPresence: ObservableObject {
+    @Published private(set) var hasTopics = false
+
+    private let countTopics: @MainActor () -> Int?
+    private var libraryChanges: AnyCancellable?
+
+    /// `countTopics` answers nil when the library cannot be read; what was
+    /// known before then stands.
+    init(
+        center: NotificationCenter = .default,
+        countTopics: @escaping @MainActor () -> Int? = {
+            guard let core = CoreClient.shared.core,
+                  let topics = try? core.listNotebooks()
+            else { return nil }
+            return topics.filter { $0.deletedAt == nil }.count
+        }
+    ) {
+        self.countTopics = countTopics
+        refresh()
+        // The app posts this from the main thread; hopping to the main queue
+        // anyway keeps a stray background post from touching the count.
+        libraryChanges = center.publisher(for: .zutalkSessionUpdated)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.refresh() }
+    }
+
+    func refresh() {
+        guard let count = countTopics() else { return }
+        let hasTopics = count > 0
+        if self.hasTopics != hasTopics {
+            self.hasTopics = hasTopics
+        }
+    }
+
+    /// The Topics entry shows once there is a topic. It also stays while the
+    /// Topics page is the one open — deleting the last topic leaves the
+    /// person on that page, and the sidebar must still say where they are.
+    nonisolated static func showsTopics(hasTopics: Bool, isCurrent: Bool) -> Bool {
+        hasTopics || isCurrent
+    }
+}
+
+/// Shows the sidebar's Topics entry only when `SidebarTopicPresence` says so.
+/// Its own view so the count is this row's business, not the window's.
+private struct SidebarTopicsGate<Entry: View>: View {
+    let isCurrent: Bool
+    /// Anything that changes when the person moves around the window; the
+    /// count is read again then, in case a topic arrived by a path that
+    /// posted no notification.
+    let refreshOn: MainTab
+    @ViewBuilder let entry: () -> Entry
+    @StateObject private var presence = SidebarTopicPresence()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if SidebarTopicPresence.showsTopics(
+                hasTopics: presence.hasTopics,
+                isCurrent: isCurrent
+            ) {
+                entry()
+            }
+        }
+        .onAppear { presence.refresh() }
+        .montereyOnChange(of: refreshOn) { _, _ in presence.refresh() }
+    }
+}
+
+/// Whether the recording bar keeps its labels.
+///
+/// It used to turn to icons below a fixed window width. The bar's own width
+/// is not fixed, though: with the hosting tools showing it is some 300 pt
+/// wider in German or French than in Chinese without them, and a threshold
+/// right for one clipped the other. So the labelled bar is measured, and the
+/// labels go only when it does not fit.
+enum RecordingBarFit {
+    /// Kept for the path on the leading side — topic › recording — which
+    /// truncates, but should not be squeezed to nothing.
+    static let pathReserve: CGFloat = 260
+
+    static func available(headerWidth: CGFloat) -> CGFloat {
+        max(0, headerWidth - pathReserve)
+    }
+
+    /// `fullWidth` is 0 until measured, and while nothing records.
+    static func isCompact(fullWidth: CGFloat, available: CGFloat) -> Bool {
+        fullWidth > available
+    }
+}
+
+private struct RecordingBarFullWidthKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+/// The recording bar, labelled when that fits in `available`.
+///
+/// A second, hidden bar with its labels is laid out at its natural size
+/// behind the visible one, only to be measured: the visible bar cannot say
+/// how wide it would be with labels while it is showing icons.
+private struct FittingRecordingBar: View {
+    let available: CGFloat
+    @State private var fullWidth: CGFloat = 0
+
+    var body: some View {
+        RecordingBar(compact: RecordingBarFit.isCompact(fullWidth: fullWidth, available: available))
+            .background(
+                RecordingBar(compact: false)
+                    .fixedSize()
+                    .background(
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: RecordingBarFullWidthKey.self,
+                                value: proxy.size.width
+                            )
+                        }
+                    )
+                    .hidden()
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true),
+                alignment: .trailing
+            )
+            .onPreferenceChange(RecordingBarFullWidthKey.self) { width in
+                // Whole points: a sub-point wobble must not flip the bar.
+                let rounded = width.rounded(.up)
+                if rounded != fullWidth { fullWidth = rounded }
+            }
     }
 }
 

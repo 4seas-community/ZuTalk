@@ -35,7 +35,7 @@ enum MenuBarStatusItemIcon {
     static let processing: NSImage = {
         let image = NSImage(
             systemSymbolName: "arrow.triangle.2.circlepath",
-            accessibilityDescription: "Processing"
+            accessibilityDescription: String(localized: "menubar.processing.refining")
         ) ?? NSImage()
         return fitted(image, isTemplate: true)
     }()
@@ -45,21 +45,21 @@ enum MenuBarStatusItemIcon {
     static let micDenied: NSImage = paletteIcon(
         symbolName: "mic.slash.fill",
         color: signalOrange,
-        accessibilityDescription: "Microphone permission denied"
+        accessibilityDescription: String(localized: "menubar.suppressed.privacy.title")
     )
 
     /// Recording dot, full brightness. Pulse alternates this with `recordingDim`.
     static let recording: NSImage = paletteIcon(
         symbolName: "record.circle.fill",
         color: signalOrange,
-        accessibilityDescription: "Recording"
+        accessibilityDescription: String(localized: "recording_bar.status.recording")
     )
 
     /// Recording dot, dimmed (half-brightness). Drives the pulse trough.
     static let recordingDim: NSImage = paletteIcon(
         symbolName: "record.circle.fill",
         color: signalOrange.withAlphaComponent(0.45),
-        accessibilityDescription: "Recording"
+        accessibilityDescription: String(localized: "recording_bar.status.recording")
     )
 
     /// Paused recording — same hue as recording but a `pause.circle.fill`
@@ -67,7 +67,7 @@ enum MenuBarStatusItemIcon {
     static let recordingPaused: NSImage = paletteIcon(
         symbolName: "pause.circle.fill",
         color: signalOrange,
-        accessibilityDescription: "Recording paused"
+        accessibilityDescription: String(localized: "capture.state.paused")
     )
 
     private static func paletteIcon(

@@ -1,25 +1,51 @@
 // HomeView.swift
-// Research-led Home: the global Session ledger. Topic organization has its
-// own first-level destination in `TopicsView`.
+// Home: where a recording starts, and under it everything recorded so far,
+// by date. Topics are optional folders with their own destination,
+// `TopicsView`, which the sidebar offers once there is a topic.
 
+import Combine
 import SwiftUI
 
 struct HomeView: View {
     @StateObject private var viewModel = LibraryViewModel()
+    /// A search field on the page has the keyboard; see `TextEntryFocusKey`.
+    @State private var isTypingInAField = false
+
+    private static let startCardAnchor = "home.start.anchor"
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Spacing.xl) {
-                HomeSessionCatalog(
-                    viewModel: viewModel,
-                    onOpenSession: openSession,
-                    onOpenTopic: openNotebook
-                )
+        // A binding, not the state itself: the preference reports from
+        // wherever SwiftUI collects it.
+        let isTyping = $isTypingInAField
+        return ScrollViewReader { scroll in
+            ScrollView {
+                VStack(alignment: .leading, spacing: Spacing.xl) {
+                    // One main action for the page: start a recording.
+                    HomeStartCard(library: viewModel, startsOnReturn: isTypingInAField == false)
+                        .id(Self.startCardAnchor)
+
+                    HomeNearbyLiveCard()
+
+                    HomeSessionCatalog(
+                        viewModel: viewModel,
+                        onOpenSession: openSession,
+                        onOpenTopic: openNotebook
+                    )
+                }
+                .frame(maxWidth: 1_080, alignment: .leading)
+                .padding(.horizontal, Spacing.xl)
+                .padding(.vertical, Spacing.lg)
+                .frame(maxWidth: .infinity, alignment: .top)
+                .onPreferenceChange(TextEntryFocusKey.self) { isTyping.wrappedValue = $0 }
             }
-            .frame(maxWidth: 1_080, alignment: .leading)
-            .padding(.horizontal, Spacing.xl)
-            .padding(.vertical, Spacing.lg)
-            .frame(maxWidth: .infinity, alignment: .top)
+            // Something asked for the place recordings start — a topic's
+            // Record button, the caption window with nothing recording —
+            // while Home was already open and scrolled down its list.
+            .onReceive(MainNavigationStore.shared.$startCardRequests.dropFirst()) { _ in
+                withAnimation(Motion.panelTransition) {
+                    scroll.scrollTo(Self.startCardAnchor, anchor: .top)
+                }
+            }
         }
         .background(Color.bgRoot)
         .onAppear {
@@ -310,7 +336,7 @@ private struct HomeNoNotebookView: View {
                     .font(.titleLG)
                     .foregroundColor(.textPrimary)
 
-                Text(String(localized: "home.no_notebook.description"))
+                Text(String(localized: "topics.empty.description"))
                     .font(.body)
                     .foregroundColor(.textSecondary)
                     .multilineTextAlignment(.center)
@@ -412,29 +438,29 @@ private struct HomeSessionCatalog: View {
     @FocusState private var isSearchFocused: Bool
 
     private var groups: [SessionGroup] { viewModel.catalogGroupedSessions }
-    private var sessions: [SessionListItem] { viewModel.catalogSessions }
+
+    /// Nothing recorded yet, and nothing in the way of knowing that: the
+    /// page is the start card and one sentence, without a search field and
+    /// filters that have nothing to work on.
+    private var isFirstRun: Bool {
+        viewModel.sessions.isEmpty
+            && viewModel.isLoadingSessions == false
+            && viewModel.sessionLoadError == nil
+            && viewModel.hasCatalogSearchText == false
+            && viewModel.selectedTopicFilterId == nil
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.lg) {
-            catalogHeader
+            if isFirstRun == false {
+                catalogTools
 
-            MontereyHorizontalViewThatFits {
-                HStack(spacing: Spacing.md) {
-                    compactSearch
-                    Spacer(minLength: Spacing.sm)
-                    catalogMetrics
-                }
-            } fallback: {
-                VStack(alignment: .leading, spacing: Spacing.sm) {
-                    compactSearch
-                    HStack(spacing: Spacing.md) {
-                        catalogMetrics
-                        Spacer(minLength: 0)
-                    }
+                // Topics are optional. Someone who never made one sees no
+                // filters, and no word about topics on any recording.
+                if viewModel.researchNotebooks.isEmpty == false {
+                    HomeTopicFilterBar(viewModel: viewModel)
                 }
             }
-
-            HomeTopicFilterBar(viewModel: viewModel)
 
             if viewModel.hasLoadedTopicMemberships == false,
                viewModel.notebookWorkspaceError != nil {
@@ -479,11 +505,7 @@ private struct HomeSessionCatalog: View {
                     }
                 } else if viewModel.selectedTopicFilterId
                     == LibraryViewModel.unfiledTopicFilterId {
-                    HomeCatalogEmptyState(
-                        title: String(localized: "home.catalog.unfiled_empty.title"),
-                        description: String(localized: "home.catalog.unfiled_empty.description"),
-                        icon: "tray"
-                    )
+                    HomeCatalogEmptyLine(text: String(localized: "home.filter.no_topic_empty"))
                 } else if viewModel.selectedTopicFilterId != nil {
                     HomeCatalogEmptyState(
                         title: String(localized: "home.catalog.topic_empty.title"),
@@ -491,15 +513,10 @@ private struct HomeSessionCatalog: View {
                         icon: "folder"
                     )
                 } else {
-                    HomeCatalogEmptyState(
-                        title: String(localized: "home.catalog.empty.title"),
-                        description: String(localized: "home.catalog.empty.description"),
-                        icon: "waveform",
-                        action: (
-                            String(localized: "sidebar.record"),
-                            { MainNavigationStore.shared.select(tab: .record) }
-                        )
-                    )
+                    // The Start button is right above; the list needs no
+                    // second one, only a word about what will appear here.
+                    HomeCatalogEmptyLine(text: String(localized: "home.empty.sentence"))
+                        .accessibilityIdentifier("home.catalog.empty")
                 }
             } else {
                 LazyVStack(alignment: .leading, spacing: Spacing.lg) {
@@ -523,58 +540,36 @@ private struct HomeSessionCatalog: View {
         .accessibilityIdentifier("home.session.catalog")
     }
 
-    /// The ledger is for finding and opening recordings. Starting one has its
-    /// own page, first in the sidebar — a second Record button here was one of
-    /// five ways to start, each with its own language picker.
-    private var catalogHeader: some View {
-        catalogIdentity
-    }
+    /// Finding a recording: the search field, and beside it only what is
+    /// happening or can be done — no title repeating the page's name, no
+    /// count of what the list already shows.
+    private var catalogTools: some View {
+        HStack(spacing: Spacing.md) {
+            compactSearch
 
-    private var catalogIdentity: some View {
-        VStack(alignment: .leading, spacing: Spacing.xs) {
-            Text(String(localized: "home.catalog.title"))
-                .font(.titleLG)
-                .foregroundColor(.textPrimary)
-                .accessibilityAddTraits(.isHeader)
-
-            Text(String(localized: "home.catalog.subtitle"))
-                .font(.bodySM)
-                .foregroundColor(.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    @ViewBuilder
-    private var catalogMetrics: some View {
-        Text(
-            String(
-                format: String(localized: "home.catalog.count_format"),
-                Int64(sessions.count)
-            )
-        )
-        .font(.bodySM)
-        .foregroundColor(.textSecondary)
-        .monospacedDigit()
-
-        if viewModel.isSearchingTranscripts {
-            ProgressView()
-                .controlSize(.small)
-                .help(String(localized: "home.catalog.searching_transcripts"))
-                .accessibilityLabel(String(localized: "home.catalog.searching_transcripts"))
-        }
-
-        if let topicId = viewModel.selectedTopicFilterId,
-           topicId != LibraryViewModel.unfiledTopicFilterId {
-            Button {
-                onOpenTopic(topicId)
-            } label: {
-                Label(String(localized: "home.library.open_hint"), systemImage: "arrow.up.right")
-                    .font(.bodyMedium)
-                    .frame(minHeight: 36)
+            if viewModel.isSearchingTranscripts {
+                ProgressView()
+                    .controlSize(.small)
+                    .help(String(localized: "home.catalog.searching_transcripts"))
+                    .accessibilityLabel(String(localized: "home.catalog.searching_transcripts"))
             }
-            .buttonStyle(.plain)
-            .foregroundColor(.textPrimary)
-            .accessibilityIdentifier("home.topic.open_selected")
+
+            Spacer(minLength: 0)
+
+            if let topicId = viewModel.selectedTopicFilterId,
+               topicId != LibraryViewModel.unfiledTopicFilterId {
+                Button {
+                    onOpenTopic(topicId)
+                } label: {
+                    Label(String(localized: "home.library.open_hint"), systemImage: "arrow.up.right")
+                        .font(.bodyMedium)
+                        .frame(minHeight: 36)
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.textPrimary)
+                .fixedSize()
+                .accessibilityIdentifier("home.topic.open_selected")
+            }
         }
     }
 
@@ -585,7 +580,7 @@ private struct HomeSessionCatalog: View {
                 .foregroundColor(.textSecondary)
 
             TextField(
-                String(localized: "home.catalog.search_placeholder"),
+                String(localized: "home.search.placeholder"),
                 text: $viewModel.searchText
             )
             .textFieldStyle(.plain)
@@ -615,6 +610,8 @@ private struct HomeSessionCatalog: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
         .focusRing(isSearchFocused, cornerRadius: Radius.sm)
+        // Return here is the end of a search, not the Start button.
+        .preference(key: TextEntryFocusKey.self, value: isSearchFocused)
     }
 }
 
@@ -722,7 +719,7 @@ private struct HomeTopicFilterBar: View {
 
                 if viewModel.hasLoadedTopicMemberships {
                     HomeTopicFilterChip(
-                        title: String(localized: "home.row.topic.unassigned"),
+                        title: String(localized: "home.filter.no_topic"),
                         count: viewModel.unfiledSessionCount,
                         isSelected: viewModel.selectedTopicFilterId
                             == LibraryViewModel.unfiledTopicFilterId,
@@ -828,11 +825,25 @@ private struct HomeTopicFilterChip: View {
     }
 }
 
+/// One quiet sentence where the list would be, set in from the edge as far
+/// as the start card's own sentence above it.
+private struct HomeCatalogEmptyLine: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.body)
+            .foregroundColor(.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, Spacing.md)
+    }
+}
+
 private struct HomeCatalogEmptyState: View {
     let title: String
     let description: String
     let icon: String
-    var action: (title: String, perform: () -> Void)?
 
     var body: some View {
         HStack(spacing: Spacing.md) {
@@ -855,15 +866,6 @@ private struct HomeCatalogEmptyState: View {
             }
 
             Spacer(minLength: 0)
-
-            if let action {
-                Button(action: action.perform) {
-                    Label(action.title, systemImage: "record.circle")
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.signalRed)
-                .accessibilityIdentifier("home.catalog.empty.record")
-            }
         }
         .padding(Spacing.lg)
         .background(Color.bgElevated.opacity(0.2))
@@ -997,9 +999,7 @@ private struct HomeSessionRow: View {
             .accessibilityHint(
                 String(localized: membershipKnown == false
                     ? "home.catalog.row.membership_unknown_hint"
-                    : topicTitle == nil && canOpen
-                        ? "home.catalog.row.open_unfiled_hint"
-                        : canOpen ? "home.catalog.row.open_hint" : "home.catalog.row.unfiled_hint")
+                    : canOpen ? "home.row.open_hint" : "home.row.needs_topic_hint")
             )
             .accessibilityIdentifier("home.session.\(session.id)")
 
@@ -1025,8 +1025,8 @@ private struct HomeSessionRow: View {
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
                 .fixedSize()
-                .help(String(localized: "home.row.assign_to_topic"))
-                .accessibilityLabel(String(localized: "home.row.assign_to_topic"))
+                .help(String(localized: "home.row.put_in_topic"))
+                .accessibilityLabel(String(localized: "home.row.put_in_topic"))
             }
 
             // Whether this recording reached the city's archive. Nothing, and
@@ -1061,7 +1061,9 @@ private struct HomeSessionRow: View {
                 } label: {
                     Label(String(localized: "session.menu.settings"), systemImage: "slider.horizontal.3")
                 }
-                .disabled(canOpen == false)
+                // The recording in progress has no details page yet: its
+                // tab bar shows only the transcript and the notes.
+                .disabled(canOpen == false || session.isRecording)
                 Divider()
                 Button(role: .destructive) {
                     isConfirmingDelete = true
@@ -1125,8 +1127,9 @@ private struct HomeSessionRow: View {
         }
     }
 
-    /// Length, languages, where it is filed — in that order, because the
-    /// first two describe the recording and the last only its place.
+    /// Length, languages, and the topic if it is in one — in that order,
+    /// because the first two describe the recording and the last only its
+    /// place. A recording in no topic is just a recording: it says nothing.
     private var metadata: some View {
         HStack(spacing: Spacing.sm) {
             let parts = metadataParts
@@ -1158,7 +1161,9 @@ private struct HomeSessionRow: View {
         if session.sessionType == "import" {
             parts.append((String(localized: "home.row.kind.import"), "square.and.arrow.down"))
         }
-        parts.append((membershipLabel, topicTitle == nil ? "tray" : "folder"))
+        if let membershipLabel {
+            parts.append((membershipLabel, "folder"))
+        }
         if let device = session.recordedOn {
             // 另一台 Mac 录的:音频在那台上。
             parts.append((RecordingOrigin.badge(device), "laptopcomputer"))
@@ -1183,11 +1188,12 @@ private struct HomeSessionRow: View {
             : String(localized: "home.row.kind.recording")
     }
 
-    private var membershipLabel: String {
+    /// The topic's name; nothing for a recording in no topic.
+    private var membershipLabel: String? {
         guard membershipKnown else {
             return String(localized: "home.row.topic.unknown")
         }
-        return topicTitle ?? String(localized: "home.row.topic.unassigned")
+        return topicTitle
     }
 
     private var sessionKindIcon: String {
@@ -1223,7 +1229,9 @@ private struct HomeSessionRow: View {
         // Time is the primary Session identity in both the visual hierarchy and
         // VoiceOver order; title remains secondary and may be absent.
         var parts = [session.timeString, titleForDisplay]
-        parts.append(membershipLabel)
+        if let membershipLabel {
+            parts.append(membershipLabel)
+        }
         if let device = session.recordedOn {
             parts.append(RecordingOrigin.badge(device))
         }
@@ -1244,15 +1252,11 @@ private struct HomeSessionRow: View {
     }
 }
 
-// MARK: - Quick-capture language picker
-
-/// Exposes the capture languages on Home, beside Record. It edits the same
-/// persisted quick-capture profile the start flow reads, so the previous
-/// selection is the default and a change here is what the next one-click
-/// recording uses — including two- and three-language sessions.
 // MARK: - Creation and actions
 
-private struct HomeCreateNotebookSheet: View {
+/// Names a new topic. Topics offers it, and so does the start card's
+/// "put in a topic" choice — the only place a first topic can be made.
+struct HomeCreateNotebookSheet: View {
     let onCreate: (String) -> Bool
     @Environment(\.dismiss) private var dismiss
     @State private var title = ""

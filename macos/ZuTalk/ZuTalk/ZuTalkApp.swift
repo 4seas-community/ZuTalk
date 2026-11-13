@@ -324,6 +324,10 @@ extension Notification.Name {
 // MARK: - Main Window
 
 /// Minimal MVP 主窗口：Home、Trash、Notebook editor 与 Settings。
+///
+/// `.record` 不再是一页:开始录音在首页。选它会落到首页的开始卡片上
+/// (`MainNavigationStore.select(tab:)`);它只作为「正在录的那一场」在侧栏里
+/// 的高亮留着。
 enum MainTab: String, CaseIterable {
     case record
     case home

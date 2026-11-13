@@ -1,12 +1,15 @@
 // BackupSettingsCard.swift
-// 设置 › 设备 › 备份:把这台的资料库每天加密备份到自己的另一台 Mac,只备文字;
-// 需要时恢复到任何一台 Mac。
+// 设置 › 高级 › 备份与恢复:把这台的资料库每天加密备份到自己的另一台 Mac,
+// 只备文字;需要时恢复到任何一台 Mac。
 //
 // 两个角色在同一张卡片里,因为用户站在哪台 Mac 前面都一样找得到:
 //   - 这台被备份:生成备份码,到保管的那台上粘贴;之后每天自动做一份(没变就不做);
 //   - 这台替别人保管:列出保管着谁的几份,可以生成恢复码,或删掉。
-// 恢复码在要恢复的那台 Mac 上粘贴(和配对码同一个输入框)。恢复是合并:那台已经
-// 有的不动,永久删除过的不会回来。
+// 备份码、恢复码都粘贴到「账号 › 我的设备」里配对码的那个输入框。恢复是合并:
+// 那台已经有的不动,永久删除过的不会回来。
+//
+// 标题在卡片外面(「高级」一页的「备份与恢复」);出了错的那一句跟着卡片走:
+// 以前靠同一页上「设备」那一节的提示,现在两处不在一页了。
 
 import SwiftUI
 
@@ -20,10 +23,55 @@ struct BackupSettingsCard: View {
     private var held: [FfiBackupHeld] { store.backup?.held ?? [] }
 
     var body: some View {
-        SettingsCard(
-            title: String(localized: "backup.title"),
-            subtitle: String(localized: "backup.subtitle")
-        ) {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            card
+            if let problem = store.problem {
+                Label(problem, systemImage: "exclamationmark.triangle")
+                    .font(Font.sans12)
+                    .foregroundColor(Color.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("settings.backup.problem")
+            }
+        }
+        .task {
+            while Task.isCancelled == false {
+                await store.refreshBackup()
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+            }
+        }
+        .alert(
+            removing.map { String(format: String(localized: "backup.stop_confirm_format"), Self.name($0.name)) } ?? "",
+            isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
+            presenting: removing
+        ) { target in
+            Button(String(localized: "backup.stop"), role: .destructive) {
+                store.removeBackupTarget(target)
+                removing = nil
+            }
+            Button(String(localized: "common.cancel"), role: .cancel) { removing = nil }
+        } message: { _ in
+            Text(String(localized: "backup.stop_confirm_message"))
+        }
+        .alert(
+            forgetting.map { String(format: String(localized: "backup.forget_confirm_format"), Self.name($0.sourceName)) } ?? "",
+            isPresented: Binding(get: { forgetting != nil }, set: { if !$0 { forgetting = nil } }),
+            presenting: forgetting
+        ) { held in
+            Button(String(localized: "backup.forget"), role: .destructive) {
+                store.forgetHeld(held)
+                forgetting = nil
+            }
+            Button(String(localized: "common.cancel"), role: .cancel) { forgetting = nil }
+        } message: { _ in
+            Text(String(localized: "backup.forget_confirm_message"))
+        }
+        .sheet(item: $restoring) { request in
+            RestoreCodeSheet(held: request.held)
+        }
+    }
+
+    private var card: some View {
+        SettingsCard {
             ForEach(Array(targets.enumerated()), id: \.element.deviceId) { index, target in
                 if index > 0 { SettingsRowDivider() }
                 SettingsRow(
@@ -67,41 +115,6 @@ struct BackupSettingsCard: View {
                 }
             }
         }
-        .task {
-            while Task.isCancelled == false {
-                await store.refreshBackup()
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
-            }
-        }
-        .alert(
-            removing.map { String(format: String(localized: "backup.stop_confirm_format"), Self.name($0.name)) } ?? "",
-            isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
-            presenting: removing
-        ) { target in
-            Button(String(localized: "backup.stop"), role: .destructive) {
-                store.removeBackupTarget(target)
-                removing = nil
-            }
-            Button(String(localized: "common.cancel"), role: .cancel) { removing = nil }
-        } message: { _ in
-            Text(String(localized: "backup.stop_confirm_message"))
-        }
-        .alert(
-            forgetting.map { String(format: String(localized: "backup.forget_confirm_format"), Self.name($0.sourceName)) } ?? "",
-            isPresented: Binding(get: { forgetting != nil }, set: { if !$0 { forgetting = nil } }),
-            presenting: forgetting
-        ) { held in
-            Button(String(localized: "backup.forget"), role: .destructive) {
-                store.forgetHeld(held)
-                forgetting = nil
-            }
-            Button(String(localized: "common.cancel"), role: .cancel) { forgetting = nil }
-        } message: { _ in
-            Text(String(localized: "backup.forget_confirm_message"))
-        }
-        .sheet(item: $restoring) { request in
-            RestoreCodeSheet(held: request.held)
-        }
     }
 
     // MARK: - 备份码
@@ -111,7 +124,7 @@ struct BackupSettingsCard: View {
         if let invite = store.backupInvite {
             SettingsFullRow {
                 VStack(alignment: .leading, spacing: Spacing.sm) {
-                    Text(String(localized: "backup.code_hint"))
+                    Text(String(localized: "backup.code_hint_account"))
                         .font(Font.sans12)
                         .foregroundColor(Color.textSecondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -140,7 +153,7 @@ struct BackupSettingsCard: View {
         } else {
             SettingsRow(
                 String(localized: targets.isEmpty ? "backup.add" : "backup.add_another"),
-                description: String(localized: "backup.add_hint")
+                description: String(localized: "backup.add_hint_account")
             ) {
                 Button(String(localized: "backup.create_code")) { store.createBackupInvite() }
                     .disabled(store.busy)
@@ -225,7 +238,7 @@ private struct RestoreCodeSheet: View {
                 Text(String(format: String(localized: "backup.restore_title_format"), BackupSettingsCard.name(held.sourceName)))
                     .font(.titleMD)
                     .foregroundColor(.textPrimary)
-                Text(String(localized: "backup.restore_explain"))
+                Text(String(localized: "backup.restore_explain_account"))
                     .font(.bodySM)
                     .foregroundColor(.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)

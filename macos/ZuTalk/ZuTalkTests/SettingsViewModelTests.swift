@@ -37,24 +37,26 @@ final class SoftwareUpdateVersionTests: XCTestCase {
 
 @MainActor
 final class LocalSystemSettingsViewModelTests: XCTestCase {
-    /// The captions section is named for what it is for, not for the
-    /// company that happens to provide it today.
-    func testCaptionsSectionNameIsNotAProviderName() {
-        let displayName = SettingsSection.captions.displayName
-
-        XCTAssertNotEqual(displayName, ProviderCredentialAccount.soniox.displayName)
+    /// No section is named for the company that happens to provide a
+    /// service today — not even the one that holds the provider keys.
+    func testNoSectionNameIsAProviderName() {
+        for section in SettingsSection.allCases {
+            for account in ProviderCredentialAccount.allCases {
+                XCTAssertNotEqual(section.displayName, account.displayName)
+            }
+        }
     }
 
     func testSettingsSectionsAreNamedForWhatTheyAreAbout() throws {
-        XCTAssertEqual(SettingsSection.allCases, [.general, .captions, .sharing, .devices, .city])
+        XCTAssertEqual(SettingsSection.allCases, [.account, .general, .advanced])
         let expected = [
-            "en": ["General", "Live captions", "Sharing"],
-            "zh-Hans": ["通用", "实时字幕", "共享"],
-            "ja": ["一般", "リアルタイム字幕", "共有"],
+            "en": ["Account", "General", "Advanced"],
+            "zh-Hans": ["账号", "通用", "高级"],
+            "ja": ["アカウント", "一般", "詳細"],
         ]
         for (locale, names) in expected {
             XCTAssertEqual(
-                try ["general", "captions", "sharing"].map {
+                try ["account", "general", "advanced"].map {
                     try localizedString(locale: locale, key: "settings.section.\($0)_name")
                 },
                 names
@@ -289,8 +291,25 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
         }
         XCTAssertTrue(credentialSession.contains("getNotebookCaptureEngineDescriptor()"))
         XCTAssertTrue(credentialSession.contains("getLanguageModelEngineDescriptor()"))
-        XCTAssertTrue(providerSettings.contains("engineStore.engine"))
         XCTAssertTrue(providerSettings.contains("modelStore.engine"))
+
+        // The engine and model names moved to the diagnostics card on the
+        // same page. The same rule follows them there: read from the core,
+        // never spelled out in Swift.
+        let advanced = try String(
+            contentsOf: root.appendingPathComponent("Settings/AdvancedSettingsSection.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(advanced.contains("engineStore.engine"))
+        XCTAssertTrue(advanced.contains("modelStore.engine"))
+        for coreOwnedConstant in [
+            "stt-rt-v5", "stt-async-v5", "deepseek-", "soniox.com", "deepseek.com",
+        ] {
+            XCTAssertFalse(
+                advanced.contains(coreOwnedConstant),
+                "\(coreOwnedConstant) belongs to the core descriptor, not to Swift"
+            )
+        }
     }
 
     func testProviderCredentialEditorMeetsMinimumInteractionTarget() throws {
@@ -441,8 +460,8 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
 
     func testLiveTranscriptTabHintDoesNotClaimRemoteStreaming() throws {
         let expected = [
-            "en": "Live transcript — recording in progress",
-            "zh-Hans": "实时转录进行中",
+            "en": "Live text — recording in progress",
+            "zh-Hans": "正在边录边出字",
             "ja": "リアルタイム文字起こし — 録音中",
         ]
 
@@ -493,9 +512,9 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
         // Saving a key and sending audio are two different things; the notice
         // says so, and says exactly when audio does leave.
         let expectedEgressNotices = [
-            "en": "Saving a key sends nothing by itself. Audio goes to Soniox only for recordings with live captions on, or when you ask for a refined transcript.",
-            "zh-Hans": "保存密钥本身不会发送任何数据。只有开了实时字幕的录音，或你手动请求的精修转录，才会把音频发给 Soniox。",
-            "ja": "キーを保存しただけでは何も送信されません。音声が Soniox に送られるのは、リアルタイム字幕をオンにした録音か、高精度文字起こしを依頼したときだけです。",
+            "en": "Saving a Soniox key sends nothing by itself. Audio goes to Soniox only for recordings with live text on, or when you choose to refine a recording.",
+            "zh-Hans": "保存 Soniox 密钥本身不会发送任何数据。只有开了边录边出字的录音，或你手动要求的精修，才会把音频发给 Soniox。",
+            "ja": "Soniox キーを保存しただけでは何も送信されません。音声が Soniox に送られるのは、リアルタイム文字起こしをオンにした録音か、自分で清書を実行したときだけです。",
         ]
         let requiredKeys = [
             "settings.section.captions_name",
@@ -556,10 +575,18 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
         XCTAssertFalse(settings.contains("case recording"))
         XCTAssertFalse(settings.contains("RecordingSection"))
         XCTAssertFalse(settings.contains("settings.group.modes"))
-        // Live captions is a section about what captions need (a key or an
-        // invite), not a place to configure how recordings behave.
-        XCTAssertTrue(settings.contains("case captions"))
-        XCTAssertTrue(settings.contains("ProviderSettingsView(scope: .captions)"))
+        // What live text needs (an invite code, or a key) lives under
+        // Account and Advanced; neither is a place to configure how
+        // recordings behave.
+        XCTAssertTrue(settings.contains("case account"))
+        XCTAssertTrue(settings.contains("case advanced"))
+        XCTAssertFalse(settings.contains("case captions"))
+        let advanced = try String(
+            contentsOf: root.appendingPathComponent("Settings/AdvancedSettingsSection.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(advanced.contains("ProviderSettingsView(scope: .captions)"))
+        XCTAssertTrue(advanced.contains("ProviderSettingsView(scope: .languageModel)"))
         XCTAssertFalse(settings.contains("settings.shortcuts.toggle_floating"))
         XCTAssertFalse(settings.contains("settings.shortcuts.cycle_display"))
         XCTAssertFalse(settings.contains("⌃⌥V"))
@@ -652,8 +679,9 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
         )
         XCTAssertFalse(combined.contains("Peer sharing status"))
         XCTAssertFalse(combined.contains("DaemonStatusSection()"))
+        XCTAssertTrue(combined.contains("case account"))
         XCTAssertTrue(combined.contains("case general"))
-        XCTAssertTrue(combined.contains("case sharing"))
+        XCTAssertTrue(combined.contains("case advanced"))
         XCTAssertFalse(combined.contains("case knowledge"))
         XCTAssertFalse(combined.contains("case diagnostics"))
         XCTAssertFalse(combined.contains("DiagnosticsSection()"))
@@ -2101,9 +2129,10 @@ final class CityFilingStatusTests: XCTestCase {
             chinese["city.error.event_gone"],
             "这场活动在城里已经删除或取消了。换一场活动，再交一次。"
         )
-        // Chinese says 「转录稿」 for a transcript throughout.
+        // Chinese says 「文字稿」 for a transcript throughout; 「转录稿」 is the
+        // old name (docs/product/interface-layers.md, 用词).
         for (key, value) in chinese where key.hasPrefix("city.") {
-            XCTAssertFalse(value.contains("文字稿"), "\(key): \(value)")
+            XCTAssertFalse(value.contains("转录稿"), "\(key): \(value)")
         }
     }
 
@@ -2205,5 +2234,423 @@ final class CityEventMatchingTests: XCTestCase {
             duration: 2 * 3_600
         )
         XCTAssertEqual(found.map(\.id), ["midday", "morning"])
+    }
+}
+
+// MARK: - 0.8.2: three sections, the account, first launch
+
+/// The strings of one interface language, read from the source tree so a test
+/// can check all eight whatever language the test host runs in.
+private func settingsStrings(_ language: String) throws -> [String: String] {
+    let url = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .appendingPathComponent("ZuTalk/Resources/\(language).lproj/Localizable.strings")
+    return try XCTUnwrap(NSDictionary(contentsOf: url) as? [String: String])
+}
+
+private let settingsLanguages = ["en", "th", "ja", "ko", "fr", "es", "de", "zh-Hans"]
+
+@MainActor
+final class SettingsThreeSectionsTests: XCTestCase {
+    /// Account, General, Advanced, in that order, and nothing else: the
+    /// sidebar lists `allCases`.
+    func testThereAreExactlyThreeSectionsInOrder() {
+        XCTAssertEqual(SettingsSection.allCases, [.account, .general, .advanced])
+        XCTAssertEqual(Set(SettingsSection.allCases.map(\.id)).count, 3)
+    }
+
+    func testSettingsOpensOnAccountWhenNothingWasAskedFor() {
+        XCTAssertEqual(SettingsRouter.defaultSection, .account)
+        XCTAssertEqual(SettingsRouter().section, .account)
+    }
+
+    func testOpeningSettingsAtASectionLandsOnIt() {
+        let router = SettingsRouter.shared
+        let before = router.section
+        defer { router.section = before }
+        let store = MainNavigationStore()
+
+        store.openSettings(section: .advanced)
+        XCTAssertEqual(router.section, .advanced)
+        store.openSettings(section: .account)
+        XCTAssertEqual(router.section, .account)
+        XCTAssertEqual(store.activeTab, .config)
+    }
+
+    func testEverySectionHasItsOwnNameInEveryLanguage() throws {
+        for language in settingsLanguages {
+            let strings = try settingsStrings(language)
+            let names = try ["account", "general", "advanced"].map {
+                try XCTUnwrap(strings["settings.section.\($0)_name"], "\(language) \($0)")
+            }
+            XCTAssertEqual(Set(names).count, 3, "\(language): \(names)")
+        }
+    }
+
+    /// Which page holds what. Account has the identity, the invite code, the
+    /// devices and the archive; the language-model key left General; Advanced
+    /// opens with the two keys and ends with diagnostics.
+    func testEachSectionHoldsWhatPeopleLookForThere() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("ZuTalk/Settings", isDirectory: true)
+        func source(_ name: String) throws -> String {
+            try String(contentsOf: root.appendingPathComponent(name), encoding: .utf8)
+        }
+        func positions(of parts: [String], in text: String) throws -> [String.Index] {
+            try parts.map { try XCTUnwrap(text.range(of: $0), "\($0) is missing").lowerBound }
+        }
+
+        let account = try source("AccountSettingsSection.swift")
+        let accountOrder = try positions(
+            of: [
+                "CityIdentitySection()", "CommunityInviteSettingsCard()",
+                "DevicesSettingsSection()", "CityArchiveSection()",
+            ],
+            in: account
+        )
+        XCTAssertEqual(accountOrder, accountOrder.sorted())
+
+        let shell = try source("FullSettingsView.swift")
+        XCTAssertFalse(shell.contains("ProviderSettingsView("))
+
+        let advanced = try source("AdvancedSettingsSection.swift")
+        let advancedOrder = try positions(
+            of: [
+                "ProviderSettingsView(scope: .captions)", "ProviderSettingsView(scope: .languageModel)",
+                "SharingSettingsSection()", "BackupSettingsCard()", "SettingsDiagnosticsCard()",
+            ],
+            in: advanced
+        )
+        XCTAssertEqual(advancedOrder, advancedOrder.sorted())
+
+        // Backup moved out of the devices block; its codes are still pasted
+        // there, so its hints must send people to the right page.
+        XCTAssertFalse(try source("DevicesSettingsSection.swift").contains("BackupSettingsCard()"))
+        let backup = try source("BackupSettingsCard.swift")
+        XCTAssertTrue(backup.contains("backup.code_hint_account"))
+        XCTAssertTrue(backup.contains("backup.restore_explain_account"))
+    }
+
+    /// The account page never names a provider: someone on an invite code
+    /// does not need to know who is behind it.
+    func testAccountCopyNamesNoProvider() throws {
+        let accountKeys = [
+            "settings.account.subtitle", "settings.account.signin_title", "settings.account.signin_detail",
+            "settings.account.identity_title", "city.archive.title", "city.archive.subtitle",
+            "settings.live_text.title", "settings.live_text.source.invite",
+            "settings.live_text.source.invite_time_format", "settings.live_text.source.invite_spent",
+            "settings.live_text.source.own_key", "settings.live_text.source.nothing",
+            "settings.live_text.shared_detail", "settings.live_text.invite_field_label",
+            "settings.live_text.invite_hint", "settings.live_text.invite_on",
+            "settings.live_text.use_invite", "settings.live_text.use_own_key",
+            "settings.account.devices_title", "settings.account.devices_subtitle",
+            "settings.account.devices_add_subtitle", "sidebar.account.sign_in", "sidebar.account.hint",
+        ]
+        for language in settingsLanguages {
+            let strings = try settingsStrings(language)
+            for key in accountKeys {
+                let value = try XCTUnwrap(strings[key], "\(language) lacks \(key)")
+                for account in ProviderCredentialAccount.allCases {
+                    XCTAssertFalse(
+                        value.localizedCaseInsensitiveContains(account.displayName),
+                        "\(language) \(key) names \(account.displayName)"
+                    )
+                }
+            }
+        }
+    }
+}
+
+@MainActor
+final class LiveTextSourceTests: XCTestCase {
+    private func source(
+        inviteActive: Bool = false,
+        inviteEnabled: Bool = false,
+        remaining: Int? = nil,
+        lanes: Int = 1,
+        ownKey: Bool = false
+    ) -> LiveTextSource {
+        .resolve(
+            inviteActive: inviteActive,
+            inviteEnabled: inviteEnabled,
+            remainingSeconds: remaining,
+            laneCount: lanes,
+            hasOwnKey: ownKey
+        )
+    }
+
+    func testNothingRedeemedAndNoKeyMeansAudioOnly() {
+        XCTAssertEqual(source(), .nothing)
+        XCTAssertFalse(source().powersLiveText)
+    }
+
+    func testAnInviteThatIsOnComesBeforeYourOwnKey() {
+        XCTAssertEqual(
+            source(inviteActive: true, inviteEnabled: true, ownKey: true),
+            .invite(recordableSeconds: nil)
+        )
+        XCTAssertTrue(source(inviteActive: true, inviteEnabled: true).powersLiveText)
+    }
+
+    /// Invite time is spent once per connection, so the sentence gives what
+    /// can actually be recorded: the same figure the sidebar has always shown.
+    func testRemainingTimeIsDividedByTheConnectionsTheNextRecordingOpens() {
+        XCTAssertEqual(
+            source(inviteActive: true, inviteEnabled: true, remaining: 3 * 3_600, lanes: 3),
+            .invite(recordableSeconds: 3_600)
+        )
+        XCTAssertEqual(
+            source(inviteActive: true, inviteEnabled: true, remaining: 5_400, lanes: 1),
+            .invite(recordableSeconds: CommunityInviteSession.wallClockRecordableSeconds(
+                remainingSeconds: 5_400,
+                laneCount: 1
+            ))
+        )
+    }
+
+    func testAnInviteSwitchedOffOrNeverRedeemedFallsToYourOwnKey() {
+        XCTAssertEqual(source(inviteActive: true, inviteEnabled: false, remaining: 3_600, ownKey: true), .ownKey)
+        XCTAssertEqual(source(inviteActive: false, inviteEnabled: true, ownKey: true), .ownKey)
+        XCTAssertEqual(source(inviteActive: true, inviteEnabled: false, remaining: 3_600), .nothing)
+    }
+
+    /// A spent invite refuses the next start; a recording then runs on the
+    /// saved key when there is one, and has no live text when there is not.
+    func testASpentInviteFallsToYourOwnKeyOrSaysItIsSpent() {
+        XCTAssertEqual(source(inviteActive: true, inviteEnabled: true, remaining: 0, ownKey: true), .ownKey)
+        XCTAssertEqual(source(inviteActive: true, inviteEnabled: true, remaining: 0), .inviteSpent)
+        XCTAssertFalse(LiveTextSource.inviteSpent.powersLiveText)
+    }
+
+    func testTheSentenceCarriesHoursAndMinutes() {
+        let sentence = LiveTextSource.invite(recordableSeconds: 29 * 3_600 + 30 * 60 + 59).sentence
+        XCTAssertEqual(sentence, String(
+            format: String(localized: "settings.live_text.source.invite_time_format"),
+            Int64(29),
+            Int64(30)
+        ))
+        XCTAssertTrue(sentence.contains("29"), sentence)
+        XCTAssertTrue(sentence.contains("30"), sentence)
+        XCTAssertFalse(sentence.contains("%"), sentence)
+    }
+
+    func testEveryStateHasItsOwnSentence() {
+        let sentences = [
+            LiveTextSource.invite(recordableSeconds: nil),
+            .invite(recordableSeconds: 60),
+            .inviteSpent,
+            .ownKey,
+            .nothing,
+        ].map(\.sentence)
+        XCTAssertEqual(Set(sentences).count, sentences.count)
+        for sentence in sentences {
+            XCTAssertFalse(sentence.isEmpty)
+            XCTAssertFalse(sentence.hasPrefix("settings."), "\(sentence) is a missing key")
+        }
+    }
+
+    /// "Your own key" means a key the core has loaded, the same thing a
+    /// recording checks when it starts.
+    func testTheCurrentAnswerReadsWhetherAKeyIsLoaded() throws {
+        let session = FakeProviderCredentialSession()
+        let invite = CommunityInviteSession.shared
+        try XCTSkipIf(invite.isActive && invite.isEnabled, "an invite is active in this environment")
+
+        XCTAssertEqual(LiveTextSource.current(invite: invite, credentials: session), .ownKey)
+        try session.clear(.soniox)
+        XCTAssertEqual(LiveTextSource.current(invite: invite, credentials: session), .nothing)
+    }
+}
+
+@MainActor
+final class OnboardingLiveTextStepTests: XCTestCase {
+    /// Welcome, what live text needs, the microphone, done — and the second
+    /// step can be skipped without anything having been entered.
+    ///
+    /// "Done" is remembered in a suite of this test's own: under test the
+    /// standard domain is the installed app's real preferences.
+    func testSkippingTheSecondStepStillReachesTheEnd() throws {
+        let suiteName = "OnboardingLiveTextStepTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let controller = OnboardingController(defaults: defaults, openSystemSettings: { _ in })
+        XCTAssertEqual(controller.phase, .welcome)
+
+        controller.goToLiveText()
+        XCTAssertEqual(controller.phase, .liveText)
+
+        controller.skipLiveText()
+        XCTAssertEqual(controller.phase, .permissions)
+        // Skipping remembers nothing: no choice, no key, not "done" yet.
+        XCTAssertNil(defaults.persistentDomain(forName: suiteName))
+
+        controller.finish()
+        XCTAssertEqual(controller.phase, .finished)
+        XCTAssertTrue(defaults.bool(forKey: OnboardingController.completedKey))
+        XCTAssertFalse(OnboardingController.shouldShowOnboarding(defaults: defaults))
+    }
+
+    func testTheSecondStepLeadsWithTheInviteCode() {
+        XCTAssertEqual(OnboardingLiveTextMode.initial(inviteActive: false, hasOwnKey: false), .inviteCode)
+        XCTAssertEqual(OnboardingLiveTextMode.initial(inviteActive: true, hasOwnKey: false), .inviteCode)
+        XCTAssertEqual(OnboardingLiveTextMode.initial(inviteActive: true, hasOwnKey: true), .inviteCode)
+        // Walking through it again with only a key of one's own: that side
+        // is shown straight away.
+        XCTAssertEqual(OnboardingLiveTextMode.initial(inviteActive: false, hasOwnKey: true), .ownKey)
+    }
+
+    /// Once access has been refused macOS never asks again, so asking again
+    /// did nothing. The button now opens the Microphone privacy pane.
+    func testADeniedMicrophoneOpensItsSystemSettingsPane() throws {
+        var opened: [AppPermission] = []
+        // Nothing here remembers anything, but the controller is still kept
+        // off the real preferences.
+        let suiteName = "OnboardingLiveTextStepTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let controller = OnboardingController(
+            defaults: defaults,
+            openSystemSettings: { opened.append($0) }
+        )
+
+        controller.permissionStatuses[.microphone] = .denied
+        controller.resolvePermission(.microphone)
+        XCTAssertEqual(opened, [.microphone])
+
+        controller.permissionStatuses[.microphone] = .granted
+        controller.resolvePermission(.microphone)
+        XCTAssertEqual(opened, [.microphone])
+
+        XCTAssertEqual(
+            AppPermission.microphone.settingsUrl.absoluteString,
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+        )
+    }
+
+    func testFirstLaunchHasNoDecorativeCodesAndNoSignIn() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("ZuTalk/App/OnboardingView.swift"),
+            encoding: .utf8
+        )
+        for code in ["ZL-LIVE-01", "ZL-KEY-02", "ZL-MIC-03", "ZL-DONE", "STT-RT-V5"] {
+            XCTAssertFalse(source.contains(code), "\(code) is still drawn")
+        }
+        // Signing in gives nobody anything they need before a first
+        // recording; it is one tap away in Settings.
+        XCTAssertFalse(source.contains("CitySignInCard"))
+        XCTAssertFalse(source.contains("CityStore"))
+        // The invite code is redeemed by the same session Settings uses.
+        XCTAssertTrue(source.contains("invite.redeem(code)"))
+        XCTAssertTrue(source.contains("onboarding.live_text.skip"))
+    }
+
+    /// Only the choice to use a key of one's own names the provider, and it
+    /// takes the name as an argument rather than spelling it out.
+    func testFirstLaunchCopyNamesAProviderOnlyWhereAKeyIsChosen() throws {
+        let plainKeys = [
+            "onboarding.step.live_text", "onboarding.step.microphone",
+            "onboarding.live_text.title", "onboarding.live_text.subtitle",
+            "onboarding.live_text.visual", "onboarding.live_text.use_invite",
+            "onboarding.live_text.skip", "onboarding.welcome.privacy_plain",
+            "onboarding.permissions.action.open_system_settings",
+            "onboarding.permissions.denied_hint",
+        ]
+        for language in settingsLanguages {
+            let strings = try settingsStrings(language)
+            for key in plainKeys {
+                let value = try XCTUnwrap(strings[key], "\(language) lacks \(key)")
+                XCTAssertFalse(value.contains("Soniox"), "\(language) \(key)")
+            }
+            let ownKey = try XCTUnwrap(strings["onboarding.live_text.use_own_key_format"])
+            XCTAssertEqual(ownKey.components(separatedBy: "%@").count, 2, "\(language)")
+            XCTAssertFalse(ownKey.contains("Soniox"), "\(language)")
+        }
+    }
+}
+
+@MainActor
+final class SidebarAccountRowTests: XCTestCase {
+    private func account(name: String) -> FfiCityAccount {
+        FfiCityAccount(
+            server: "city.example",
+            cityId: "riverside",
+            cityName: "Riverside",
+            personId: "person-1",
+            personName: name,
+            roles: ["resident"],
+            signedInAtEpoch: 0
+        )
+    }
+
+    func testSignedOutIsAQuietSignInRow() {
+        XCTAssertEqual(SidebarAccountRow.Presentation.resolve(nil), .signedOut)
+    }
+
+    func testSignedInShowsTheInitialAndTheName() {
+        XCTAssertEqual(
+            SidebarAccountRow.Presentation.resolve(account(name: "  sam  ")),
+            .signedIn(initial: "S", name: "sam")
+        )
+    }
+
+    func testAResidentWithoutANameStillGetsARow() {
+        XCTAssertEqual(
+            SidebarAccountRow.Presentation.resolve(account(name: "")),
+            .signedIn(initial: "?", name: String(localized: "city.settings.unnamed"))
+        )
+    }
+
+    /// The row follows one thing in the city store. Observing the whole
+    /// store would redraw it on every calendar refresh and filing step.
+    func testTheRowFollowsOnlyTheAccount() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("ZuTalk/UIScenes/Main/SidebarAccountRow.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(source.contains("CityStore.shared.$account"))
+        XCTAssertFalse(source.contains("@ObservedObject"))
+        XCTAssertTrue(source.contains("openSettings(section: .account)"))
+    }
+}
+
+@MainActor
+final class LiveConnectionFactsTests: XCTestCase {
+    private func lane(_ target: String?, lagMs: UInt64?) -> NotebookCaptureLaneHealthDTO {
+        NotebookCaptureLaneHealthDTO(targetLanguage: target, state: .live, lagMs: lagMs)
+    }
+
+    func testNothingIsReportedWhenNoRecordingIsRunning() {
+        let facts = LiveConnectionFacts(isRecording: false, lanes: [lane("en", lagMs: 9_000)])
+        XCTAssertEqual(facts.connections, 0)
+        XCTAssertNil(facts.lagSeconds)
+        XCTAssertEqual(facts.text, String(localized: "settings.diagnostics.recording_none"))
+    }
+
+    func testTheSlowestConnectionSetsTheDelay() {
+        let facts = LiveConnectionFacts(
+            isRecording: true,
+            lanes: [lane(nil, lagMs: 300), lane("en", lagMs: 4_200), lane("th", lagMs: nil)]
+        )
+        XCTAssertEqual(facts.connections, 3)
+        XCTAssertEqual(facts.lagSeconds, ActiveBilingualTranscriptStore.displayedLagSeconds(4_200))
+        XCTAssertTrue(facts.text.contains("3"), facts.text)
+    }
+
+    func testUnderASecondCountsAsKeepingUp() {
+        let facts = LiveConnectionFacts(isRecording: true, lanes: [lane(nil, lagMs: 400)])
+        XCTAssertNil(facts.lagSeconds)
+        XCTAssertTrue(
+            facts.text.hasSuffix(String(localized: "settings.diagnostics.recording_keeping_up")),
+            facts.text
+        )
     }
 }

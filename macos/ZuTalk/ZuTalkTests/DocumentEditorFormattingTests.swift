@@ -106,9 +106,9 @@ final class DocumentEditorTabLayoutTests: XCTestCase {
         XCTAssertTrue(source.contains("topicID: route?.notebookID"))
     }
 
-    /// A recording's page: Transcript and Notes as tabs; live or refined as a
-    /// switch beside them; its files and settings behind ⋯ (a tab only while
-    /// open, so a tab always says where you are).
+    /// A recording's page: Transcript and Notes as tabs; the other version
+    /// (live or refined) behind one quiet button; its files and settings
+    /// behind ⋯ (a tab only while open, so a tab always says where you are).
     func testEveryRecordingHasTranscriptAndNotesWithTheRestBehindItsMenu() throws {
         let source = try Self.loadDocumentEditorPage()
 
@@ -119,10 +119,17 @@ final class DocumentEditorTabLayoutTests: XCTestCase {
 
         XCTAssertTrue(source.contains("accessibilityIdentifier: \"session.tab.notes\""))
         XCTAssertTrue(source.contains("accessibilityIdentifier: \"session.tab.settings\""))
-        XCTAssertTrue(source.contains("if sessionSupplementarySurface == .settings {"))
+        // Not while the recording is still being made: then its page is its
+        // transcript and its notes, and nothing else.
+        XCTAssertTrue(source.contains(
+            "if sessionSupplementarySurface == .settings, isBeingRecorded == false {"
+        ))
+        XCTAssertTrue(source.contains("if isRecordingPage, isBeingRecorded == false {"))
         XCTAssertTrue(source.contains("TranscriptVersionSwitch("))
-        XCTAssertTrue(source.contains("session.transcript.live_version"))
-        XCTAssertTrue(source.contains("session.transcript.refined_version"))
+        XCTAssertTrue(source.contains("TranscriptVersionButtonPolicy.label(showing: showing)"))
+        // The two-way 实时版 | 精修版 switch is gone.
+        XCTAssertFalse(source.contains("session.transcript.live_version"))
+        XCTAssertFalse(source.contains("session.transcript.refined_version"))
         XCTAssertTrue(source.contains("Button(action: onSelectSessionSettings)"))
         XCTAssertTrue(source.contains("BlockNoteEditorView(sessionId: sessionId)"))
         XCTAssertTrue(source.contains("SessionSettingsView("))
@@ -131,6 +138,9 @@ final class DocumentEditorTabLayoutTests: XCTestCase {
         XCTAssertLessThan(notesTab.lowerBound, settingsTab.lowerBound)
     }
 
+    /// A finished recording's settings tab is about that recording only. It
+    /// used to embed the editor for the next recording's defaults between
+    /// what this one has and what this one used.
     func testSessionSettingsIsOnePageWithResourcesFirstAndSnapshotAtBottom() throws {
         let source = try Self.loadDocumentEditorPage()
         let captureViews = try Self.loadNotebookCaptureViews()
@@ -145,15 +155,14 @@ final class DocumentEditorTabLayoutTests: XCTestCase {
         )
         let settings = String(source[settingsStart.lowerBound..<snapshotStart.lowerBound])
         let resources = try XCTUnwrap(settings.range(of: "sessionResourceSection"))
-        let setup = try XCTUnwrap(settings.range(of: "NotebookCaptureSettingsView("))
         let snapshot = try XCTUnwrap(settings.range(of: "SessionSettingsSnapshotView("))
 
         XCTAssertFalse(source.contains("private enum SessionSettingsPane"))
         XCTAssertFalse(settings.contains(".pickerStyle(.segmented)"))
-        XCTAssertLessThan(resources.lowerBound, setup.lowerBound)
-        XCTAssertLessThan(setup.lowerBound, snapshot.lowerBound)
+        XCTAssertFalse(settings.contains("NotebookCaptureSettingsView("))
+        XCTAssertFalse(settings.contains("NotebookCaptureProfileEditorModel"))
+        XCTAssertLessThan(resources.lowerBound, snapshot.lowerBound)
         XCTAssertEqual(settings.components(separatedBy: "SessionSettingsSnapshotView(").count, 2)
-        XCTAssertTrue(settings.contains("embeddedInParentScrollView: true"))
         XCTAssertTrue(settings.contains("isEmbedded: true"))
         XCTAssertTrue(settings.contains("SessionResourceSettingsView("))
         XCTAssertTrue(settings.contains("onOpen: onOpenResource"))
@@ -164,7 +173,7 @@ final class DocumentEditorTabLayoutTests: XCTestCase {
         XCTAssertTrue(captureViews.contains("session.settings.workspace.scope.topic"))
         XCTAssertTrue(captureViews.contains("session.settings.workspace.scope.quick_capture"))
         XCTAssertTrue(source.contains(
-            "SessionSettingsView(\n                    notebookId: notebookId,\n                    session: editorSession,\n                    editor: captureProfileEditor"
+            "SessionSettingsView(\n                    notebookId: notebookId,\n                    session: editorSession,\n                    onOpenResource:"
         ))
         XCTAssertTrue(source.contains("private struct SessionSettingsSnapshotView: View"))
         XCTAssertTrue(source.contains("listNotebookCaptureHistorySummaries"))

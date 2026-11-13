@@ -231,10 +231,13 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             capture: store,
             defaults: defaults,
             coreProvider: { nil },
-            inviteReady: { false }
+            inviteReady: { false },
+            mainWindowIsShowing: { false }
         )
         try await store.start(notebookId: "quick-capture")
         XCTAssertTrue(center.canStop)
+        let recordingId = try XCTUnwrap(store.sessionId)
+        XCTAssertNil(center.justFinished)
 
         center.handleSystemWillSleep()
 
@@ -243,6 +246,11 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         }
         XCTAssertTrue(stopped, "sleep must end the recording through the normal Stop")
         XCTAssertNil(store.stoppingSince, "a finished stop leaves no saving count behind")
+        // A Stop that succeeded is remembered for the card on its page.
+        let remembered = await waitUntil(timeout: 2) { center.justFinished != nil }
+        XCTAssertTrue(remembered)
+        XCTAssertEqual(center.justFinished?.sessionId, recordingId)
+        XCTAssertEqual(center.justFinished?.audioOnly, true, "the default profile records audio only")
         center.handleSystemDidWake()
         // Sleeping again with nothing recording does nothing.
         center.handleSystemWillSleep()
@@ -8349,9 +8357,11 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         let inactiveEditorStart = try XCTUnwrap(
             realtimeConsole.range(of: "private var inactiveProfileEditor: some View")
         )
+        // The declaration that follows it; `scopeCopy` sat between the two
+        // until the active-run row stopped describing the configuration.
         let inactiveEditorEnd = try XCTUnwrap(
             realtimeConsole[inactiveEditorStart.upperBound...]
-                .range(of: "private var scopeCopy: some View")
+                .range(of: "private var inactiveProfileControls: some View")
         )
         let inactiveEditor = String(
             realtimeConsole[inactiveEditorStart.lowerBound..<inactiveEditorEnd.lowerBound]
@@ -8500,10 +8510,12 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             1,
             "DocumentEditorPage must own exactly one Notebook-scoped profile editor"
         )
+        // A recording's own settings tab shows that recording only; it no
+        // longer embeds the editor for the next recording's defaults.
         XCTAssertEqual(
             documentEditor.components(separatedBy: "editor: captureProfileEditor").count - 1,
-            3,
-            "Realtime, Topic Settings, and Session Settings must observe the same profile editor instance"
+            2,
+            "Realtime and Topic Settings must observe the same profile editor instance"
         )
         XCTAssertTrue(documentEditor.contains(".id(notebookId)"))
         XCTAssertTrue(mainShell.contains(".id(activeEditorRoute?.notebookID ?? \"no-notebook-route\")"))
@@ -8576,7 +8588,16 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertFalse(realtimeConsole.contains("languageBBinding"))
         XCTAssertTrue(languageEditor.contains("editor.scheduleUpdate("))
         XCTAssertTrue(realtimeConsole.contains("NotebookRealtimeConsolePresentation.resolve("))
-        XCTAssertTrue(activeSummary.contains("capture.profile"))
+        // The row no longer names a provider or a model at all (0.8.2: the
+        // recording bar's sentence is the one place a recording's state is
+        // said), so there is no run snapshot left for it to read. What it
+        // keeps is a stop that needs a person.
+        for retired in ["realtimeProviderId", "realtimeModelId", "realtimeLagMs", "capture.remote."] {
+            XCTAssertFalse(
+                realtimeConsole.contains(retired),
+                "the recording console must not report \(retired); the recording bar does"
+            )
+        }
         XCTAssertTrue(activeSummary.contains("capture.isAudioDrainDelayed"))
         XCTAssertTrue(activeSummary.contains("externaldrive.badge.timemachine"))
         XCTAssertTrue(activeSummary.contains("capture.state.audio_drain_delayed"))

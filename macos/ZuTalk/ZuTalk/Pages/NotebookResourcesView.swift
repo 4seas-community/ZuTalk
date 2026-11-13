@@ -552,7 +552,7 @@ final class NotebookResourcesViewModel: ObservableObject {
         if var unfiled = try? core.getQuickCaptureNotebook(),
            unfiled.deletedAt == nil,
            unfiled.id != notebookId {
-            unfiled.title = String(localized: "home.row.topic.unassigned")
+            unfiled.title = String(localized: "topic.none_choice")
             destinations.append(unfiled)
         }
         return destinations
@@ -701,6 +701,56 @@ final class SessionResourcesViewModel: ObservableObject {
             return detail
         }
     }
+
+    /// The same deletion for a surface with no file list of its own to
+    /// update — the recording's ⋯ menu. Lists that show this recording hear
+    /// of it through the usual refresh.
+    static func destroyAudioAndAnnounce(sessionId: String) {
+        Task { @MainActor in
+            let failure = await SessionResourcesViewModel().destroyAudio(sessionId: sessionId)
+            announceAudioDestroy(failure: failure)
+        }
+    }
+
+    static func announceAudioDestroy(failure: String?) {
+        if let failure {
+            ToastCenter.shared.error(
+                String(localized: "resources.audio.destroy.failed"),
+                detail: failure
+            )
+        } else {
+            ToastCenter.shared.success(String(localized: "resources.audio.destroy.done"))
+        }
+    }
+}
+
+extension View {
+    /// The one question asked before a recording's audio is destroyed and its
+    /// text kept, wherever that is offered: among the recording's files, and
+    /// in its ⋯ menu.
+    func audioDestroyConfirmation(
+        isPresented: Binding<Bool>,
+        recordingTitle: String,
+        onConfirm: @escaping () -> Void
+    ) -> some View {
+        confirmationDialog(
+            String(
+                format: String(localized: "resources.audio.destroy.confirm_title"),
+                recordingTitle
+            ),
+            isPresented: isPresented,
+            titleVisibility: .visible
+        ) {
+            Button(
+                String(localized: "resources.audio.destroy.confirm_button"),
+                role: .destructive,
+                action: onConfirm
+            )
+            Button(String(localized: "common.cancel"), role: .cancel) {}
+        } message: {
+            Text(String(localized: "resources.audio.destroy.confirm_message"))
+        }
+    }
 }
 
 /// Expanded, Session-scoped equivalent of the Topic resource disclosure. It
@@ -741,21 +791,11 @@ struct SessionResourceSettingsView: View {
             guard viewModel.isDestroyingAudio == false else { return }
             viewModel.load(sessionId: sessionId)
         }
-        .confirmationDialog(
-            String(
-                format: String(localized: "resources.audio.destroy.confirm_title"),
-                displayTitle
-            ),
+        .audioDestroyConfirmation(
             isPresented: $isConfirmingAudioDestroy,
-            titleVisibility: .visible
-        ) {
-            Button(String(localized: "resources.audio.destroy.confirm_button"), role: .destructive) {
-                destroyAudio()
-            }
-            Button(String(localized: "common.cancel"), role: .cancel) {}
-        } message: {
-            Text(String(localized: "resources.audio.destroy.confirm_message"))
-        }
+            recordingTitle: displayTitle,
+            onConfirm: destroyAudio
+        )
         .accessibilityIdentifier("session.settings.resources.\(sessionId)")
     }
 
@@ -985,14 +1025,9 @@ struct SessionResourceSettingsView: View {
 
     private func destroyAudio() {
         Task { @MainActor in
-            if let failure = await viewModel.destroyAudio(sessionId: sessionId) {
-                ToastCenter.shared.error(
-                    String(localized: "resources.audio.destroy.failed"),
-                    detail: failure
-                )
-            } else {
-                ToastCenter.shared.success(String(localized: "resources.audio.destroy.done"))
-            }
+            SessionResourcesViewModel.announceAudioDestroy(
+                failure: await viewModel.destroyAudio(sessionId: sessionId)
+            )
         }
     }
 }

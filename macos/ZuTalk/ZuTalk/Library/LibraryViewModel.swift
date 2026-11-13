@@ -350,12 +350,10 @@ class LibraryViewModel: ObservableObject {
                     || item.languagePair.localizedCaseInsensitiveContains(normalizedSearch)
                     || item.sessionType.localizedCaseInsensitiveContains(normalizedSearch)
                     || kindLabel.localizedCaseInsensitiveContains(normalizedSearch)
+                    // A recording in no topic shows no topic label, so there
+                    // is no such word to find it by.
                     || (topicTitle(forSessionId: item.id)?
                         .localizedCaseInsensitiveContains(normalizedSearch) ?? false)
-                    || (hasLoadedTopicMemberships
-                        && topicIdBySessionId[item.id] == nil
-                        && String(localized: "home.row.topic.unassigned")
-                            .localizedCaseInsensitiveContains(normalizedSearch))
                 guard localMatch || transcriptSearchSnippets[item.id] != nil else {
                     return nil
                 }
@@ -672,6 +670,12 @@ class LibraryViewModel: ObservableObject {
                researchNotebooks.contains(where: { $0.id == selectedTopicFilterId }) == false {
                 self.selectedTopicFilterId = nil
             }
+            // Home offers the topic filters only while there is a topic.
+            // With the last one gone, "in no topic" is every recording, and
+            // a filter nobody can see or clear must not stay on.
+            if loadedNotebooks.isEmpty {
+                self.selectedTopicFilterId = nil
+            }
             let preferredNotebookId = activeNotebookId
                 ?? notebookContext.activeNotebookId
             if let preferredNotebookId,
@@ -809,6 +813,10 @@ class LibraryViewModel: ObservableObject {
             )
         }
         publishActiveNotebookContext()
+        // The sidebar offers Topics from the first topic on, and other pages
+        // list topics to choose from; they learn of a new one the same way
+        // they learn of a rename or a delete.
+        NotificationCenter.default.post(name: .zutalkSessionUpdated, object: nil)
         return true
     }
 
@@ -1236,8 +1244,10 @@ class LibraryViewModel: ObservableObject {
         if !todayList.isEmpty { groups.append(SessionGroup(label: String(localized: "library.group.today"), sessions: todayList)) }
         if !yesterdayList.isEmpty { groups.append(SessionGroup(label: String(localized: "library.group.yesterday"), sessions: yesterdayList)) }
 
+        // The day as the reader's own language writes it — "Nov 10, 2026",
+        // 「2026年11月10日」 — rather than English order in every language.
         let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d, yyyy"
+        formatter.setLocalizedDateFormatFromTemplate("yMMMd")
         for (day, list) in olderByDay.sorted(by: { $0.key > $1.key }) {
             groups.append(SessionGroup(label: formatter.string(from: day), sessions: list))
         }

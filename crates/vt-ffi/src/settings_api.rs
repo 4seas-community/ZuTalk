@@ -165,52 +165,7 @@ impl ZuTalkCore {
         });
 
         if !has_realtime_content {
-            let tokens = match self.session_meta.get_tokens(&session_id) {
-                Ok(tokens) => tokens,
-                Err(vt_store::SessionMetaError::NotFound(_)) => Vec::new(),
-                Err(error) => {
-                    return Err(CoreError::InternalError {
-                        message: format!("load async tokens for clipboard: {error}"),
-                    });
-                }
-            };
-            let mut language_columns = Vec::new();
-            let utterances = tokens
-                .into_iter()
-                .filter(|token| !token.text.trim().is_empty())
-                .map(|token| {
-                    if !token.language.trim().is_empty()
-                        && !language_columns
-                            .iter()
-                            .any(|language: &String| language.eq_ignore_ascii_case(&token.language))
-                    {
-                        language_columns.push(token.language.clone());
-                    }
-                    ClipboardUtterance {
-                        start_ms: Some(token.start_ms),
-                        speaker_name: token
-                            .speaker
-                            .as_deref()
-                            .and_then(normalized_owned)
-                            .map(|label| format!("Speaker {label}")),
-                        source_language: token.language,
-                        source_text: token.text,
-                        translated_language: None,
-                        translated_text: None,
-                        language_variants: Vec::new(),
-                    }
-                })
-                .collect::<Vec<_>>();
-            if utterances.is_empty() {
-                return Err(CoreError::NotFound {
-                    message: format!("transcript content not found: {session_id}"),
-                });
-            }
-            return Ok(export_clipboard_text(&ClipboardTranscript {
-                title: normalized_owned(&record.title),
-                language_columns,
-                utterances,
-            }));
+            return refined_clipboard_text(self, &session_id, &record.title);
         }
 
         let run = run.expect("realtime content requires a capture run");
@@ -281,6 +236,25 @@ impl ZuTalkCore {
         }))
     }
 
+    /// The refined transcript alone, for the clipboard.
+    ///
+    /// `get_session_transcript_clipboard_text` prefers what was written down
+    /// while recording, as ZIP export does. Someone reading the refined
+    /// transcript who presses Copy expects the text in front of them, so the
+    /// page showing that version asks for it by name.
+    pub fn get_session_refined_transcript_clipboard_text(
+        &self,
+        session_id: String,
+    ) -> Result<String, CoreError> {
+        let record =
+            self.session_store
+                .get_session(&session_id)
+                .map_err(|_| CoreError::NotFound {
+                    message: format!("session not found: {session_id}"),
+                })?;
+        refined_clipboard_text(self, &session_id, &record.title)
+    }
+
     /// 导出会话为 zip
     ///
     /// 流程：
@@ -348,6 +322,60 @@ impl ZuTalkCore {
             subtitle_rows_omitted,
         })
     }
+}
+
+/// A Session's refined (post-stop) transcript, formatted for the clipboard.
+fn refined_clipboard_text(
+    core: &ZuTalkCore,
+    session_id: &str,
+    title: &str,
+) -> Result<String, CoreError> {
+    let tokens = match core.session_meta.get_tokens(session_id) {
+        Ok(tokens) => tokens,
+        Err(vt_store::SessionMetaError::NotFound(_)) => Vec::new(),
+        Err(error) => {
+            return Err(CoreError::InternalError {
+                message: format!("load async tokens for clipboard: {error}"),
+            });
+        }
+    };
+    let mut language_columns = Vec::new();
+    let utterances = tokens
+        .into_iter()
+        .filter(|token| !token.text.trim().is_empty())
+        .map(|token| {
+            if !token.language.trim().is_empty()
+                && !language_columns
+                    .iter()
+                    .any(|language: &String| language.eq_ignore_ascii_case(&token.language))
+            {
+                language_columns.push(token.language.clone());
+            }
+            ClipboardUtterance {
+                start_ms: Some(token.start_ms),
+                speaker_name: token
+                    .speaker
+                    .as_deref()
+                    .and_then(normalized_owned)
+                    .map(|label| format!("Speaker {label}")),
+                source_language: token.language,
+                source_text: token.text,
+                translated_language: None,
+                translated_text: None,
+                language_variants: Vec::new(),
+            }
+        })
+        .collect::<Vec<_>>();
+    if utterances.is_empty() {
+        return Err(CoreError::NotFound {
+            message: format!("transcript content not found: {session_id}"),
+        });
+    }
+    Ok(export_clipboard_text(&ClipboardTranscript {
+        title: normalized_owned(title),
+        language_columns,
+        utterances,
+    }))
 }
 
 fn normalized_owned(value: &str) -> Option<String> {
@@ -1323,6 +1351,32 @@ mod tests {
             .get_session_transcript_clipboard_text(session_id.into())
             .unwrap();
         assert!(text.contains("[00:00:00.000] Cross-session host"));
+    }
+
+    #[test]
+    fn refined_clipboard_text_is_the_refined_transcript_even_beside_a_live_one() {
+        let (_tmp, core) = make_core();
+        let session_id = "clipboard-refined";
+        seed_two_way_capture(&core, session_id);
+
+        // The default still prefers what was written down while recording.
+        let live = core
+            .get_session_transcript_clipboard_text(session_id.into())
+            .unwrap();
+        assert!(live.contains("Realtime source"));
+        assert!(!live.contains("STALE ASYNC TEXT"));
+
+        // Asked for by name, the refined transcript is what comes back.
+        let refined = core
+            .get_session_refined_transcript_clipboard_text(session_id.into())
+            .unwrap();
+        assert!(refined.contains("STALE ASYNC TEXT"));
+        assert!(!refined.contains("Realtime source"));
+
+        assert!(matches!(
+            core.get_session_refined_transcript_clipboard_text("no-such-session".into()),
+            Err(CoreError::NotFound { .. })
+        ));
     }
 
     #[test]

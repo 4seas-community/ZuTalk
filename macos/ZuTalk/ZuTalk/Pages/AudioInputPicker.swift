@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - Audio input picker
 
 /// Where a recording's sound comes from: a microphone, or what the Mac plays
-/// (the far side of an online meeting). The Record page and a recording's
+/// (the far side of an online meeting). Home's start card and a recording's
 /// settings show this same control, so the choice made before Start is the
 /// one the recording's settings show, and a switch mid-recording goes through
 /// the same path.
@@ -18,7 +18,7 @@ struct AudioInputPicker: View {
             Picker("", selection: selection) {
                 Text(systemDefaultInputTitle).tag(String?.none)
                 if inputDevices.isSystemAudioSupported {
-                    Text(String(localized: "settings.audio_input.system_audio"))
+                    Text(String(localized: "audio_input.sound_from_mac"))
                         .tag(Optional(AudioInputDevice.systemAudioUID))
                     Divider()
                 }

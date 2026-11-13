@@ -1,10 +1,15 @@
 // OnboardingView.swift
-// 首次启动引导 — 认识产品 → 开启实时字幕 → 麦克风 → 完成
+// 首次启动引导 — 认识产品 → 出字要用到的 → 麦克风 → 完成
 // ZuTalk onboarding。
 // 每一步都由用户主动点击继续，不自动推进。
 //
+// 第二步以前一上来就要一把 Soniox API 密钥。大多数人手里有的是邀请码,而邀请码
+// 在这里根本填不了,只能先跳过、再去设置里找。现在第二步的主栏是邀请码,下面
+// 两个安静的选择:用自己的密钥,或者先跳过、只录音。登录不在这里:它今天给
+// 一个普通人的东西不是开始录音所必需的,而且在设置里一步就到。
+//
 // 布局规范:
-// - 顶部 StepIndicator: 产品介绍 > 准备录音
+// - 顶部 StepIndicator: 认识 ZuTalk > 出字 > 麦克风
 // - 左主内容区 60% : 定位 · 能力 · CTA
 // - 右视觉区 40%    : 多语转录 / 录音状态的 blueprint 预览
 
@@ -18,14 +23,15 @@ final class OnboardingController: ObservableObject {
 
     enum Phase: Int, CaseIterable {
         case welcome
-        case credential
+        /// 「出字要用到的」:邀请码,或自己的密钥,或先跳过。
+        case liveText
         case permissions
         case finished
 
         var stepIndex: Int {
             switch self {
             case .welcome:     return 0
-            case .credential:  return 1
+            case .liveText:    return 1
             case .permissions: return 2
             case .finished:    return 3
             }
@@ -36,15 +42,34 @@ final class OnboardingController: ObservableObject {
 
     @Published var permissionStatuses: [AppPermission: PermissionStatus] = [:]
 
-    init() {
+    static let completedKey = "zutalk.onboarding.completed"
+
+    /// Where "onboarding is done" is remembered. The app uses the standard
+    /// domain; tests pass a suite of their own, because under test the
+    /// standard domain is the installed app's real preferences.
+    private let defaults: UserDefaults
+    private let openSystemSettings: @MainActor (AppPermission) -> Void
+
+    init(
+        defaults: UserDefaults = .standard,
+        openSystemSettings: @escaping @MainActor (AppPermission) -> Void = {
+            AppPermissions.openSystemSettings(for: $0)
+        }
+    ) {
+        self.defaults = defaults
+        self.openSystemSettings = openSystemSettings
         refreshPermissions()
     }
 
     static var shouldShowOnboarding: Bool {
+        shouldShowOnboarding(defaults: .standard)
+    }
+
+    static func shouldShowOnboarding(defaults: UserDefaults) -> Bool {
         if TestEnvironment.isUITestMode {
             return false
         }
-        let completed = UserDefaults.standard.bool(forKey: "zutalk.onboarding.completed")
+        let completed = defaults.bool(forKey: completedKey)
         // Onboarding is a first-run explanation, not a recurring permission
         // gate. A local development update can make macOS ask for microphone
         // access again; returning an existing user to Welcome is misleading.
@@ -59,13 +84,20 @@ final class OnboardingController: ObservableObject {
         }
     }
 
-    func goToCredential() {
-        phase = .credential
+    func goToLiveText() {
+        phase = .liveText
     }
 
     func goToPermissions() {
         phase = .permissions
         refreshPermissions()
+    }
+
+    /// 「先跳过，只录音」。什么都不用记:没有邀请码也没有密钥的时候,录音本来
+    /// 就只录音;以后哪天有了,边录边出字的默认值自己会跟上
+    /// (`CaptureCommandCenter`)。
+    func skipLiveText() {
+        goToPermissions()
     }
 
     func refreshPermissions() {
@@ -83,9 +115,36 @@ final class OnboardingController: ObservableObject {
         }
     }
 
+    /// 权限卡片上那个按钮做的事。还没问过就问;已经拒绝过,系统不会再弹第二次,
+    /// 再「请求」一遍什么也不会发生 —— 这时候只能带人去系统设置里打开。按钮
+    /// 以前写着「打开系统设置」,按下去却是再请求一遍。
+    func resolvePermission(_ perm: AppPermission) {
+        switch permissionStatuses[perm] ?? .notDetermined {
+        case .granted:
+            break
+        case .notDetermined:
+            requestPermission(perm)
+        case .denied:
+            openSystemSettings(perm)
+        }
+    }
+
     func finish() {
         phase = .finished
-        UserDefaults.standard.set(true, forKey: "zutalk.onboarding.completed")
+        defaults.set(true, forKey: Self.completedKey)
+    }
+}
+
+/// 第二步摆出来的是哪一样。一次只摆一样:主栏是邀请码,选了「用自己的密钥」
+/// 才换成密钥那一面。
+enum OnboardingLiveTextMode: Equatable {
+    case inviteCode
+    case ownKey
+
+    /// 头一回来的人看到的是邀请码。从设置里再走一遍的人,如果本来用的就是
+    /// 自己的密钥、没有邀请码,直接看到密钥那一面,不用再点一下。
+    static func initial(inviteActive: Bool, hasOwnKey: Bool) -> OnboardingLiveTextMode {
+        hasOwnKey && inviteActive == false ? .ownKey : .inviteCode
     }
 }
 
@@ -111,14 +170,17 @@ struct OnboardingView: View {
                         switch controller.phase {
                         case .welcome:
                             WelcomeScreen(onContinue: {
-                                withPhaseAnim { controller.goToCredential() }
+                                withPhaseAnim { controller.goToLiveText() }
                             })
                             .transition(.opacity.combined(with: .move(edge: .leading)))
-                        case .credential:
-                            SonioxCredentialScreen(
+                        case .liveText:
+                            LiveTextSetupScreen(
                                 viewModel: providerViewModel,
                                 onContinue: {
                                     withPhaseAnim { controller.goToPermissions() }
+                                },
+                                onSkip: {
+                                    withPhaseAnim { controller.skipLiveText() }
                                 },
                                 onBack: { withPhaseAnim { controller.phase = .welcome } }
                             )
@@ -132,7 +194,7 @@ struct OnboardingView: View {
                                         onComplete()
                                     }
                                 },
-                                onBack: { withPhaseAnim { controller.phase = .credential } }
+                                onBack: { withPhaseAnim { controller.phase = .liveText } }
                             )
                             .transition(.opacity.combined(with: .move(edge: .trailing)))
                         case .finished:
@@ -164,7 +226,7 @@ struct OnboardingView: View {
         }
     }
 
-    private let hasCompletedBefore = UserDefaults.standard.bool(forKey: "zutalk.onboarding.completed")
+    private let hasCompletedBefore = UserDefaults.standard.bool(forKey: OnboardingController.completedKey)
 
     private func withPhaseAnim(_ action: () -> Void) {
         withAnimation(.easeInOut(duration: 0.35)) { action() }
@@ -178,8 +240,8 @@ private struct StepIndicator: View {
 
     private let steps: [LocalizedStringKey] = [
         "onboarding.step.signup",
-        "onboarding.step.tryout",
-        "onboarding.step.setup"
+        "onboarding.step.live_text",
+        "onboarding.step.microphone"
     ]
 
     var body: some View {
@@ -258,16 +320,6 @@ private struct OnboardingVisual: View {
             }
             .padding(18)
             .allowsHitTesting(false)
-
-            // 右下 cartouche-style 标签
-            VStack {
-                Spacer()
-                HStack {
-                    Spacer()
-                    phaseCartouche
-                        .padding(24)
-                }
-            }
         }
     }
 
@@ -276,40 +328,12 @@ private struct OnboardingVisual: View {
         switch phase {
         case .welcome:
             TranscriptBlueprintVisual()
-        case .credential:
-            CredentialBlueprintVisual()
+        case .liveText:
+            LiveTextBlueprintVisual()
         case .permissions:
             MicrophoneBlueprintVisual()
         case .finished:
             EmptyView()
-        }
-    }
-
-    private var phaseCartouche: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("FIG")
-                .font(.captionXs)
-                .tracking(0.8)
-                .foregroundColor(.textTertiary)
-            Text(figNumber)
-                .font(.captionMedium)
-                .tracking(0.6)
-                .foregroundColor(.accentGold)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .overlay(
-            Rectangle()
-                .strokeBorder(Color.borderGhost.opacity(0.6), lineWidth: 0.5)
-        )
-    }
-
-    private var figNumber: String {
-        switch phase {
-        case .welcome:     return "ZL-LIVE-01"
-        case .credential:  return "ZL-KEY-02"
-        case .permissions: return "ZL-MIC-03"
-        case .finished:    return "ZL-DONE"
         }
     }
 }
@@ -438,38 +462,41 @@ private struct TranscriptBlueprintVisual: View {
     }
 }
 
-private struct CredentialBlueprintVisual: View {
+/// 第二步的图:一句原文、一句译文,正在往外出。不写供应商和模型的名字 ——
+/// 这一步的主角是邀请码,用邀请码的人不需要认识它们。
+private struct LiveTextBlueprintVisual: View {
     var body: some View {
         VStack(spacing: 22) {
             ZStack {
                 RoundedRectangle(cornerRadius: 24)
                     .strokeBorder(Color.borderGhost, lineWidth: 0.75)
                     .frame(width: 116, height: 116)
-                Image(systemName: "key.horizontal.fill")
+                Image(systemName: "captions.bubble")
                     .font(.system(size: 38, weight: .light))
                     .foregroundColor(.textPrimary)
+            }
+
+            VStack(alignment: .leading, spacing: 9) {
+                textBar(width: 150, color: .textTertiary)
+                textBar(width: 112, color: .accentGold)
             }
 
             HStack(spacing: 9) {
                 Circle()
                     .fill(Color.brandAccent)
                     .frame(width: 7, height: 7)
-                Text("Soniox")
+                Text("onboarding.live_text.visual")
                     .font(.captionMedium)
                     .foregroundColor(.textPrimary)
-                Text("STT-RT-V5")
-                    .font(.captionXs)
-                    .foregroundColor(.accentGold)
             }
-
-            HStack(spacing: 8) {
-                Image(systemName: "checkmark.shield")
-                Text("onboarding.keys.private_status")
-            }
-            .font(.captionXs)
-            .foregroundColor(.textSecondary)
         }
         .frame(width: 280)
+    }
+
+    private func textBar(width: CGFloat, color: Color) -> some View {
+        Capsule()
+            .fill(color)
+            .frame(width: width, height: 4)
     }
 }
 
@@ -551,13 +578,20 @@ struct OnbPillButton: View {
             .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
         }
         .buttonStyle(.plain)
-        .opacity(disabled ? 0.35 : 1.0)
+        .opacity(disabled && style != .primary ? 0.35 : 1.0)
         .disabled(disabled)
         .onHover { hovering = $0 && !disabled }
         .animation(.easeOut(duration: 0.15), value: hovering)
     }
 
+    /// 还不能点的主按钮换成灰底灰字,不是把绿底调淡:调淡以后白字压在浅绿上,
+    /// 读不出按钮上写的是什么,人不知道自己在等的是哪一步。
+    private var isInactivePrimary: Bool {
+        disabled && style == .primary
+    }
+
     private var fg: Color {
+        if isInactivePrimary { return Color.textTertiary }
         switch style {
         case .primary:   return .brandAccentForeground
         case .secondary: return Color.textPrimary
@@ -565,6 +599,7 @@ struct OnbPillButton: View {
         }
     }
     private var bg: Color {
+        if isInactivePrimary { return Color.bgElevated }
         switch style {
         case .primary:   return hovering ? Color.brandAccentHover : Color.brandAccent
         case .secondary: return hovering ? Color.bgElevated : Color.bgElevated
@@ -572,13 +607,14 @@ struct OnbPillButton: View {
         }
     }
     private var border: Color {
+        if isInactivePrimary { return Color.borderGhost }
         switch style {
         case .primary, .secondary: return .clear
         case .ghost: return Color.borderGhost
         }
     }
     private var borderWidth: CGFloat {
-        style == .ghost ? 1 : 0
+        style == .ghost || isInactivePrimary ? 1 : 0
     }
 }
 
@@ -680,7 +716,7 @@ struct WelcomeScreen: View {
                     .font(.system(size: 11))
                     .foregroundColor(Color.textTertiary)
                     .frame(width: 18)
-                Text("onboarding.welcome.privacy")
+                Text("onboarding.welcome.privacy_plain")
                     .font(.system(size: 12, weight: .regular))
                     .foregroundColor(Color.textTertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -738,18 +774,225 @@ struct WelcomeScreen: View {
     }
 }
 
-// MARK: - Soniox Credential Screen
+// MARK: - 出字要用到的
 
-struct SonioxCredentialScreen: View {
+/// 第二步。主栏是邀请码;下面两个安静的选择:用自己的密钥(换成密钥那一面),
+/// 或者先跳过、只录音。「继续」要等真的能出字了才亮,所以跳过是人自己选的,
+/// 不是按了「继续」才发现什么都没设。
+struct LiveTextSetupScreen: View {
+    @ObservedObject var viewModel: ProviderConnectionsViewModel
+    @ObservedObject private var invite = CommunityInviteSession.shared
+    var onContinue: () -> Void
+    var onSkip: () -> Void
+    var onBack: () -> Void
+
+    @State private var mode: OnboardingLiveTextMode = .inviteCode
+    @State private var code = ""
+    @State private var appeared = false
+
+    /// 现在靠什么出字。密钥那一面存上以后 `viewModel` 会变,这里跟着重算。
+    private var source: LiveTextSource {
+        LiveTextSource.resolve(
+            inviteActive: invite.isActive,
+            inviteEnabled: invite.isEnabled,
+            remainingSeconds: invite.remainingSeconds,
+            laneCount: invite.plannedLaneCount,
+            hasOwnKey: viewModel.snapshot(for: .soniox).isActive
+        )
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Spacer().frame(height: 48)
+
+            Text("onboarding.live_text.title")
+                .font(.system(size: 34, weight: .bold))
+                .foregroundColor(Color.textPrimary)
+                .tracking(-0.5)
+
+            Text("onboarding.live_text.subtitle")
+                .font(.system(size: 14, weight: .regular))
+                .foregroundColor(Color.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 10)
+
+            Spacer().frame(height: 28)
+
+            switch mode {
+            case .inviteCode:
+                inviteBox
+            case .ownKey:
+                OwnSonioxKeyBox(viewModel: viewModel)
+            }
+
+            quietChoices
+                .padding(.top, 16)
+
+            Spacer()
+
+            HStack(spacing: 12) {
+                OnbPillButton(
+                    title: "onboarding.common.back",
+                    style: .ghost,
+                    action: onBack
+                )
+
+                Spacer()
+
+                OnbPillButton(
+                    title: "onboarding.keys.continue",
+                    style: .primary,
+                    disabled: source.powersLiveText == false,
+                    action: onContinue
+                )
+                .accessibilityIdentifier("onboarding.live-text.continue")
+            }
+
+            Spacer().frame(height: 56)
+        }
+        .padding(.horizontal, 64)
+        .opacity(appeared ? 1 : 0)
+        .animation(.easeOut(duration: 0.4), value: appeared)
+        .onAppear {
+            appeared = true
+            viewModel.refresh()
+            mode = .initial(
+                inviteActive: invite.isActive,
+                hasOwnKey: viewModel.snapshot(for: .soniox).isActive
+            )
+        }
+        .onDisappear {
+            code = ""
+        }
+        // 再走一遍引导的人已经有邀请码:把还能录多久问回来,那一句才报得出数。
+        .task { await invite.refreshQuota() }
+    }
+
+    // MARK: 邀请码
+
+    private var inviteBox: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(String(localized: "settings.live_text.invite_field_label"))
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(.textPrimary)
+
+            HStack(spacing: 10) {
+                TextField(
+                    String(localized: "community_invite.placeholder"),
+                    text: $code
+                )
+                .textFieldStyle(.roundedBorder)
+                .controlSize(.large)
+                .disabled(invite.isWorking)
+                .onSubmit(redeem)
+                .accessibilityLabel(String(localized: "settings.live_text.invite_field_label"))
+                .accessibilityIdentifier("onboarding.live-text.invite-code")
+
+                // 栏和按钮用同一个尺寸:按钮比栏高出一倍的话,人先看到的是按钮。
+                Button {
+                    redeem()
+                } label: {
+                    if invite.isWorking {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Text(String(localized: "onboarding.live_text.redeem"))
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .disabled(
+                    invite.isWorking
+                        || code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                )
+                .accessibilityIdentifier("onboarding.live-text.redeem")
+            }
+
+            inviteStatus
+        }
+        .padding(20)
+        .background(Color.bgSunken.opacity(0.38))
+        .overlay(
+            RoundedRectangle(cornerRadius: Radius.md)
+                .strokeBorder(Color.borderGhost.opacity(0.7), lineWidth: 0.75)
+        )
+    }
+
+    /// 栏下面那一句:出了错说错在哪;已经能出字了,说靠的是什么、还能录多久。
+    @ViewBuilder
+    private var inviteStatus: some View {
+        if let error = invite.errorMessage {
+            Label(error, systemImage: "exclamationmark.triangle.fill")
+                .font(.system(size: 12, weight: .regular))
+                .foregroundColor(.signalAmber)
+                .fixedSize(horizontal: false, vertical: true)
+        } else if source != .nothing {
+            Label(
+                source.sentence,
+                systemImage: source.powersLiveText ? "checkmark.circle.fill" : source.symbol
+            )
+            .font(.system(size: 12, weight: .regular))
+            .foregroundColor(source.powersLiveText ? .signalGreen : .signalAmber)
+            .fixedSize(horizontal: false, vertical: true)
+            .accessibilityIdentifier("onboarding.live-text.status")
+        }
+    }
+
+    // MARK: 两个安静的选择
+
+    /// 上下摆,不并排:窗口窄、字又长的语言里,并排的两句会各自折成两行。
+    private var quietChoices: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            switch mode {
+            case .inviteCode:
+                // 供应商的名字只在这一处和「设置 › 高级」出现:要用自己密钥的人
+                // 得知道是哪家的密钥。名字从账户来,不在这里写死。
+                Button(String(
+                    format: String(localized: "onboarding.live_text.use_own_key_format"),
+                    ProviderCredentialAccount.soniox.displayName
+                )) {
+                    mode = .ownKey
+                }
+                .accessibilityIdentifier("onboarding.live-text.use-own-key")
+            case .ownKey:
+                Button(String(localized: "onboarding.live_text.use_invite")) {
+                    mode = .inviteCode
+                }
+                .accessibilityIdentifier("onboarding.live-text.use-invite")
+            }
+
+            if source.powersLiveText == false {
+                Button(String(localized: "onboarding.live_text.skip"), action: onSkip)
+                    .accessibilityIdentifier("onboarding.live-text.skip")
+            }
+        }
+        .buttonStyle(.link)
+        .font(.system(size: 13, weight: .regular))
+        .multilineTextAlignment(.leading)
+    }
+
+    private func redeem() {
+        guard invite.isWorking == false else { return }
+        Task {
+            await invite.redeem(code)
+            if invite.isActive, invite.errorMessage == nil {
+                code = ""
+            }
+        }
+    }
+}
+
+// MARK: - 自己的 Soniox 密钥
+
+/// 第二步里选了「用自己的密钥」以后换上来的那一面:去哪拿、粘贴、验证并保存。
+/// 密钥仍然只经 `ProviderConnectionsViewModel` 进凭据会话,验证通过才存。
+private struct OwnSonioxKeyBox: View {
     @ObservedObject var viewModel: ProviderConnectionsViewModel
     @ObservedObject private var verificationStore = ProviderConnectionVerificationStore.shared
-    var onContinue: () -> Void
-    var onBack: () -> Void
 
     @State private var draft = ""
     @State private var errorMessage: String?
     @State private var isWorking = false
-    @State private var appeared = false
 
     private var snapshot: ProviderCredentialSnapshot {
         viewModel.snapshot(for: .soniox)
@@ -764,146 +1007,100 @@ struct SonioxCredentialScreen: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Spacer().frame(height: 48)
-
-            Text("onboarding.keys.title")
-                .font(.system(size: 34, weight: .bold))
-                .foregroundColor(Color.textPrimary)
-                .tracking(-0.5)
-
-            Text("onboarding.keys.subtitle")
-                .font(.system(size: 14, weight: .regular))
-                .foregroundColor(Color.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 10)
-
-            Spacer().frame(height: 28)
-
-            VStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Soniox")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundColor(.textPrimary)
-                        Text("onboarding.keys.voice_label")
-                            .font(.captionXs)
-                            .foregroundColor(.textTertiary)
-                    }
-                    Spacer()
-                    verificationBadge
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Soniox")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.textPrimary)
+                    Text("onboarding.keys.voice_label")
+                        .font(.captionXs)
+                        .foregroundColor(.textTertiary)
                 }
-
-                if isConfigured {
-                    Button {
-                        viewModel.verifySavedCredential(for: .soniox)
-                    } label: {
-                        Label(
-                            String(localized: "onboarding.keys.verify_saved"),
-                            systemImage: "checkmark.shield"
-                        )
-                        .frame(minHeight: 44)
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(verificationState == .checking)
-                } else {
-                    HStack(alignment: .top, spacing: 10) {
-                        Image(systemName: "1.circle.fill")
-                        Text("onboarding.keys.guide.create")
-                        Image(systemName: "arrow.right")
-                        Image(systemName: "2.circle.fill")
-                        Text("onboarding.keys.guide.copy")
-                        Image(systemName: "arrow.right")
-                        Image(systemName: "3.circle.fill")
-                        Text("onboarding.keys.guide.paste")
-                    }
-                    .font(.caption)
-                    .foregroundColor(.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                    Link(destination: URL(string: "https://console.soniox.com")!) {
-                        Label(
-                            String(localized: "onboarding.keys.open_soniox"),
-                            systemImage: "arrow.up.right.square"
-                        )
-                        .frame(minHeight: 32)
-                    }
-                    .font(.bodyMedium)
-
-                    SecureField(
-                        String(localized: "onboarding.keys.paste"),
-                        text: $draft
-                    )
-                    .textFieldStyle(.roundedBorder)
-                    .frame(minHeight: 44)
-                    .disabled(isWorking)
-                    .onSubmit(verifyAndSave)
-
-                    Button {
-                        verifyAndSave()
-                    } label: {
-                        Label(
-                            String(localized: "onboarding.keys.verify_and_save"),
-                            systemImage: "checkmark.shield"
-                        )
-                        .frame(minHeight: 44)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(
-                        isWorking
-                            || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    )
-                }
-
-                Text("onboarding.keys.soniox.help")
-                    .font(.caption)
-                    .foregroundColor(.textTertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                if let errorMessage {
-                    Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption)
-                        .foregroundColor(.signalRed)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .padding(20)
-            .background(Color.bgSunken.opacity(0.38))
-            .overlay(
-                RoundedRectangle(cornerRadius: Radius.md)
-                    .strokeBorder(Color.borderGhost.opacity(0.7), lineWidth: 0.75)
-            )
-
-            Spacer()
-
-            HStack(spacing: 12) {
-                OnbPillButton(
-                    title: "onboarding.common.back",
-                    style: .ghost,
-                    action: onBack
-                )
-
                 Spacer()
+                verificationBadge
+            }
 
-                OnbPillButton(
-                    title: verificationState.isReady
-                        ? "onboarding.keys.continue"
-                        : "onboarding.keys.skip",
-                    style: verificationState.isReady
-                        ? .primary
-                        : .ghost,
-                    action: onContinue
+            if isConfigured {
+                Button {
+                    viewModel.verifySavedCredential(for: .soniox)
+                } label: {
+                    Label(
+                        String(localized: "onboarding.keys.verify_saved"),
+                        systemImage: "checkmark.shield"
+                    )
+                    .frame(minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .disabled(verificationState == .checking)
+            } else {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "1.circle.fill")
+                    Text("onboarding.keys.guide.create")
+                    Image(systemName: "arrow.right")
+                    Image(systemName: "2.circle.fill")
+                    Text("onboarding.keys.guide.copy")
+                    Image(systemName: "arrow.right")
+                    Image(systemName: "3.circle.fill")
+                    Text("onboarding.keys.guide.paste")
+                }
+                .font(.caption)
+                .foregroundColor(.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+                Link(destination: URL(string: "https://console.soniox.com")!) {
+                    Label(
+                        String(localized: "onboarding.keys.open_soniox"),
+                        systemImage: "arrow.up.right.square"
+                    )
+                    .frame(minHeight: 32)
+                }
+                .font(.bodyMedium)
+
+                SecureField(
+                    String(localized: "onboarding.keys.paste"),
+                    text: $draft
+                )
+                .textFieldStyle(.roundedBorder)
+                .frame(minHeight: 44)
+                .disabled(isWorking)
+                .onSubmit(verifyAndSave)
+
+                Button {
+                    verifyAndSave()
+                } label: {
+                    Label(
+                        String(localized: "onboarding.keys.verify_and_save"),
+                        systemImage: "checkmark.shield"
+                    )
+                    .frame(minHeight: 44)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(
+                    isWorking
+                        || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 )
             }
 
-            Spacer().frame(height: 56)
+            Text("onboarding.keys.soniox.help")
+                .font(.caption)
+                .foregroundColor(.textTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if let errorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundColor(.signalRed)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
-        .padding(.horizontal, 64)
-        .opacity(appeared ? 1 : 0)
-        .animation(.easeOut(duration: 0.4), value: appeared)
+        .padding(20)
+        .background(Color.bgSunken.opacity(0.38))
+        .overlay(
+            RoundedRectangle(cornerRadius: Radius.md)
+                .strokeBorder(Color.borderGhost.opacity(0.7), lineWidth: 0.75)
+        )
         .onAppear {
-            appeared = true
-            viewModel.refresh()
             if isConfigured {
                 verificationStore.verifyIfNeeded(
                     account: .soniox,
@@ -999,13 +1196,18 @@ struct PermissionsScreen: View {
             }
 
             if !controller.allPermissionsGranted {
-                HStack(spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "info.circle")
                         .font(.system(size: 12))
                         .foregroundColor(Color.textTertiary)
-                    Text("onboarding.permissions.hint")
+                    // 拒绝过的人按了按钮会被带到系统设置:说清楚去那里做什么、
+                    // 做完回哪。
+                    Text(isDenied
+                        ? "onboarding.permissions.denied_hint"
+                        : "onboarding.permissions.hint")
                         .font(.system(size: 12, weight: .regular))
                         .foregroundColor(Color.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(.top, 16)
                 .transition(.opacity)
@@ -1095,12 +1297,13 @@ struct PermissionsScreen: View {
             case .notDetermined, .denied:
                 OnbSmallPill(
                     title: status == .denied
-                        ? "onboarding.permissions.action.open_settings"
+                        ? "onboarding.permissions.action.open_system_settings"
                         : "onboarding.permissions.action.grant",
                     style: .primary
                 ) {
-                    controller.requestPermission(perm)
+                    controller.resolvePermission(perm)
                 }
+                .accessibilityIdentifier("onboarding.permissions.action")
             }
         }
         .padding(.horizontal, 20)
@@ -1110,6 +1313,10 @@ struct PermissionsScreen: View {
         .opacity(appeared ? 1 : 0)
         .offset(y: appeared ? 0 : 14)
         .animation(.easeOut(duration: 0.45).delay(0.25 + Double(delayIdx) * 0.08), value: appeared)
+    }
+
+    private var isDenied: Bool {
+        AppPermission.allCases.contains { controller.permissionStatuses[$0] == .denied }
     }
 
     private func nameKey(for perm: AppPermission) -> LocalizedStringKey {

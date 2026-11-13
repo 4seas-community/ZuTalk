@@ -20,6 +20,10 @@ import SwiftUI
 // MARK: - 直播
 
 /// 录音条上的「直播」:没在直播时是入口,直播中是状态与人数。
+///
+/// 这是主持活动的人用的工具(docs/product/interface-layers.md 第三层):
+/// 录音条只在「我在主持活动」开着、或这一场正在直播时摆它。别的人从录音条
+/// 「⋯」里的「给观众看字幕…」进同一张面板(`LiveSharePopover`)。
 struct LiveShareButton: View {
     let sessionId: String
     /// 观看页上显示的标题。
@@ -30,8 +34,25 @@ struct LiveShareButton: View {
     @ObservedObject private var nearby = NearbyStore.shared
     @State private var showsPanel = false
 
+    /// 这一场此刻是不是正在给别人看:走链接,或走附近。
+    @MainActor
+    static func isLive(
+        sessionId: String,
+        share: ShareActivityStore,
+        nearby: NearbyStore
+    ) -> Bool {
+        share.isBroadcasting(sessionId: sessionId) || nearby.isLive(sessionId: sessionId)
+    }
+
+    /// 录音条上摆不摆这个按钮。直播一开,按钮就在 —— 开关关着也在,
+    /// 否则停止直播的唯一入口会跟着开关一起消失。
+    @MainActor
+    static func showsInBar(hostMode: HostMode, live: Bool) -> Bool {
+        hostMode.shows(inUse: live)
+    }
+
     var body: some View {
-        let live = share.isBroadcasting(sessionId: sessionId) || nearby.isLive(sessionId: sessionId)
+        let live = Self.isLive(sessionId: sessionId, share: share, nearby: nearby)
         Button {
             showsPanel.toggle()
         } label: {
@@ -56,12 +77,7 @@ struct LiveShareButton: View {
         .accessibilityLabel(Text(label(live: live)))
         .accessibilityIdentifier("recording-bar.share")
         .popover(isPresented: $showsPanel, arrowEdge: .bottom) {
-            ScrollView {
-                LiveSharePanel(sessionId: sessionId, title: title)
-                    .padding(Spacing.lg)
-            }
-            .frame(width: 360)
-            .frame(maxHeight: 700)
+            LiveSharePopover(sessionId: sessionId, title: title)
         }
     }
 
@@ -89,6 +105,22 @@ enum LiveShareText {
         viewers == 0
             ? String(localized: "share.live.on")
             : String(format: String(localized: "share.live.on_count_format"), Int64(viewers))
+    }
+}
+
+/// 直播面板在弹出框里的样子。两个入口弹的是同一张:录音条上的按钮,和
+/// 录音条「⋯」里的「给观众看字幕…」。
+struct LiveSharePopover: View {
+    let sessionId: String
+    let title: String
+
+    var body: some View {
+        ScrollView {
+            LiveSharePanel(sessionId: sessionId, title: title)
+                .padding(Spacing.lg)
+        }
+        .frame(width: 360)
+        .frame(maxHeight: 700)
     }
 }
 

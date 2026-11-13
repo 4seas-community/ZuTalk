@@ -1,10 +1,10 @@
 // SharingSettingsSection.swift
-// 设置 › 共享:此刻在外面的一切 —— 正在直播的链接、还没过期的录音链接 ——
-// 一处看清,随手撤销。
+// 「设置 › 高级」里的「正在分享的链接」:此刻在外面的一切 —— 正在给观众看的
+// 字幕、还没过期的录音链接 —— 一处看清,随手撤销。
 //
-// 共享本身长在录音上(录音条、录音的「共享…」);这里不是开始共享的地方,
+// 分享本身长在录音上(录音条、录音自己的菜单);这里不是开始分享的地方,
 // 是收口的地方。链接散在各个录音里时,主持人答不出「我现在有哪些东西
-// 在外面」,只能一个个录音点开看。
+// 在外面」,只能一个个录音点开看。大多数人从不分享,所以它在「高级」。
 
 import SwiftUI
 
@@ -15,13 +15,11 @@ struct SharingSettingsSection: View {
     @State private var revoking: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Spacing.lg) {
-            SettingsPageHeader(
-                title: String(localized: "settings.section.sharing_name"),
-                subtitle: String(localized: "settings.sharing.subtitle")
-            )
-
-            SettingsCard(title: String(localized: "settings.sharing.out_now")) {
+        SettingsGroup(
+            title: String(localized: "settings.advanced.sharing_title"),
+            subtitle: String(localized: "settings.sharing.subtitle")
+        ) {
+            SettingsCard {
                 if share.live == nil, links.isEmpty {
                     SettingsFullRow {
                         Text(String(localized: "settings.sharing.nothing_out"))
@@ -41,11 +39,12 @@ struct SharingSettingsSection: View {
             }
             .accessibilityIdentifier("settings.sharing.out-now")
 
-            SettingsCard(title: String(localized: "settings.sharing.how")) {
+            SettingsCard(title: String(localized: "settings.advanced.sharing_how")) {
                 SettingsFullRow {
                     VStack(alignment: .leading, spacing: Spacing.sm) {
-                        Label(String(localized: "settings.sharing.how_live"), systemImage: "qrcode")
-                        Label(String(localized: "settings.sharing.how_recording"), systemImage: "square.and.arrow.up")
+                        // 不点按钮的名字:那两个入口这一版在改,说「做什么」不会过时。
+                        Label(String(localized: "settings.advanced.sharing_how_live"), systemImage: "qrcode")
+                        Label(String(localized: "settings.advanced.sharing_how_recording"), systemImage: "square.and.arrow.up")
                         Label(String(localized: "share.encrypted"), systemImage: "lock.fill")
                         Label(String(localized: "share.audio_never"), systemImage: "waveform.slash")
                     }

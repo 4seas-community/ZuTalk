@@ -13,12 +13,14 @@ struct LiveIndicator: View {
         case error       // 红三角 (静止)
         case idle        // 灰小点
 
+        /// In the interface language. These were English codes in capitals
+        /// whatever the interface was set to.
         var label: String {
             switch self {
-            case .recording:  return "REC"
-            case .processing: return "POLISHING"
-            case .completed:  return "COMPLETED"
-            case .error:      return "ERROR"
+            case .recording:  return String(localized: "recording_bar.status.recording")
+            case .processing: return String(localized: "menubar.processing.refining")
+            case .completed:  return String(localized: "capture.state.completed")
+            case .error:      return String(localized: "capture.state.failed")
             case .idle:       return ""
             }
         }
@@ -32,9 +34,10 @@ struct LiveIndicator: View {
         HStack(spacing: Spacing.xs + 2) {
             icon
             if let text = customLabel ?? (state.label.isEmpty ? nil : state.label) {
+                // Words now, not a code: no letter-spacing, which pulls
+                // Thai and CJK text apart.
                 Text(text)
-                    .font(.captionMedium)
-                    .tracking(1.0)
+                    .font(.sans11Medium)
                     .foregroundColor(color)
             }
         }
@@ -135,7 +138,7 @@ struct SpinningArc: View {
         LiveIndicator(state: .processing)
         LiveIndicator(state: .completed)
         LiveIndicator(state: .error)
-        LiveIndicator(state: .recording, customLabel: "LIVE · 02:14")
+        LiveIndicator(state: .recording, customLabel: "02:14")
     }
     .padding(32)
     .background(Color.bgRoot)

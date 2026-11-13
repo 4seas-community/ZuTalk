@@ -94,10 +94,16 @@ final class MenuBarRuntimeStoreTests: XCTestCase {
         XCTAssertEqual(store.state, .idle)
     }
 
-    func testProcessingCompletedPointsToHomeWorkspace() {
-        let info = ProcessingInfo(stage: .completed, progress: 1, sessionId: "sess-1")
+    /// The two labels were hard-coded English ("Transcribing…", "Ready in
+    /// Home") whatever the interface language.
+    func testProcessingLabelsComeFromTheInterfaceLanguage() {
+        let completed = ProcessingInfo(stage: .completed, progress: 1, sessionId: "sess-1")
+        let running = ProcessingInfo(stage: .transcribing, progress: 0.3, sessionId: "sess-1")
 
-        XCTAssertEqual(info.label, "Ready in Home")
+        XCTAssertEqual(completed.label, String(localized: "menubar.processing.ready"))
+        XCTAssertEqual(running.label, String(localized: "menubar.processing.refining"))
+        XCTAssertNotEqual(completed.label, "menubar.processing.ready", "the key must resolve")
+        XCTAssertNotEqual(running.label, "menubar.processing.refining", "the key must resolve")
     }
 
     func testZuTalkAppRoutesCaptureControlsBackToNotebook() throws {
@@ -170,4 +176,387 @@ final class MenuBarRuntimeStoreTests: XCTestCase {
         XCTAssertEqual(notifications, 1, "duplicate setSuppressed should not republish")
     }
 
+}
+
+// MARK: - 0.8.2: one status sentence, four controls, hosting tools a layer down
+//
+// Lives here because the test target lists its files by hand. The rules these
+// pin are docs/product/interface-layers.md.
+
+@MainActor
+final class RecordingBarStatusLineTests: XCTestCase {
+    private func model(
+        phase: RecordingBarModel.Phase = .recording,
+        stoppingSeconds: Int? = nil,
+        captions: RecordingBarModel.Captions = .live,
+        offline: Bool = false,
+        lagNotice: String? = nil,
+        problem: String? = nil,
+        haltedNotice: String? = nil
+    ) -> RecordingBarModel {
+        RecordingBarModel(
+            phase: phase,
+            elapsed: 65,
+            stoppingSeconds: stoppingSeconds,
+            captions: captions,
+            offline: offline,
+            lagNotice: lagNotice,
+            problem: problem,
+            haltedNotice: haltedNotice,
+            canPause: true,
+            canStop: true,
+            stopNeedsRetry: false,
+            justMarked: false,
+            pausedWhileBilling: false
+        )
+    }
+
+    func testEveryRowOfTheStatusTable() {
+        let rows: [(RecordingBarModel, RecordingBarModel.StatusLine, String.LocalizationValue)] = [
+            (model(), .recording, "recording_bar.status.recording"),
+            (model(captions: .off), .audioOnly, "recording_bar.status.audio_only"),
+            (model(captions: .connecting), .connectingText, "recording_bar.status.connecting"),
+            (model(lagNotice: "Chinese translation 12 s behind"), .textBehind, "recording_bar.status.text_behind"),
+            (model(captions: .partial), .someTextStopped, "recording_bar.status.some_text_stopped"),
+            (model(captions: .stopped), .textStopped, "recording_bar.status.text_stopped"),
+            (model(offline: true), .offline, "recording_bar.status.offline"),
+            (model(phase: .paused), .paused, "capture.state.paused"),
+            (model(phase: .pausing), .pausing, "capture.state.pausing"),
+            (model(phase: .resuming), .resuming, "capture.state.resuming"),
+            (model(phase: .stopping), .stopping(seconds: nil), "capture.state.saving_recording"),
+        ]
+        for (model, expected, key) in rows {
+            XCTAssertEqual(model.statusLine, expected)
+            XCTAssertEqual(model.statusLine.text, String(localized: key))
+        }
+    }
+
+    /// A translation that stopped leaves remote health "live"; it is still
+    /// some of the text having stopped.
+    func testAHaltedTranslationCountsAsSomeTextStopped() {
+        XCTAssertEqual(
+            model(captions: .live, haltedNotice: "Thai translation stopped").statusLine,
+            .someTextStopped
+        )
+    }
+
+    func testStoppingKeepsCountingSecondsAsBefore() {
+        XCTAssertEqual(
+            model(phase: .stopping, stoppingSeconds: 7).statusLine.text,
+            String(format: String(localized: "capture.state.saving_recording_seconds"), Int64(7))
+        )
+        XCTAssertEqual(
+            model(phase: .stopping, stoppingSeconds: 1).statusLine.text,
+            String(localized: "capture.state.saving_recording"),
+            "the first second is not worth counting"
+        )
+    }
+
+    /// stopping > pausing / resuming / paused > offline > text stopped >
+    /// some text stopped > behind > connecting > audio only > recording.
+    /// Start with everything wrong at once and take the top one away.
+    func testPriorityOrder() {
+        var everything = model(
+            phase: .stopping,
+            stoppingSeconds: 5,
+            captions: .stopped,
+            offline: true,
+            lagNotice: "Captions 9 s behind",
+            problem: "The connection dropped.",
+            haltedNotice: "Thai translation stopped"
+        )
+        XCTAssertEqual(everything.statusLine, .stopping(seconds: 5))
+
+        for (phase, expected) in [
+            (RecordingBarModel.Phase.pausing, RecordingBarModel.StatusLine.pausing),
+            (.resuming, .resuming),
+            (.paused, .paused),
+        ] {
+            everything.phase = phase
+            XCTAssertEqual(everything.statusLine, expected, "pausing outranks every text problem")
+        }
+
+        everything.phase = .recording
+        XCTAssertEqual(everything.statusLine, .offline)
+
+        everything.offline = false
+        XCTAssertEqual(everything.statusLine, .textStopped)
+
+        everything.captions = .partial
+        XCTAssertEqual(everything.statusLine, .someTextStopped)
+
+        everything.captions = .connecting
+        XCTAssertEqual(everything.statusLine, .someTextStopped, "a halted language outranks lag and connecting")
+
+        everything.haltedNotice = nil
+        XCTAssertEqual(everything.statusLine, .textBehind, "lag outranks connecting")
+
+        everything.lagNotice = nil
+        XCTAssertEqual(everything.statusLine, .connectingText)
+
+        everything.captions = .off
+        XCTAssertEqual(everything.statusLine, .audioOnly)
+
+        everything.captions = .live
+        XCTAssertEqual(everything.statusLine, .recording)
+    }
+
+    func testOnlyTextProblemsAreAmber() {
+        let amber: [RecordingBarModel.StatusLine] = [.offline, .textStopped, .someTextStopped, .textBehind]
+        let quiet: [RecordingBarModel.StatusLine] = [
+            .stopping(seconds: 3), .pausing, .resuming, .paused,
+            .connectingText, .audioOnly, .recording,
+        ]
+        XCTAssertTrue(amber.allSatisfy(\.reportsTextProblem))
+        XCTAssertFalse(quiet.contains(where: \.reportsTextProblem))
+    }
+
+    /// The sentence rounds off; the tooltip keeps the exact words.
+    func testSentenceNeverCountsLagAndTheTooltipDoes() throws {
+        let lagging = model(lagNotice: "Chinese translation 12 s behind")
+        XCTAssertNil(
+            lagging.statusLine.text.rangeOfCharacter(from: .decimalDigits),
+            "seconds of lag belong in the tooltip"
+        )
+        XCTAssertTrue(try XCTUnwrap(lagging.statusDetail).contains("Chinese translation 12 s behind"))
+
+        XCTAssertEqual(
+            model(captions: .stopped, problem: "The connection dropped.").statusDetail,
+            "The connection dropped."
+        )
+        XCTAssertEqual(
+            model(captions: .partial, haltedNotice: "Thai translation stopped").statusDetail,
+            "Thai translation stopped"
+        )
+        XCTAssertEqual(
+            model(offline: true, problem: "The connection dropped.").statusDetail,
+            String(localized: "network.offline.recording_banner"),
+            "no network explains every problem under it"
+        )
+        XCTAssertNil(model().statusDetail)
+        XCTAssertNil(model(phase: .stopping, captions: .stopped, problem: "x").statusDetail)
+    }
+
+    func testHaltedNoticeNamesTheLanguages() throws {
+        XCTAssertNil(RecordingAttention.haltedNotice([]))
+        let notice = try XCTUnwrap(RecordingAttention.haltedNotice(["th"]))
+        let thai = Locale.current.localizedString(forLanguageCode: "th") ?? "TH"
+        XCTAssertTrue(notice.contains(thai))
+    }
+
+    // MARK: Hosting tools
+
+    func testAudienceButtonIsAHostingTool() {
+        let suite = "RecordingBarStatusLineTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let mode = HostMode(
+            defaults: defaults,
+            initiallySignedIn: false,
+            signedIn: Just(false).eraseToAnyPublisher()
+        )
+
+        XCTAssertFalse(
+            LiveShareButton.showsInBar(hostMode: mode, live: false),
+            "someone who only records has no audience button"
+        )
+        XCTAssertTrue(
+            LiveShareButton.showsInBar(hostMode: mode, live: true),
+            "a share that is running keeps the button that stops it"
+        )
+
+        mode.set(true)
+        XCTAssertTrue(LiveShareButton.showsInBar(hostMode: mode, live: false))
+    }
+
+    /// One entry to the audience panel is on screen at a time: the button,
+    /// or the item under ⋯.
+    func testMoreMenuOffersAudienceCaptionsWhenTheButtonIsNotShowing() {
+        XCTAssertTrue(RecordingBarMenu.offersAudienceCaptions(sessionId: "s", showsShareButton: false))
+        XCTAssertFalse(RecordingBarMenu.offersAudienceCaptions(sessionId: "s", showsShareButton: true))
+        XCTAssertFalse(RecordingBarMenu.offersAudienceCaptions(sessionId: nil, showsShareButton: false))
+    }
+
+    // MARK: The live page
+
+    func testNothingSitsAboveTheTranscriptWhileItsRecordingRuns() {
+        let recording = NotebookRealtimeConsolePresentation.activeRunSummary
+        XCTAssertFalse(recording.showsConsole(stopNeedsAttention: false))
+        XCTAssertFalse(recording.showsConsole(stopNeedsAttention: true))
+
+        let stopping = NotebookRealtimeConsolePresentation.drainingSummary
+        XCTAssertFalse(stopping.showsConsole(stopNeedsAttention: false), "the bar counts an ordinary stop out")
+        XCTAssertTrue(stopping.showsConsole(stopNeedsAttention: true))
+
+        XCTAssertTrue(NotebookRealtimeConsolePresentation.inactiveEditor.showsConsole(stopNeedsAttention: false))
+        XCTAssertTrue(
+            NotebookRealtimeConsolePresentation.activeElsewhereSummary.showsConsole(stopNeedsAttention: false)
+        )
+    }
+
+    func testReadingLayoutIsOneChoiceForTheBarAndThePage() {
+        let layout = TranscriptReadingLayout()
+        XCTAssertEqual(layout.mode(for: nil), .bilingualColumns)
+        XCTAssertEqual(layout.mode(for: "topic-a"), .bilingualColumns)
+
+        layout.noteDefault(.sourceTimeline, for: "topic-a")
+        XCTAssertEqual(layout.mode(for: "topic-a"), .sourceTimeline, "until someone chooses, the page's own default")
+        XCTAssertNil(layout.chosen["topic-a"])
+
+        layout.choose(.bilingualColumns, for: "topic-a")
+        XCTAssertEqual(layout.mode(for: "topic-a"), .bilingualColumns)
+
+        layout.noteDefault(.sourceTimeline, for: "topic-a")
+        XCTAssertEqual(layout.mode(for: "topic-a"), .bilingualColumns, "a default never overrides a choice")
+        XCTAssertEqual(layout.mode(for: "topic-b"), .bilingualColumns, "per topic")
+
+        var publishes = 0
+        let observer = layout.objectWillChange.sink { publishes += 1 }
+        defer { observer.cancel() }
+        layout.choose(.bilingualColumns, for: "topic-a")
+        layout.noteDefault(.sourceTimeline, for: "topic-a")
+        XCTAssertEqual(publishes, 0, "saying the same thing again must not redraw the bar")
+    }
+
+    // MARK: Wording and what left the screen
+
+    private static let sourceRoot = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .appendingPathComponent("ZuTalk", isDirectory: true)
+
+    private func source(_ relativePath: String) throws -> String {
+        try String(
+            contentsOf: Self.sourceRoot.appendingPathComponent(relativePath),
+            encoding: .utf8
+        )
+    }
+
+    private func strings(_ language: String) throws -> [String: String] {
+        let text = try source("Resources/\(language).lproj/Localizable.strings")
+        var table: [String: String] = [:]
+        for line in text.split(separator: "\n") {
+            guard line.hasPrefix("\""), line.hasSuffix("\";"),
+                  let separator = line.range(of: "\" = \"") else { continue }
+            let key = String(line[line.index(after: line.startIndex)..<separator.lowerBound])
+            table[key] = String(line[separator.upperBound..<line.index(line.endIndex, offsetBy: -2)])
+        }
+        return table
+    }
+
+    private static let liveKeys = [
+        "recording_bar.status.recording",
+        "recording_bar.status.audio_only",
+        "recording_bar.status.connecting",
+        "recording_bar.status.text_behind",
+        "recording_bar.status.some_text_stopped",
+        "recording_bar.status.text_stopped",
+        "recording_bar.status.offline",
+        "recording_bar.status.open_hint",
+        "recording_bar.more",
+        "recording_bar.more.caption_window.open",
+        "recording_bar.more.caption_window.close",
+        "recording_bar.more.copy_text",
+        "recording_bar.more.audience",
+        "menubar.recording.open_recording",
+        "menubar.processing.refining",
+        "menubar.processing.ready",
+    ]
+
+    /// The table in docs/product/interface-layers.md, word for word.
+    func testStatusWordingIsTheLayersDocuments() throws {
+        let expected: [(key: String, zh: String, en: String)] = [
+            ("recording_bar.status.recording", "正在录音", "Recording"),
+            ("recording_bar.status.audio_only", "正在录音 · 只录音", "Recording · audio only"),
+            ("recording_bar.status.connecting", "正在录音 · 正在接通文字", "Recording · connecting text"),
+            ("recording_bar.status.text_behind", "正在录音 · 文字慢了一点", "Recording · text is a little behind"),
+            ("recording_bar.status.some_text_stopped", "正在录音 · 部分文字停了", "Recording · some text stopped"),
+            ("recording_bar.status.text_stopped", "正在录音 · 文字停了", "Recording · text stopped"),
+            ("recording_bar.status.offline", "正在录音 · 没联网，暂时出不了字", "Recording · offline, no text for now"),
+        ]
+        let zh = try strings("zh-Hans")
+        let en = try strings("en")
+        for row in expected {
+            XCTAssertEqual(zh[row.key], row.zh)
+            XCTAssertEqual(en[row.key], row.en)
+        }
+        XCTAssertEqual(zh["menubar.recording.open_recording"], "打开这场录音")
+    }
+
+    func testNewCopyIsInEveryLanguagesOwnWords() throws {
+        let english = try strings("en")
+        for language in ["th", "ja", "ko", "fr", "es", "de", "zh-Hans"] {
+            let table = try strings(language)
+            for key in Self.liveKeys {
+                let value = try XCTUnwrap(table[key], "\(language) must define \(key)")
+                XCTAssertNotEqual(value, english[key], "\(language) \(key) is still English")
+                if ["th", "ja", "ko", "zh-Hans"].contains(language) {
+                    XCTAssertNil(
+                        value.range(of: "[A-Za-z]", options: .regularExpression),
+                        "\(language) \(key) mixes in Latin text: \(value)"
+                    )
+                }
+            }
+        }
+    }
+
+    func testBarKeepsFourControlsAndReconnectStaysInTheBanner() throws {
+        let bar = try source("UIScenes/Main/RecordingBar.swift")
+        let start = try XCTUnwrap(bar.range(of: "struct RecordingBarContent: View"))
+        let end = try XCTUnwrap(bar.range(of: "struct RecordingAttention: Equatable"))
+        let content = String(bar[start.lowerBound..<end.lowerBound])
+
+        for identifier in ["recording-bar.open", "recording-bar.mark", "recording-bar.pause",
+                           "recording-bar.stop", "recording-bar.more"] {
+            XCTAssertTrue(content.contains("\"\(identifier)\""), "\(identifier) must survive")
+        }
+        XCTAssertEqual(
+            content.components(separatedBy: "barButton(").count - 1,
+            4,
+            "Mark, Pause and Stop, plus the helper itself; ⋯ is a Menu"
+        )
+        for retired in ["restart_transcription", "captionsChip", "recording_bar.unfiled",
+                        "capture.remote.", "tortoise"] {
+            XCTAssertFalse(content.contains(retired), "\(retired) left the bar")
+        }
+
+        let bannerStart = try XCTUnwrap(bar.range(of: "struct RecordingProblemBanner: View"))
+        let bannerEnd = try XCTUnwrap(bar.range(of: "struct CaptionsChoiceChip: View"))
+        let banner = String(bar[bannerStart.lowerBound..<bannerEnd.lowerBound])
+        XCTAssertTrue(banner.contains("commands.restartTranscription()"))
+        XCTAssertTrue(banner.contains("capture.toolbar.restart_transcription"))
+    }
+
+    func testLivePageAndMenuBarDroppedWhatTheBarNowSays() throws {
+        let page = try source("Pages/NotebookRealtimeTranscriptPage.swift")
+        for retired in [
+            "floatingSubtitleButton",
+            "capture.realtime.controls.current_title",
+            "capture.settings.active_locked",
+            "capture.remote.catching_up",
+            "realtimeModelId",
+        ] {
+            XCTAssertFalse(page.contains(retired), "the live page must not carry \(retired)")
+        }
+        XCTAssertTrue(page.contains("run.sessionId != activeSessionID"))
+
+        let menuBar = try source("MenuBar/MenuBarRecordingView.swift")
+        XCTAssertFalse(menuBar.contains("CaptureStateLabel("), "the popover says the bar's sentence")
+        XCTAssertFalse(menuBar.contains("info.languagePair"), "which could be the engine's code name")
+        XCTAssertFalse(menuBar.contains("\"menubar.recording.open_notebook\""))
+        XCTAssertTrue(menuBar.contains("\"menubar.recording.open_recording\""))
+        XCTAssertTrue(menuBar.contains("RecordingBarModel.current("))
+
+        let models = try source("Capture/RecordingDomainModels.swift")
+        for english in ["SONIOX", "Transcribing", "Ready in Home", "AES-256"] {
+            XCTAssertFalse(models.contains(english))
+        }
+        let indicator = try source("DesignSystem/Primitives/LiveIndicator.swift")
+        for code in ["\"REC\"", "\"POLISHING\"", "\"COMPLETED\"", "\"ERROR\""] {
+            XCTAssertFalse(indicator.contains(code))
+        }
+        let hud = try source("MenuBar/RecordingHudView.swift")
+        XCTAssertFalse(hud.contains("hud.recording.active"), "that key reads REC in every language")
+        XCTAssertFalse(hud.contains("hud.recording.paused"))
+    }
 }

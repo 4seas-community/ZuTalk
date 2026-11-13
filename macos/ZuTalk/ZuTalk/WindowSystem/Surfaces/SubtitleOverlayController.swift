@@ -1155,6 +1155,8 @@ struct SubtitleOverlayView: View {
     @ObservedObject private var timeline: LiveTranscriptTimeline
     @ObservedObject private var coordinator = SubtitleOverlayCoordinator.shared
     @ObservedObject private var presentationSettings = SubtitleOverlayPresentationSettings.shared
+    // Only for the status sentence: "offline" is said instead of "connecting".
+    @ObservedObject private var network = NetworkReachability.shared
     // 观看端分支的数据源:别人房间里的远端预览帧。本机没在录而人在房间里
     // 时,画布切到它 —— 同一扇窗、同一套主题与字号,只有内容来源不同。
     @Environment(\.accessibilityReduceTransparency)
@@ -1474,13 +1476,21 @@ struct SubtitleOverlayView: View {
         .keyboardShortcut("f", modifiers: [.control, .command])
     }
 
+    /// The same one sentence as the recording bar and the menu bar
+    /// (docs/product/interface-layers.md), so the person running the room
+    /// reads one wording everywhere. Which languages are behind stays in the
+    /// badge beside it.
     private var captureStatus: some View {
-        HStack(spacing: 8) {
-            CaptureStateLabel(
-                captureState: store.presentationCaptureState,
-                remoteHealth: store.remoteHealth,
-                projectionState: store.projectionState
-            )
+        let line = RecordingBarModel.current(
+            capture: store,
+            commands: .shared,
+            networkOffline: network.isOffline
+        ).statusLine
+        return HStack(spacing: 8) {
+            Text(line.text)
+                .font(.captionMedium)
+                .foregroundColor(line.reportsTextProblem ? .accentGold : .textSecondary)
+                .lineLimit(1)
             degradedLanesBadge
         }
     }

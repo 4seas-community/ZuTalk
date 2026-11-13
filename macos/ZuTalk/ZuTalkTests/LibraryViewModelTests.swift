@@ -185,20 +185,49 @@ final class LibraryViewModelTests: XCTestCase {
         XCTAssertFalse(contents.contains("home.workspace.error_format"))
         XCTAssertFalse(contents.contains("NotebookCaptureStartCoordinator("))
 
-        // All recordings is a ledger. Recordings start on the one Record page,
-        // first in the sidebar: languages, topic and live captions are chosen
-        // there, and the start goes through the same commands as ⌃⌥R.
+        // Home is where a recording starts: one card above the list holds
+        // the only Start button in the window. The list itself still starts
+        // nothing, and the start goes through the same commands as ⌃⌥R.
+        XCTAssertTrue(home.contains("HomeStartCard(library: viewModel"))
         XCTAssertFalse(home.contains("home.record.start"))
-        XCTAssertFalse(home.contains("CaptionsChoiceChip()"))
-        XCTAssertFalse(home.contains("startQuickCapture"))
+        XCTAssertFalse(contents.contains("CaptionsChoiceChip()"))
+        XCTAssertFalse(contents.contains("startQuickCapture"))
+        // A recording in no topic carries no topic label, and the list has
+        // no strip of counts above it.
+        XCTAssertFalse(contents.contains("home.row.topic.unassigned"))
+        XCTAssertFalse(contents.contains("home.record.unfiled"))
+        XCTAssertFalse(contents.contains("home.catalog.count_format"))
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: root.appendingPathComponent("Pages/RecordStartPage.swift").path
+            ),
+            "starting a recording is not a page of its own"
+        )
         let record = try String(
-            contentsOf: root.appendingPathComponent("Pages/RecordStartPage.swift"),
+            contentsOf: root.appendingPathComponent("Pages/HomeStartCard.swift"),
             encoding: .utf8
         )
         XCTAssertTrue(record.contains("commands.startQuickCapture(profileEditor: editor)"))
         XCTAssertTrue(record.contains("commands.start(notebookId: notebookId, profileEditor: starter)"))
-        XCTAssertTrue(record.contains("CaptionsChoiceChip()"))
-        XCTAssertTrue(record.contains("CaptureLanguageEditor(editor: editor)"))
+        // The choices are in the card, behind "Change": none of them stands
+        // between the person and the Start button.
+        let optionsStart = try XCTUnwrap(record.range(of: "private var options: some View"))
+        let beforeOptions = String(record[..<optionsStart.lowerBound])
+        let options = String(record[optionsStart.lowerBound...])
+        XCTAssertTrue(beforeOptions.contains("if memory.showsOptions"))
+        XCTAssertFalse(beforeOptions.contains("CaptureLanguageEditor("))
+        XCTAssertFalse(beforeOptions.contains("AudioInputPicker("))
+        XCTAssertFalse(beforeOptions.contains("Picker("))
+        XCTAssertTrue(options.contains("CaptureLanguageEditor(editor: editor)"))
+        XCTAssertTrue(options.contains("commands.setRealtimeCaptionsEnabled("))
+        XCTAssertTrue(options.contains("hostMode.set("))
+        // Where the transcript will be filed is confirmed per recording, so
+        // that row is never inside the collapsed options — and nothing is
+        // confirmed when the row is not on screen.
+        XCTAssertTrue(beforeOptions.contains("StartCardHostingSection(editor: editor, topicId: topicId"))
+        XCTAssertTrue(record.contains(
+            "if StartCardHosting.current(hostMode: hostMode) == .destination {\n            CityStore.shared.confirmNextDestination()"
+        ))
         // Meeting or microphone is decided before Start, with the same control
         // a recording's settings show.
         XCTAssertTrue(record.contains("AudioInputPicker(notebookId: notebookId"))
@@ -1804,5 +1833,519 @@ final class LibraryViewModelHelpersTests: XCTestCase {
         )
 
         XCTAssertNil(item.previewPlaceholderState)
+    }
+}
+
+// MARK: - Home: starting a recording, the sidebar, topics as optional
+
+/// Home is where a recording starts (docs/product/interface-layers.md). What
+/// can be checked without a window: the sentence under the Start button, the
+/// rules for what the card and the sidebar show, and where the old Record
+/// destination now leads.
+@MainActor
+final class HomeStartTests: XCTestCase {
+    /// One language's phrases straight from its strings file, so a sentence
+    /// can be compared word for word on any test machine.
+    private func wording(_ language: String) throws -> RecordingPlanSentence.Wording {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("ZuTalk/Resources/\(language).lproj/Localizable.strings")
+        let table = try XCTUnwrap(NSDictionary(contentsOf: url) as? [String: String])
+        return RecordingPlanSentence.Wording(
+            phrase: { table[$0] ?? $0 },
+            locale: Locale(identifier: language)
+        )
+    }
+
+    // MARK: The sentence
+
+    func testOneLanguageWithNoTranslationSaysOnlyWhatIsSpokenAndWhereTheSoundComesFrom() throws {
+        let plan = RecordingPlan(spoken: ["zh"])
+
+        XCTAssertEqual(
+            RecordingPlanSentence.text(plan, wording: try wording("zh-Hans")),
+            "说中文 · 这台 Mac 的麦克风"
+        )
+        XCTAssertEqual(
+            RecordingPlanSentence.text(plan, wording: try wording("en")),
+            "Speaking 中文 · this Mac’s microphone"
+        )
+    }
+
+    func testSeveralSpokenLanguagesAreSaidToTranslateIntoEachOther() throws {
+        XCTAssertEqual(
+            RecordingPlanSentence.text(
+                RecordingPlan(spoken: ["zh", "en"]),
+                wording: try wording("zh-Hans")
+            ),
+            "说中文和 English，互相翻译 · 这台 Mac 的麦克风"
+        )
+        XCTAssertEqual(
+            RecordingPlanSentence.text(
+                RecordingPlan(spoken: ["zh", "en", "th"]),
+                wording: try wording("en")
+            ),
+            "Speaking 中文, English, and ไทย, translated into each other · this Mac’s microphone"
+        )
+    }
+
+    func testLanguagesNobodySpeaksAreSaidAsTranslatedInto() throws {
+        XCTAssertEqual(
+            RecordingPlanSentence.text(
+                RecordingPlan(spoken: ["zh"], translatedInto: ["en", "th"]),
+                wording: try wording("zh-Hans")
+            ),
+            "说中文，同时译成 English 和 ไทย · 这台 Mac 的麦克风"
+        )
+        XCTAssertEqual(
+            RecordingPlanSentence.text(
+                RecordingPlan(spoken: ["zh", "en"], translatedInto: ["th"]),
+                wording: try wording("zh-Hans")
+            ),
+            "说中文和 English，互相翻译，另外译成 ไทย · 这台 Mac 的麦克风"
+        )
+        // A language cannot be both; spoken wins, as it does in the profile.
+        XCTAssertEqual(
+            RecordingPlanSentence.text(
+                RecordingPlan(spoken: ["zh"], translatedInto: ["zh"]),
+                wording: try wording("zh-Hans")
+            ),
+            "说中文 · 这台 Mac 的麦克风"
+        )
+    }
+
+    func testAudioOnlyNamesNoLanguage() throws {
+        let plan = RecordingPlan(spoken: ["zh", "en"], liveText: false)
+
+        XCTAssertEqual(
+            RecordingPlanSentence.text(plan, wording: try wording("zh-Hans")),
+            "只录音，不出字 · 这台 Mac 的麦克风"
+        )
+        XCTAssertEqual(
+            RecordingPlanSentence.text(plan, wording: try wording("en")),
+            "Audio only, no live text · this Mac’s microphone"
+        )
+    }
+
+    func testTheSoundSourceIsNamedAsThePersonKnowsIt() throws {
+        let zh = try wording("zh-Hans")
+
+        XCTAssertEqual(
+            RecordingPlanSentence.text(
+                RecordingPlan(spoken: ["zh"], source: .soundFromMac),
+                wording: zh
+            ),
+            "说中文 · 电脑里的声音"
+        )
+        XCTAssertEqual(
+            RecordingPlanSentence.text(
+                RecordingPlan(spoken: ["zh"], source: .microphone("USB Mic")),
+                wording: zh
+            ),
+            "说中文 · 麦克风：USB Mic"
+        )
+        // A picked microphone whose name is unknown is still a microphone.
+        XCTAssertEqual(
+            RecordingPlanSentence.text(
+                RecordingPlan(spoken: ["zh"], source: .microphone("  ")),
+                wording: zh
+            ),
+            "说中文 · 这台 Mac 的麦克风"
+        )
+    }
+
+    func testAChosenTopicIsSaidLastAndNoTopicIsNotMentioned() throws {
+        let zh = try wording("zh-Hans")
+
+        XCTAssertEqual(
+            RecordingPlanSentence.text(
+                RecordingPlan(spoken: ["zh"], topic: "周会"),
+                wording: zh
+            ),
+            "说中文 · 这台 Mac 的麦克风 · 放进「周会」"
+        )
+        // The topic's own name is left exactly as it was typed.
+        XCTAssertEqual(
+            RecordingPlanSentence.text(
+                RecordingPlan(spoken: ["zh"], liveText: false, topic: "AI与教育"),
+                wording: zh
+            ),
+            "只录音，不出字 · 这台 Mac 的麦克风 · 放进「AI与教育」"
+        )
+        let none = RecordingPlanSentence.text(RecordingPlan(spoken: ["zh"], topic: "  "), wording: zh)
+        XCTAssertEqual(none, "说中文 · 这台 Mac 的麦克风")
+        XCTAssertFalse(none.contains("主题"))
+    }
+
+    func testLanguagesThatHaveNotLoadedLeaveOnlyTheRestOfTheSentence() throws {
+        XCTAssertEqual(
+            RecordingPlanSentence.text(
+                RecordingPlan(spoken: [], source: .soundFromMac),
+                wording: try wording("zh-Hans")
+            ),
+            "电脑里的声音"
+        )
+    }
+
+    func testTheSentenceReadsAsOneInEveryInterfaceLanguage() throws {
+        let plan = RecordingPlan(
+            spoken: ["zh", "en"],
+            translatedInto: ["th"],
+            source: .soundFromMac,
+            topic: "Weekly"
+        )
+        for language in AppLanguage.allCases {
+            let text = RecordingPlanSentence.text(plan, wording: try wording(language.rawValue))
+            for expected in ["中文", "English", "ไทย", "Weekly", " · "] {
+                XCTAssertTrue(text.contains(expected), "\(language.rawValue): \(text)")
+            }
+            XCTAssertFalse(text.contains("home.plan."), "\(language.rawValue) is missing a phrase: \(text)")
+            XCTAssertFalse(text.contains("%"), "\(language.rawValue) left a placeholder: \(text)")
+        }
+    }
+
+    func testASpaceSeparatesChineseFromOtherScriptsAndNothingElseChanges() {
+        XCTAssertEqual(
+            RecordingPlanSentence.spacedBetweenScripts("说中文和English，互相翻译"),
+            "说中文和 English，互相翻译"
+        )
+        XCTAssertEqual(
+            RecordingPlanSentence.spacedBetweenScripts("中文、English和ไทย"),
+            "中文、English 和 ไทย"
+        )
+        XCTAssertEqual(
+            RecordingPlanSentence.spacedBetweenScripts("Englishで話し、日本語にも翻訳"),
+            "English で話し、日本語にも翻訳"
+        )
+        for unchanged in [
+            "说中文和 English，互相翻译",
+            "Speaking 中文 and English",
+            "ภาษาที่พูด: ไทย และ English",
+            "말하는 언어: 한국어, English",
+            "",
+        ] {
+            XCTAssertEqual(RecordingPlanSentence.spacedBetweenScripts(unchanged), unchanged)
+        }
+    }
+
+    func testTwoLanguagesAreBothSpokenAndRolesStartAtThree() {
+        let two = RecordingPlanSentence.languages(selected: ["zh", "en"], subtitleOnly: ["en"])
+        XCTAssertEqual(two.spoken, ["zh", "en"])
+        XCTAssertEqual(two.translatedInto, [])
+
+        let three = RecordingPlanSentence.languages(
+            selected: ["zh", "en", "th"],
+            subtitleOnly: ["th"]
+        )
+        XCTAssertEqual(three.spoken, ["zh", "en"])
+        XCTAssertEqual(three.translatedInto, ["th"])
+
+        // Nobody speaking is read as anyone may, as the core reads it.
+        let all = RecordingPlanSentence.languages(
+            selected: ["zh", "en", "th"],
+            subtitleOnly: ["zh", "en", "th"]
+        )
+        XCTAssertEqual(all.spoken, ["zh", "en", "th"])
+        XCTAssertEqual(all.translatedInto, [])
+    }
+
+    func testEveryPhraseTheStartCardShowsIsLocalized() {
+        for key in [
+            "home.start.change",
+            "home.start.change_done",
+            "home.start.change_hint",
+            "home.start.offline_hint",
+            "home.plan.speak_format",
+            "home.plan.speak_translate_format",
+            "home.plan.speak_many_format",
+            "home.plan.speak_many_translate_format",
+            "home.plan.audio_only",
+            "home.plan.source.this_mac",
+            "home.plan.source.microphone_format",
+            "home.plan.source.sound_from_mac",
+            "home.plan.topic_format",
+            "home.plan.join2_format",
+            "home.plan.join3_format",
+            "home.options.languages",
+            "home.options.languages_detail",
+            "home.options.source_detail_microphone_or_mac",
+            "home.options.live_text",
+            "home.options.live_text_detail",
+            "home.options.live_text_needs_setup",
+            "home.options.live_text_setup",
+            "home.options.live_text_invite_format",
+            "home.options.topic",
+            "home.options.topic_detail",
+            "home.options.topic.none",
+            "home.options.topic.new",
+            "home.options.hosting",
+            "home.options.hosting_detail",
+            "home.options.import",
+            "home.hosting.sign_in_hint",
+            "home.hosting.sign_in_button",
+            "home.search.placeholder",
+            "home.empty.sentence",
+            "home.filter.no_topic",
+            "home.filter.no_topic_empty",
+            "home.row.put_in_topic",
+            "home.row.open_hint",
+            "home.row.needs_topic_hint",
+            "topics.empty.description",
+            "topic.none_choice",
+            "capture.languages.roles.all_spoken",
+            "capture.languages.roles.some_translated_format",
+            "capture.languages.role.spoken_format",
+            "capture.languages.role.translated_format",
+            "audio_input.sound_from_mac",
+        ] {
+            let value = Bundle.main.localizedString(forKey: key, value: nil, table: nil)
+            XCTAssertNotEqual(value, key, "missing localization for \(key)")
+            XCTAssertFalse(value.isEmpty, "empty localization for \(key)")
+        }
+    }
+
+    /// The words the interface no longer uses for a recording in no topic
+    /// must not come back through Home, the start card or the sidebar.
+    func testHomeNeverCallsARecordingUnfiled() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("ZuTalk", isDirectory: true)
+        for file in [
+            "Pages/HomeView.swift",
+            "Pages/HomeStartCard.swift",
+            "Pages/RecordingPlanSentence.swift",
+            "UIScenes/Main/MainShellView.swift",
+            "UIScenes/Main/MainNavigationStore.swift",
+            "Library/LibraryViewModel.swift",
+        ] {
+            let source = try String(contentsOf: root.appendingPathComponent(file), encoding: .utf8)
+            for retired in [
+                "home.row.topic.unassigned",
+                "home.record.unfiled",
+                "home.catalog.unfiled_empty",
+                "home.catalog.row.unfiled_hint",
+                "home.catalog.row.open_unfiled_hint",
+                "home.no_notebook.description",
+                "capture.settings.context.current_quick_capture",
+            ] {
+                XCTAssertFalse(source.contains(retired), "\(file) still shows \(retired)")
+            }
+        }
+    }
+
+    // MARK: Return in a search field
+
+    /// The Start button is the window's default action and now shares a page
+    /// with the recordings' search field. Return typed into a text field
+    /// must never start a recording.
+    func testReturnInASearchFieldDoesNotReachTheStartButton() throws {
+        var typing = TextEntryFocusKey.defaultValue
+        XCTAssertFalse(typing)
+        TextEntryFocusKey.reduce(value: &typing) { false }
+        XCTAssertFalse(typing)
+        TextEntryFocusKey.reduce(value: &typing) { true }
+        TextEntryFocusKey.reduce(value: &typing) { false }
+        XCTAssertTrue(typing, "one field with the keyboard is enough")
+
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("ZuTalk", isDirectory: true)
+        func source(_ file: String) throws -> String {
+            try String(contentsOf: root.appendingPathComponent(file), encoding: .utf8)
+        }
+        let card = try source("Pages/HomeStartCard.swift")
+        let home = try source("Pages/HomeView.swift")
+        let languages = try source("Pages/CaptureLanguageEditor.swift")
+        XCTAssertTrue(card.contains(".keyboardShortcut(startsOnReturn ? .defaultAction : nil)"))
+        XCTAssertFalse(card.contains(".keyboardShortcut(.defaultAction)"))
+        XCTAssertTrue(home.contains(
+            "HomeStartCard(library: viewModel, startsOnReturn: isTypingInAField == false)"
+        ))
+        XCTAssertTrue(home.contains(".onPreferenceChange(TextEntryFocusKey.self)"))
+        // Both text fields that sit on Home report when they have the keyboard.
+        let report = ".preference(key: TextEntryFocusKey.self, value: isSearchFocused)"
+        XCTAssertTrue(home.contains(report))
+        XCTAssertTrue(languages.contains(report))
+        XCTAssertTrue(languages.contains(".focused($isSearchFocused)"))
+    }
+
+    // MARK: Hosting an event
+
+    func testTheCityRowShowsOnlyForSomeoneHostingOrWithAnEventAlreadyPicked() {
+        // Not hosting: nothing about cities, signed in or not.
+        XCTAssertEqual(
+            StartCardHosting.resolve(hostingOn: false, signedIn: false, eventPicked: false),
+            .hidden
+        )
+        XCTAssertEqual(
+            StartCardHosting.resolve(hostingOn: false, signedIn: true, eventPicked: false),
+            .hidden
+        )
+        // Hosting and signed in: the per-recording confirmation.
+        XCTAssertEqual(
+            StartCardHosting.resolve(hostingOn: true, signedIn: true, eventPicked: false),
+            .destination
+        )
+        // Hosting with nobody signed in: one line saying what signing in gives.
+        XCTAssertEqual(
+            StartCardHosting.resolve(hostingOn: true, signedIn: false, eventPicked: false),
+            .signInHint
+        )
+        // An event picked for the next recording will be filed whatever the
+        // switch says, so the row that shows it cannot be hidden.
+        XCTAssertEqual(
+            StartCardHosting.resolve(hostingOn: false, signedIn: true, eventPicked: true),
+            .destination
+        )
+        XCTAssertEqual(
+            StartCardHosting.resolve(hostingOn: false, signedIn: false, eventPicked: true),
+            .hidden
+        )
+    }
+
+    // MARK: The sidebar
+
+    func testTopicsAppearInTheSidebarWithTheFirstTopic() {
+        XCTAssertFalse(SidebarTopicPresence.showsTopics(hasTopics: false, isCurrent: false))
+        XCTAssertTrue(SidebarTopicPresence.showsTopics(hasTopics: true, isCurrent: false))
+        // Still on the Topics page after deleting the last one.
+        XCTAssertTrue(SidebarTopicPresence.showsTopics(hasTopics: false, isCurrent: true))
+    }
+
+    func testTopicPresenceCountsAtOnceAndAgainWhenTheLibraryChanges() async throws {
+        let center = NotificationCenter()
+        let count = HomeStartBox<Int?>(0)
+        let presence = SidebarTopicPresence(center: center, countTopics: { count.value })
+        XCTAssertFalse(presence.hasTopics)
+
+        count.value = 1
+        XCTAssertFalse(presence.hasTopics, "nothing said the library changed yet")
+        center.post(name: .zutalkSessionUpdated, object: nil)
+        try await waitUntil { presence.hasTopics }
+        XCTAssertTrue(presence.hasTopics)
+
+        // A library that cannot be read is not a library without topics.
+        count.value = nil
+        presence.refresh()
+        XCTAssertTrue(presence.hasTopics)
+
+        count.value = 0
+        presence.refresh()
+        XCTAssertFalse(presence.hasTopics)
+    }
+
+    func testCreatingATopicTellsTheRestOfTheWindow() {
+        let center = NotificationCenter.default
+        let posted = HomeStartBox(0)
+        let token = center.addObserver(
+            forName: .zutalkSessionUpdated,
+            object: nil,
+            queue: nil
+        ) { _ in posted.value += 1 }
+        defer { center.removeObserver(token) }
+        let viewModel = LibraryViewModel(notebookContext: NotebookSessionContextStore())
+
+        let client = StubNotebookWorkspaceClient()
+        XCTAssertFalse(viewModel.createNotebook(title: "  ", client: client))
+        XCTAssertEqual(posted.value, 0)
+        XCTAssertTrue(viewModel.createNotebook(title: "Weekly", client: client))
+        XCTAssertEqual(posted.value, 1)
+        XCTAssertEqual(viewModel.researchNotebooks.map(\.title), ["Weekly"])
+    }
+
+    func testTheTopicFiltersDoNotOutliveTheLastTopic() {
+        let client = StubNotebookWorkspaceClient()
+        client.notebooks = [
+            FfiNotebook(
+                id: "topic-weekly",
+                title: "Weekly",
+                createdAt: "2000-01-01T00:00:00Z",
+                updatedAt: "2000-01-01T00:00:00Z",
+                deletedAt: nil
+            )
+        ]
+        let viewModel = LibraryViewModel(notebookContext: NotebookSessionContextStore())
+        viewModel.loadNotebookWorkspace(client: client)
+        viewModel.selectUnfiledFilter()
+        XCTAssertEqual(viewModel.selectedTopicFilterId, LibraryViewModel.unfiledTopicFilterId)
+
+        // Home hides the filter bar with the last topic; a filter left on
+        // would be one nobody can see or clear.
+        client.notebooks = []
+        viewModel.loadNotebookWorkspace(client: client)
+        XCTAssertNil(viewModel.selectedTopicFilterId)
+    }
+
+    // MARK: Where the Record destination leads
+
+    func testSelectingRecordLandsOnHomeAndAsksForTheStartCard() {
+        let store = MainNavigationStore(
+            captureRouteContextProvider: { (nil, nil, false) },
+            coreProvider: { nil },
+            notebookContext: NotebookSessionContextStore()
+        )
+        store.select(tab: .trash)
+        let requests = store.startCardRequests
+
+        store.select(tab: .record)
+
+        XCTAssertEqual(store.activeTab, .home)
+        XCTAssertEqual(store.activePrimaryTab, .home)
+        XCTAssertEqual(store.activeRoute, .home)
+        XCTAssertEqual(store.startCardRequests, requests + 1)
+
+        // Going to Home itself is not a request to scroll its list away.
+        store.select(tab: .home)
+        XCTAssertEqual(store.startCardRequests, requests + 1)
+    }
+
+    func testATopicsRecordButtonLandsOnHomeWithThatTopicWaiting() {
+        let store = MainNavigationStore(
+            captureRouteContextProvider: { (nil, nil, false) },
+            coreProvider: { nil },
+            notebookContext: NotebookSessionContextStore()
+        )
+        store.select(tab: .topics)
+
+        store.openRecordPage(topicID: "topic-weekly")
+
+        XCTAssertEqual(store.activeTab, .home)
+        XCTAssertEqual(store.activePrimaryTab, .home)
+        XCTAssertEqual(store.recordTopicPreselection, "topic-weekly")
+    }
+
+    func testNoRouteLeadsToARecordPage() {
+        for tab in MainTab.allCases {
+            let store = MainNavigationStore(
+                captureRouteContextProvider: { (nil, nil, false) },
+                coreProvider: { nil },
+                notebookContext: NotebookSessionContextStore()
+            )
+            store.select(tab: tab)
+            XCTAssertNotEqual(store.activeTab, .record, "\(tab) must not show a record page")
+        }
+    }
+
+    private func waitUntil(
+        timeout: TimeInterval = 2,
+        _ condition: @MainActor () -> Bool
+    ) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while condition() == false, Date() < deadline {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+    }
+}
+
+/// A value one test writes and a closure it handed out reads, both on the
+/// main thread.
+private final class HomeStartBox<Value>: @unchecked Sendable {
+    var value: Value
+
+    init(_ value: Value) {
+        self.value = value
     }
 }

@@ -1,9 +1,12 @@
 // CitySignInCard.swift
-// 设置 › 城 里的登录卡片。城里没有账号密码,一个人就是一把钥匙;登录用的是
-// 城现成的「连接新设备」:这台 Mac 出一个码,已经登录的那台设备扫它(或粘贴它),
-// 两边核对同一个六位数,人在那台设备上确认。没有别的设备在手边时填恢复密钥。
+// 「设置 › 账号」最上面的登录卡片。城里没有账号密码,一个人就是一把钥匙;登录
+// 用的是城现成的「连接新设备」:这台 Mac 出一个码,已经登录的那台设备扫它
+// (或粘贴它),两边核对同一个六位数,人在那台设备上确认。没有别的设备在手边时
+// 填恢复密钥。
 //
-// 卡片上照实写两件事:登录以后这台 Mac 能以你的名义做什么,以及音频不外传。
+// 「用你的 Zu 身份登录」和登录今天能做什么的那一句在卡片上面
+// (`CityIdentitySection`);卡片自己照实写两件事:登录以后这台 Mac 能以你的
+// 名义做什么,以及音频不外传。
 
 import SwiftUI
 
@@ -77,7 +80,11 @@ struct CitySignInCard: View {
         .accessibilityIdentifier(AccessibilityID.citySettingsSignIn)
     }
 
-    private var title: String {
+    /// 还在填网址的时候没有小标题:上面已经写着「用你的 Zu 身份登录」,再写
+    /// 一遍「登录」是重复。码要来了才有:这时候要让人看见登录的是哪座城、
+    /// 哪个网址。
+    private var title: String? {
+        guard city.loginServer != nil else { return nil }
         // 城的名字是服务器说的,码回来之前还不知道。
         if case .offered(let offer, _) = city.login, offer.cityName.isEmpty == false {
             return String(format: String(localized: "city.signin.title_format"), offer.cityName)
@@ -85,14 +92,19 @@ struct CitySignInCard: View {
         return String(localized: "city.signin.title")
     }
 
-    private var subtitle: String {
-        city.loginServer ?? String(localized: "city.signin.address_hint")
+    private var subtitle: String? {
+        city.loginServer
     }
 
     // MARK: - 填网址
 
     private var addressRow: some View {
         SettingsFullRow {
+            // 栏里预先填着默认的那座城,不写这是什么,人只看到一串网址。
+            Text(String(localized: "city.signin.address_label"))
+                .font(Font.sans12)
+                .foregroundColor(.textPrimary)
+                .accessibilityHidden(true)
             HStack(spacing: Spacing.sm) {
                 TextField(String(localized: "city.signin.address_placeholder"), text: $server)
                     .textFieldStyle(.roundedBorder)

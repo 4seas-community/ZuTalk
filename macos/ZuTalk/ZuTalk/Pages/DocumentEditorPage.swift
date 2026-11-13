@@ -23,6 +23,9 @@ private struct NotebookRouteLoadSnapshot: Sendable {
     let notebookTabs: [NotebookTabViewModel]
     let notebook: FfiNotebook?
     let session: SessionInfo?
+    /// Which transcripts the selected recording has: whether there is any
+    /// text to copy, and whether there is a live version to go back to.
+    let transcriptAvailability: SessionTranscriptAvailabilityInfo?
     let transcriptionTasksBySessionId: [String: TranscriptionTaskSnapshot]
     /// The quick-capture Notebook is a backend identity, not a display-name
     /// convention. Keep it explicit so an ordinary Topic named "Unfiled"
@@ -205,10 +208,17 @@ struct DocumentEditorPage: View {
     @ObservedObject private var navigation = MainNavigationStore.shared
     /// 「分享」收件 Notebook 的判定源。观察它,id 迟到时页面能换对视图。
 
+    /// The recording's ⋯ menu: one flag per question it asks.
+    @State private var isRenamingRecording = false
+    @State private var topicsForFiling: [TopicFilingChoice]?
+    @State private var isConfirmingAudioDestroy = false
+    @State private var isConfirmingRecordingDelete = false
+
     /// Notebook-scoped unified tab surface, including realtime transcript.
     @State private var notebookTabs: [NotebookTabViewModel] = []
     @State private var editorNotebook: FfiNotebook?
     @State private var editorSession: SessionInfo?
+    @State private var transcriptAvailability: SessionTranscriptAvailabilityInfo?
     @State private var isQuickCaptureNotebook = false
     @State private var routeLoadError: String?
     @State private var routeLoadGeneration: UInt = 0
@@ -248,16 +258,34 @@ struct DocumentEditorPage: View {
                     isTopicContext: isTopicContext,
                     sessionId: effectiveSessionId,
                     sessionSupplementarySurface: sessionSupplementarySurface,
+                    hasLiveVersion: transcriptAvailability?.hasRealtimeContent ?? true,
                     onSelect: selectNotebookTab,
                     onSelectResources: showResources,
                     onSelectCaptureSettings: showCaptureSettings,
                     onSelectSessionNote: showSessionNote,
                     onSelectSessionSettings: showSessionSettings,
-                    onExport: {
-                        exportingSessionId = effectiveSessionId
-                        isShowingExportSheet = true
+                    onCopyAll: copyWholeTranscript,
+                    onExport: exportRecording,
+                    onShare: shareRecordingAction,
+                    onRename: { isRenamingRecording = true },
+                    onFileIntoTopic: {
+                        topicsForFiling = LibraryCommands.topicsForFiling(
+                            excluding: route?.notebookID
+                        )
                     },
-                    onShare: shareRecordingAction
+                    onDestroyAudio: canDestroyAudio
+                        ? { isConfirmingAudioDestroy = true }
+                        : nil,
+                    destroyAudioBlockedReason: destroyAudioBlockedReason,
+                    onDeleteRecording: { isConfirmingRecordingDelete = true }
+                )
+                .audioDestroyConfirmation(
+                    isPresented: $isConfirmingAudioDestroy,
+                    recordingTitle: recordingDisplayTitle,
+                    onConfirm: {
+                        guard let sessionId = effectiveSessionId else { return }
+                        SessionResourcesViewModel.destroyAudioAndAnnounce(sessionId: sessionId)
+                    }
                 )
 
                 if routeLoadError != nil {
@@ -277,6 +305,25 @@ struct DocumentEditorPage: View {
                    activeNotebookTab?.displayType == .manualNote {
                     TopicNotesContextHeader()
                 }
+            }
+
+            // Stop lands here: the recording that just finished says so on
+            // top of its own transcript, with what to do next.
+            if docId != nil, let sessionId = effectiveSessionId {
+                RecordingResultCardHost(
+                    sessionId: sessionId,
+                    isOnTranscript: surface.showsTranscriptLayer,
+                    session: editorSession,
+                    availability: transcriptAvailability,
+                    refineTask: selectedTranscriptionTask?.tabStatus,
+                    showingRefined: activeNotebookTab?.displayType == .asyncTranscript,
+                    onFinished: showTranscriptOfFinishedRecording,
+                    onCopy: copyWholeTranscript,
+                    onExport: exportRecording,
+                    onShare: shareRecordingAction,
+                    onRefineStarted: refineDidStart,
+                    onShowRefined: showRefinedTranscript
+                )
             }
 
             // Transcript 和 Editor 在 ZStack 中共存，切换时保留编辑器的光标、
@@ -376,6 +423,52 @@ struct DocumentEditorPage: View {
                 .background(Color.bgRoot)
             }
         }
+        .sheet(isPresented: $isRenamingRecording) {
+            RenameSheet(
+                title: String(localized: "session.rename.title"),
+                placeholder: String(localized: "library.rename.recording_placeholder"),
+                initialText: editorSession?.title ?? "",
+                allowsEmpty: true
+            ) { title in
+                guard let sessionId = effectiveSessionId else { return false }
+                return LibraryCommands.renameRecording(id: sessionId, to: title)
+            }
+        }
+        .sheet(isPresented: Binding(
+            get: { topicsForFiling != nil },
+            set: { if $0 == false { topicsForFiling = nil } }
+        )) {
+            FileIntoTopicSheet(
+                topics: topicsForFiling ?? [],
+                isInTopic: isQuickCaptureNotebook == false
+            ) { choice, newTopicName in
+                guard let sessionId = effectiveSessionId else { return false }
+                return LibraryCommands.fileRecording(
+                    id: sessionId,
+                    into: choice,
+                    newTopicName: newTopicName
+                )
+            }
+        }
+        // The trash can be restored from, but a click in a menu should still
+        // say where the recording is going.
+        .confirmationDialog(
+            String(
+                format: String(localized: "session.delete.confirm_title_format"),
+                recordingDisplayTitle
+            ),
+            isPresented: $isConfirmingRecordingDelete,
+            titleVisibility: .visible
+        ) {
+            Button(
+                String(localized: "resources.delete.confirm_button"),
+                role: .destructive,
+                action: deleteRecording
+            )
+            Button(String(localized: "common.cancel"), role: .cancel) {}
+        } message: {
+            Text(String(localized: "session.delete.confirm_message"))
+        }
         .task(id: routeTaskId) {
             await loadNotebookRoute()
         }
@@ -398,8 +491,14 @@ struct DocumentEditorPage: View {
             while Task.isCancelled == false {
                 try? await MontereyTaskSleep.seconds(1)
                 guard Task.isCancelled == false else { return }
-                await loadNotebookRoute()
-                guard selectedTranscriptionTask?.tabStatus == .pending else { return }
+                // Once a second for as long as refining takes: the status is
+                // what is being watched, so what the recording has is not
+                // re-read until it changes hands.
+                await loadNotebookRoute(rereadsAvailability: false)
+                guard selectedTranscriptionTask?.tabStatus == .pending else {
+                    await loadNotebookRoute()
+                    return
+                }
             }
         }
         .montereyOnChange(of: initialView) { _, _ in syncPresentedRoute() }
@@ -490,8 +589,6 @@ struct DocumentEditorPage: View {
                 SessionSettingsView(
                     notebookId: notebookId,
                     session: editorSession,
-                    editor: captureProfileEditor,
-                    captureSettingsScope: captureSettingsScope,
                     onOpenResource: { destination in
                         if destination == .manualNote {
                             showSessionNote()
@@ -687,14 +784,18 @@ struct DocumentEditorPage: View {
 
     // MARK: - Loading
 
+    /// - Parameter rereadsAvailability: false to keep what is already known
+    ///   about this same recording's transcripts — reading it walks every
+    ///   line of the recording.
     @MainActor
-    private func loadNotebookRoute() async {
+    private func loadNotebookRoute(rereadsAvailability: Bool = true) async {
         routeLoadGeneration &+= 1
         let generation = routeLoadGeneration
         guard let requestedRoute = route else {
             notebookTabs = []
             editorNotebook = nil
             editorSession = nil
+            transcriptAvailability = nil
             isQuickCaptureNotebook = false
             transcriptionTasksBySessionId = [:]
             routeLoadError = nil
@@ -704,16 +805,25 @@ struct DocumentEditorPage: View {
             notebookTabs = []
             editorNotebook = nil
             editorSession = nil
+            transcriptAvailability = nil
             isQuickCaptureNotebook = false
             transcriptionTasksBySessionId = [:]
             routeLoadError = String(localized: "editor.route.load_failed")
             return
         }
 
+        let knownAvailability = rereadsAvailability == false
+            && editorSession?.id == requestedRoute.selectedSessionID
+            ? transcriptAvailability
+            : nil
         let activeCapture = ActiveBilingualTranscriptStore.shared
         let activeCaptureNotebookId = activeCapture.notebookId
         let activeCaptureSessionId = activeCapture.sessionId
-        let quickCaptureDisplayTitle = String(localized: "home.record.unfiled")
+        // Nothing on the page asks what a recording has while it is still
+        // being made, and the answer would be stale by the next sentence.
+        let recordingThisSession = activeCapture.isCaptureActive
+            && activeCaptureSessionId == requestedRoute.selectedSessionID
+        let quickCaptureDisplayTitle = String(localized: "sidebar.home")
         let outcome = await Task.detached(priority: .userInitiated) {
             do {
                 let loadedTranscriptionTasks = TranscriptionTaskIndex.makeIndex(
@@ -729,12 +839,20 @@ struct DocumentEditorPage: View {
                     loadedNotebook?.title = quickCaptureDisplayTitle
                 }
                 let loadedSession: SessionInfo?
+                let loadedAvailability: SessionTranscriptAvailabilityInfo?
                 if let sessionId = requestedRoute.selectedSessionID {
                     // A selected Session is part of route identity. Failure
                     // must surface instead of silently showing the Topic name.
                     loadedSession = try core.getSession(id: sessionId)
+                    // Advisory: without it the page assumes the usual case
+                    // (there is text, and there was a live version).
+                    loadedAvailability = recordingThisSession
+                        ? nil
+                        : knownAvailability
+                            ?? (try? core.getSessionTranscriptAvailability(sessionId: sessionId))
                 } else {
                     loadedSession = nil
+                    loadedAvailability = nil
                 }
                 let realtimeSessionId = requestedRoute.selectedSessionID
                     ?? (activeCaptureNotebookId == requestedRoute.notebookID
@@ -760,6 +878,7 @@ struct DocumentEditorPage: View {
                         notebookTabs: presentedTabs,
                         notebook: loadedNotebook,
                         session: loadedSession,
+                        transcriptAvailability: loadedAvailability,
                         transcriptionTasksBySessionId: loadedTranscriptionTasks,
                         isQuickCaptureNotebook: quickCaptureNotebook?.id
                             == requestedRoute.notebookID
@@ -776,6 +895,7 @@ struct DocumentEditorPage: View {
             notebookTabs = snapshot.notebookTabs
             editorNotebook = snapshot.notebook
             editorSession = snapshot.session
+            transcriptAvailability = snapshot.transcriptAvailability
             isQuickCaptureNotebook = snapshot.isQuickCaptureNotebook
             transcriptionTasksBySessionId = snapshot.transcriptionTasksBySessionId
             routeLoadError = nil
@@ -890,7 +1010,9 @@ struct DocumentEditorPage: View {
     }
 
     private func showSessionSettings() {
-        guard effectiveSessionId != nil else { return }
+        // While it is being recorded a recording's page is its transcript and
+        // its notes; its files and settings wait until it has stopped.
+        guard effectiveSessionId != nil, isBeingRecorded == false else { return }
         NSApp.keyWindow?.makeFirstResponder(nil)
         presentedCaptureSettingsNotebookId = nil
         isShowingResources = false
@@ -940,6 +1062,229 @@ struct DocumentEditorPage: View {
         )
     }
 
+    // MARK: - After Stop, and the recording's ⋯ menu
+
+    private var isBeingRecorded: Bool {
+        guard let sessionId = effectiveSessionId else { return false }
+        let capture = ActiveBilingualTranscriptStore.shared
+        return capture.isCaptureActive && capture.sessionId == sessionId
+    }
+
+    /// The recording as the header names it: its title, or its start time.
+    private var recordingDisplayTitle: String {
+        navigation.editorBreadcrumb?.recording?.label
+            ?? RecordingPresentation.title(editorSession?.title ?? "")
+            ?? String(localized: "resources.untitled_recording")
+    }
+
+    /// This page's recording has just finished. If its notes (or files) were
+    /// on screen, turn to its transcript, where the card says it was saved.
+    /// Only at that moment — coming back to the notes later is left alone.
+    private func showTranscriptOfFinishedRecording() {
+        if sessionSupplementarySurface == .note {
+            // Someone writing notes stays on their notes: pulling the page
+            // out from under a sentence being typed costs more than the card
+            // tells. A toast says it was saved, unless the stop already did;
+            // the card is on the transcript when they turn to it.
+            if let finished = CaptureCommandCenter.shared.justFinished, finished.announced == false {
+                ToastCenter.shared.success(String(
+                    format: String(localized: "capture.toast.stopped_saved"),
+                    CaptureCommandCenter.clock(TimeInterval(finished.seconds))
+                ))
+            }
+        } else if sessionSupplementarySurface != nil {
+            sessionSupplementarySurface = nil
+            syncPresentedRoute()
+        }
+        // What the card says depends on what the recording ended up with.
+        Task { await loadNotebookRoute() }
+    }
+
+    private func copyWholeTranscript() {
+        guard let sessionId = effectiveSessionId else { return }
+        // The version being read is the version copied.
+        TranscriptClipboard.copyWholeTranscript(
+            sessionId: sessionId,
+            refined: activeNotebookTab?.displayType == .asyncTranscript
+        )
+    }
+
+    private func exportRecording() {
+        exportingSessionId = effectiveSessionId
+        isShowingExportSheet = true
+    }
+
+    private func showRefinedTranscript() {
+        guard let refined = notebookTabs.first(where: { $0.displayType == .asyncTranscript })
+        else { return }
+        selectNotebookTab(refined)
+    }
+
+    /// Refining was asked for from the card. The task queue now has it, so
+    /// read it (the page then follows it until it is done). A recording with
+    /// no text yet has nothing to keep on screen meanwhile: show where the
+    /// refined transcript will appear.
+    private func refineDidStart(hadText: Bool) {
+        Task { await loadNotebookRoute() }
+        if hadText == false {
+            showRefinedTranscript()
+        }
+    }
+
+    /// There is audio on this Mac to delete. One recorded on another Mac
+    /// keeps its audio there.
+    private var canDestroyAudio: Bool {
+        editorSession?.hasEncryptedAudio == true && editorSession?.recordedOn == nil
+    }
+
+    private var destroyAudioBlockedReason: String? {
+        selectedTranscriptionTask?.tabStatus == .pending
+            ? String(localized: "session.menu.destroy_audio.refining")
+            : nil
+    }
+
+    private func deleteRecording() {
+        guard let sessionId = effectiveSessionId,
+              LibraryCommands.moveRecordingToTrash(id: sessionId)
+        else { return }
+        ToastCenter.shared.success(String(localized: "session.delete.done"))
+        let commands = CaptureCommandCenter.shared
+        if commands.justFinished?.sessionId == sessionId {
+            commands.dismissJustFinished()
+        }
+        navigation.navigateHome()
+    }
+
+}
+
+/// The place on a recording's page where its result card goes, and the one
+/// part of the page that watches for the recording finishing.
+///
+/// It feeds the card from the live stores — the command center, the person's
+/// key, the city — so the page around it is not redrawn by every publish of
+/// theirs: a mark or a pause during a recording must not re-run the page.
+private struct RecordingResultCardHost: View {
+    let sessionId: String
+    /// The card sits on the transcript, not on the recording's notes or files.
+    let isOnTranscript: Bool
+    let session: SessionInfo?
+    let availability: SessionTranscriptAvailabilityInfo?
+    /// The newest refine of this recording in the task queue, if any.
+    let refineTask: NotebookTabStatus?
+    let showingRefined: Bool
+    /// This recording has just finished: the page turns to its transcript.
+    let onFinished: () -> Void
+    let onCopy: () -> Void
+    let onExport: () -> Void
+    let onShare: (() -> Void)?
+    let onRefineStarted: (_ hadText: Bool) -> Void
+    let onShowRefined: () -> Void
+
+    @ObservedObject private var commands = CaptureCommandCenter.shared
+    // Observed for statusRevision, so the refine row follows a key saved or
+    // removed in Settings.
+    @ObservedObject private var providerCredentials = ProviderCredentialSession.shared
+    @ObservedObject private var city = CityStore.shared
+    @State private var isRequestingRefine = false
+    /// Asked for from here and accepted; the task queue shows it a moment
+    /// later.
+    @State private var didRequestRefine = false
+
+    private var finished: FinishedRecording? {
+        guard let finished = commands.justFinished, finished.sessionId == sessionId
+        else { return nil }
+        return finished
+    }
+
+    var body: some View {
+        // A stack even when empty, so there is always a view for the change
+        // handler below to live on.
+        VStack(spacing: 0) {
+            if isOnTranscript, let finished {
+                RecordingResultCard(
+                    model: model(finished),
+                    onCopy: onCopy,
+                    onExport: onExport,
+                    onShare: { onShare?() },
+                    onRefine: { requestRefine(finished) },
+                    onOpenSettings: {
+                        MainNavigationStore.shared.openSettings(section: .account)
+                    },
+                    onShowRefined: onShowRefined,
+                    onDismiss: commands.dismissJustFinished
+                )
+                .padding(.horizontal, NotebookRealtimeTranscriptLayout.horizontalInset)
+                .padding(.top, Spacing.md)
+                .padding(.bottom, Spacing.sm)
+            }
+        }
+        // The moment of the Stop itself, not a later visit: opening this
+        // recording afterwards — on its notes, say — is left where it lands.
+        .montereyOnChange(of: commands.justFinished) { _, finished in
+            if finished?.sessionId == sessionId { onFinished() }
+        }
+    }
+
+    private func model(_ finished: FinishedRecording) -> RecordingResultCardModel {
+        let hasAudio = session?.hasEncryptedAudio ?? true
+        return RecordingResultCardModel.make(
+            seconds: finished.seconds,
+            liveTextOff: finished.audioOnly,
+            hasText: hasText,
+            hasAudio: hasAudio,
+            refine: RecordingResultCardModel.refine(
+                task: refineTask,
+                hasRefinedText: availability?.hasAsyncContent == true,
+                isRequesting: isRequestingRefine || (didRequestRefine && refineTask == nil),
+                showingRefined: showingRefined,
+                hasAudio: hasAudio,
+                hasReadyPersonalKey: hasReadyPersonalSonioxKey,
+                recordedOn: session?.recordedOn
+            ),
+            city: RecordingResultCardModel.city(
+                signedIn: city.account != nil,
+                filing: city.filings[finished.sessionId],
+                busy: city.busySessions.contains(finished.sessionId),
+                offline: city.offline,
+                signer: city.account?.personName
+            ),
+            cityEventTitle: city.filings[finished.sessionId]?.eventTitle
+        )
+    }
+
+    private var hasText: Bool? {
+        availability.map { $0.hasRealtimeContent || $0.hasAsyncContent }
+    }
+
+    private var hasReadyPersonalSonioxKey: Bool {
+        providerCredentials.snapshot().contains {
+            $0.account == .soniox && $0.isSaved && $0.isActive
+        }
+    }
+
+    /// The page's own refine: the same request the refined view's button
+    /// makes.
+    private func requestRefine(_ finished: FinishedRecording) {
+        guard isRequestingRefine == false else { return }
+        isRequestingRefine = true
+        let sessionId = finished.sessionId
+        let hadText = model(finished).hasText
+        Task { @MainActor in
+            defer { isRequestingRefine = false }
+            do {
+                try await NotebookTranscriptProjectionStore.shared.requestAsyncTranscription(
+                    sessionId: sessionId
+                )
+                didRequestRefine = true
+                onRefineStarted(hadText)
+            } catch {
+                ToastCenter.shared.error(
+                    String(localized: "refine.start_failed"),
+                    detail: error.localizedDescription
+                )
+            }
+        }
+    }
 }
 
 private struct EditorRouteLoadWarning: View {
@@ -979,21 +1324,40 @@ private struct DocumentTabBar: View {
     let isTopicContext: Bool
     let sessionId: String?
     let sessionSupplementarySurface: SessionSupplementarySurface?
+    /// False for a recording with no live text: an imported file, or one
+    /// recorded with live text off.
+    let hasLiveVersion: Bool
     let onSelect: (NotebookTabViewModel) -> Void
     let onSelectResources: () -> Void
     let onSelectCaptureSettings: () -> Void
     let onSelectSessionNote: () -> Void
     let onSelectSessionSettings: () -> Void
+    let onCopyAll: () -> Void
     let onExport: () -> Void
     /// Nil while the recording is still being recorded: that one is shared
     /// live from the recording bar instead.
     let onShare: (() -> Void)?
+    let onRename: () -> Void
+    let onFileIntoTopic: () -> Void
+    /// Nil when there is no audio on this Mac to delete.
+    let onDestroyAudio: (() -> Void)?
+    /// Why the audio cannot be deleted just now, said under the greyed item.
+    let destroyAudioBlockedReason: String?
+    let onDeleteRecording: () -> Void
     @ObservedObject private var captureStore = ActiveBilingualTranscriptStore.shared
 
     /// A recording's page has two tabs — its transcript and its notes. Which
-    /// transcript (live or refined) is a switch beside them, not two more tabs;
-    /// the recording's files and settings sit behind ⋯.
+    /// transcript (live or refined) is one quiet button at the far end, not
+    /// two more tabs; everything else about the recording sits behind ⋯.
     private var isRecordingPage: Bool { isTopicContext == false && sessionId != nil }
+
+    /// This page's recording is the one being made right now. Then the page
+    /// is for reading along and taking notes: which version to look at, its
+    /// files, and renaming or deleting it all wait until it has stopped.
+    private var isBeingRecorded: Bool {
+        guard let sessionId else { return false }
+        return captureStore.isCaptureActive && captureStore.sessionId == sessionId
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -1024,7 +1388,7 @@ private struct DocumentTabBar: View {
                         )
                         // Reached from ⋯; shown as a tab only while it is open,
                         // so there is always a selected tab saying where you are.
-                        if sessionSupplementarySurface == .settings {
+                        if sessionSupplementarySurface == .settings, isBeingRecorded == false {
                             SessionSupplementaryTabButton(
                                 title: String(localized: "session.tab.settings"),
                                 systemImage: "slider.horizontal.3",
@@ -1046,9 +1410,9 @@ private struct DocumentTabBar: View {
                         }
                     }
 
-                    // A Topic needs a settings entry before its first Session
-                    // exists. Session routes use their own Settings tab above,
-                    // which embeds this exact same settings implementation.
+                    // A topic's own options: what its next recording starts
+                    // with. A recording's settings tab above shows only what
+                    // that recording used.
                     if isTopicContext, captureSettingsNotebookId != nil {
                         CaptureSettingsTabButton(
                             isActive: isCaptureSettingsSelected,
@@ -1060,11 +1424,17 @@ private struct DocumentTabBar: View {
 
             Spacer(minLength: Spacing.md)
 
-            if isRecordingPage {
-                if isTranscriptSelected, transcriptTabs.count > 1 {
+            if isRecordingPage, isBeingRecorded == false {
+                if isTranscriptSelected,
+                   let showing = activeTranscriptTab,
+                   let other = transcriptTabs.first(where: { $0.id != showing.id }),
+                   TranscriptVersionButtonPolicy.isOffered(
+                       showing: showing.displayType,
+                       hasLiveVersion: hasLiveVersion
+                   ) {
                     TranscriptVersionSwitch(
-                        tabs: transcriptTabs.map(effectiveTab),
-                        activeTabId: activeTabId,
+                        showing: showing.displayType,
+                        destination: effectiveTab(other),
                         onSelect: onSelect
                     )
                     .padding(.trailing, Spacing.sm)
@@ -1135,19 +1505,45 @@ private struct DocumentTabBar: View {
         )
     }
 
+    /// What people come to a recording's ⋯ for: take the text away, name
+    /// it, file it, and — last, past a divider — the things that remove.
     private var recordingMenu: some View {
         Menu {
+            Button(action: onCopyAll) {
+                Label(String(localized: "transcript.copy_all"), systemImage: Icon.copy)
+            }
             if let onShare {
                 Button(action: onShare) {
-                    Label(String(localized: "share.recording.menu"), systemImage: "square.and.arrow.up")
+                    Label(String(localized: "session.share_link"), systemImage: "square.and.arrow.up")
                 }
             }
             Button(action: onExport) {
                 Label(String(localized: "editor.export.menu"), systemImage: "tray.and.arrow.up")
             }
             Divider()
+            Button(action: onRename) {
+                Label(String(localized: "session.menu.rename"), systemImage: "pencil")
+            }
+            Button(action: onFileIntoTopic) {
+                Label(String(localized: "session.menu.file_into_topic"), systemImage: "folder")
+            }
             Button(action: onSelectSessionSettings) {
                 Label(String(localized: "session.menu.settings"), systemImage: "slider.horizontal.3")
+            }
+            Divider()
+            if let onDestroyAudio {
+                // Greyed with its reason rather than hidden: an item that
+                // comes and goes reads as something else being wrong.
+                Button(role: .destructive, action: onDestroyAudio) {
+                    Label(String(localized: "session.menu.destroy_audio"), systemImage: "waveform.slash")
+                }
+                .disabled(destroyAudioBlockedReason != nil)
+                if let destroyAudioBlockedReason {
+                    Text(destroyAudioBlockedReason)
+                }
+            }
+            Button(role: .destructive, action: onDeleteRecording) {
+                Label(String(localized: "session.menu.delete"), systemImage: "trash")
             }
         } label: {
             Image(systemName: "ellipsis.circle")
@@ -1156,8 +1552,8 @@ private struct DocumentTabBar: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .help(String(localized: "session.menu.hint"))
-        .accessibilityLabel(String(localized: "session.menu.hint"))
+        .help(String(localized: "session.menu.label"))
+        .accessibilityLabel(String(localized: "session.menu.label"))
         .accessibilityIdentifier("session.menu")
     }
 
@@ -1185,55 +1581,46 @@ private struct DocumentTabBar: View {
     }
 }
 
-/// 实时版 | 精修版. Two small segments rather than two tabs: they are the
-/// same transcript made two ways, and only one exists for most of a
-/// recording's life.
+/// 「看精修稿」 or 「看边录边出的那一版」: one quiet button that names the other
+/// version, the one you can go to. It was a two-way 实时版 | 精修版 switch,
+/// which asked people to know what the two were before they had seen either;
+/// the page now opens on the refined transcript when there is one, and this
+/// is the way back.
 private struct TranscriptVersionSwitch: View {
-    let tabs: [NotebookTabViewModel]
-    let activeTabId: String?
+    /// The version on screen.
+    let showing: NotebookTabDisplayType
+    /// The other version's tab, with how it stands right now.
+    let destination: NotebookTabViewModel
     let onSelect: (NotebookTabViewModel) -> Void
+    @State private var isHovering = false
 
     var body: some View {
-        HStack(spacing: 2) {
-            ForEach(tabs) { tab in
-                let isActive = tab.id == activeTabId
-                Button {
-                    onSelect(tab)
-                } label: {
-                    HStack(spacing: 4) {
-                        if tab.status == .pending {
-                            ProgressView().controlSize(.mini)
-                        } else if tab.status == .failed {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.system(size: 9))
-                                .foregroundColor(.signalAmber)
-                        }
-                        Text(title(tab))
-                            .font(.captionMedium)
+        if let label = TranscriptVersionButtonPolicy.label(showing: showing) {
+            Button {
+                onSelect(destination)
+            } label: {
+                HStack(spacing: 4) {
+                    if destination.status == .pending {
+                        ProgressView().controlSize(.mini)
+                    } else if destination.status == .failed {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 9))
+                            .foregroundColor(.signalAmber)
                     }
-                    .foregroundColor(isActive ? .textPrimary : .textSecondary)
-                    .padding(.horizontal, Spacing.sm + 2)
-                    .frame(minHeight: 24)
-                    .background(isActive ? Color.bgElevated : Color.clear)
-                    .clipShape(RoundedRectangle(cornerRadius: Radius.xs))
-                    .contentShape(Rectangle())
+                    Text(label)
+                        .font(.bodySM)
+                        .lineLimit(1)
                 }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(isActive ? .isSelected : [])
-                .accessibilityIdentifier(tab.displayType == .realtimeTranscript
-                    ? "session.transcript.live"
-                    : "session.transcript.refined")
+                .foregroundColor(isHovering ? .textPrimary : .textSecondary)
+                .frame(minHeight: 28)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .onHover { isHovering = $0 }
+            .accessibilityIdentifier(destination.displayType == .realtimeTranscript
+                ? "session.transcript.live"
+                : "session.transcript.refined")
         }
-        .padding(2)
-        .background(Color.bgSunken.opacity(0.6))
-        .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
-    }
-
-    private func title(_ tab: NotebookTabViewModel) -> String {
-        String(localized: tab.displayType == .realtimeTranscript
-            ? "session.transcript.live_version"
-            : "session.transcript.refined_version")
     }
 }
 
@@ -1614,7 +2001,7 @@ private struct AsyncTranscriptView: View {
                 // setup action visible for an already queued task too: the
                 // worker will continue once that key becomes available.
                 Button {
-                    MainNavigationStore.shared.openSettings(section: .captions)
+                    MainNavigationStore.shared.openSettings(section: .account)
                 } label: {
                     Label(
                         String(localized: "editor.transcript.async.invite_add_key"),
@@ -2106,16 +2493,15 @@ private struct SessionNotesContextHeader: View {
     }
 }
 
-/// Session Settings is the complete recording-settings workspace, not merely
-/// a metadata card. Resource state belongs at the top, editable defaults stay
-/// in the middle, and the immutable run snapshot closes the same page. Keeping
-/// the three areas in one reading flow avoids making provenance look like an
-/// alternative mode of the settings workspace.
+/// A finished recording's settings tab is about that recording only: what it
+/// has (audio, transcripts, notes) and what it was recorded with. It used to
+/// carry, between the two, the editor for the *next* recording's defaults,
+/// and people could not tell which recording they were changing. Those
+/// defaults live where a recording is started and in the topic's own options
+/// (docs/product/interface-layers.md).
 private struct SessionSettingsView: View {
     let notebookId: String
     let session: SessionInfo
-    @ObservedObject var editor: NotebookCaptureProfileEditorModel
-    let captureSettingsScope: NotebookCaptureSettingsScope
     let onOpenResource: (NotebookResourceDestination) -> Void
 
     var body: some View {
@@ -2123,25 +2509,19 @@ private struct SessionSettingsView: View {
             VStack(alignment: .leading, spacing: 0) {
                 sessionResourceSection
 
-                NotebookCaptureSettingsView(
-                    notebookId: notebookId,
-                    editor: editor,
-                    scope: captureSettingsScope,
-                    embeddedInParentScrollView: true
-                )
-                .id("session-recording-settings:\(notebookId)")
-                .frame(maxWidth: .infinity, alignment: .top)
-
                 Divider()
                     .padding(.horizontal, Spacing.xl)
                     .background(Color.borderGhost.opacity(0.45))
 
+                // The same centred column as the two sections around it; on
+                // a wide window the heading used to sit alone at the far left.
                 Text(String(localized: "session.settings.workspace.snapshot"))
                     .font(.headline)
                     .foregroundColor(.textPrimary)
                     .padding(.horizontal, Spacing.xl)
                     .padding(.top, Spacing.xl)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: 860, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: .top)
 
                 SessionSettingsSnapshotView(
                     notebookId: notebookId,

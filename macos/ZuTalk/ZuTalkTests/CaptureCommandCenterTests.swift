@@ -143,3 +143,391 @@ final class CaptureCaptionsDefaultTests: XCTestCase {
         XCTAssertFalse(center.nextRecordingUsesCaptions)
     }
 }
+
+// MARK: - 0.8.2: what happens after Stop
+
+/// Stop lands on the recording: the one that just ended is remembered for
+/// the card on its page, and that page is brought up if the window is there
+/// to show it.
+@MainActor
+final class JustFinishedRecordingTests: XCTestCase {
+    private var defaults: UserDefaults!
+    private var suiteName: String!
+    private var opened: [String] = []
+    private var windowIsShowing = true
+
+    override func setUp() {
+        super.setUp()
+        suiteName = "JustFinishedRecordingTests.\(UUID().uuidString)"
+        defaults = UserDefaults(suiteName: suiteName)
+        opened = []
+        windowIsShowing = true
+    }
+
+    override func tearDown() {
+        defaults.removePersistentDomain(forName: suiteName)
+        super.tearDown()
+    }
+
+    private func makeCenter(navigation: MainNavigationStore) -> CaptureCommandCenter {
+        CaptureCommandCenter(
+            navigation: navigation,
+            defaults: defaults,
+            coreProvider: { nil },
+            inviteReady: { false },
+            mainWindowIsShowing: { [unowned self] in self.windowIsShowing },
+            openRecording: { [unowned self] in self.opened.append($0) }
+        )
+    }
+
+    private func show(_ sessionId: String, in navigation: MainNavigationStore) {
+        navigation.openNotebookTab(
+            notebookID: "topic",
+            tabID: "tab-live",
+            documentID: "doc-live",
+            selectedSessionID: sessionId
+        )
+    }
+
+    private let finished = FinishedRecording(sessionId: "just-ended", seconds: 754, audioOnly: false)
+
+    func testNothingHasJustFinishedUntilAStopSucceeds() {
+        XCTAssertNil(makeCenter(navigation: MainNavigationStore()).justFinished)
+    }
+
+    func testAFinishedRecordingIsRememberedAndItsPageOpened() {
+        let center = makeCenter(navigation: MainNavigationStore())
+
+        center.recordingFinished(finished)
+
+        XCTAssertEqual(center.justFinished, finished)
+        XCTAssertEqual(opened, ["just-ended"])
+    }
+
+    /// Stopped from the menu bar with the window closed: nothing is
+    /// navigated behind the person's back, and the card is still there when
+    /// they next open that recording.
+    func testWithTheWindowNotShowingItIsRememberedButNothingIsOpened() {
+        windowIsShowing = false
+        let center = makeCenter(navigation: MainNavigationStore())
+
+        center.recordingFinished(finished)
+
+        XCTAssertEqual(center.justFinished, finished)
+        XCTAssertEqual(opened, [])
+    }
+
+    /// The usual case: the person pressed Stop on the live page.
+    func testThePageAlreadyShowingTheRecordingIsNotOpenedAgain() {
+        let navigation = MainNavigationStore()
+        let center = makeCenter(navigation: navigation)
+        show("just-ended", in: navigation)
+
+        center.recordingFinished(finished)
+
+        XCTAssertEqual(center.justFinished, finished)
+        XCTAssertEqual(opened, [])
+    }
+
+    /// The recording's page was left open under Home: it is not what is on
+    /// screen, so Stop brings it back.
+    func testAPageLeftBehindUnderHomeIsBroughtBack() {
+        let navigation = MainNavigationStore()
+        let center = makeCenter(navigation: navigation)
+        show("just-ended", in: navigation)
+        navigation.navigateHome()
+
+        center.recordingFinished(finished)
+
+        XCTAssertEqual(opened, ["just-ended"])
+    }
+
+    func testOpeningAnotherRecordingForgetsTheOneThatJustFinished() {
+        let navigation = MainNavigationStore()
+        let center = makeCenter(navigation: navigation)
+        show("just-ended", in: navigation)
+        center.recordingFinished(finished)
+
+        show("an-older-one", in: navigation)
+
+        XCTAssertNil(center.justFinished)
+    }
+
+    /// Going Home and coming back to the same recording is not moving on.
+    func testLeavingAndComingBackToTheSameRecordingKeepsIt() {
+        let navigation = MainNavigationStore()
+        let center = makeCenter(navigation: navigation)
+        show("just-ended", in: navigation)
+        center.recordingFinished(finished)
+
+        navigation.navigateHome()
+        show("just-ended", in: navigation)
+
+        XCTAssertEqual(center.justFinished, finished)
+    }
+
+    func testClosingTheCardForgetsIt() {
+        let center = makeCenter(navigation: MainNavigationStore())
+        center.recordingFinished(finished)
+
+        center.dismissJustFinished()
+
+        XCTAssertNil(center.justFinished)
+    }
+
+    /// A Stop that failed may have left the recording running; saying
+    /// "recorded" then would be a lie. Stop's one implementation records the
+    /// finished recording on its success path only.
+    func testOnlyAStopThatSucceededRemembersItsRecording() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("ZuTalk/Capture/CaptureCommandCenter.swift"),
+            encoding: .utf8
+        )
+        let start = try XCTUnwrap(source.range(of: "func stop(announce: Bool = false) {"))
+        let end = try XCTUnwrap(source.range(
+            of: "// MARK: - After Stop",
+            range: start.upperBound..<source.endIndex
+        ))
+        let stop = String(source[start.lowerBound..<end.lowerBound])
+
+        XCTAssertEqual(stop.components(separatedBy: "recordingFinished(").count - 1, 1)
+        let remembered = try XCTUnwrap(stop.range(of: "recordingFinished(ending)"))
+        let stopped = try XCTUnwrap(stop.range(of: "try await capture.stop()"))
+        let failure = try XCTUnwrap(stop.range(of: "} catch {"))
+        XCTAssertLessThan(stopped.lowerBound, remembered.lowerBound)
+        XCTAssertLessThan(remembered.lowerBound, failure.lowerBound)
+    }
+}
+
+/// What the card on a just-finished recording says, case by case.
+final class RecordingResultCardModelTests: XCTestCase {
+    private typealias Model = RecordingResultCardModel
+
+    // MARK: Summary line
+
+    func testARecordingWithLiveTextHasItsTranscriptBelowAndItsAudioOnThisMac() {
+        XCTAssertEqual(
+            Model.summary(liveTextOff: false, hasText: true, hasAudio: true),
+            .textAndAudio
+        )
+        // Before the page has read what the recording has, its own setting
+        // is the answer.
+        XCTAssertEqual(
+            Model.summary(liveTextOff: false, hasText: nil, hasAudio: true),
+            .textAndAudio
+        )
+    }
+
+    func testARecordingMadeWithLiveTextOffIsAudioOnly() {
+        XCTAssertEqual(
+            Model.summary(liveTextOff: true, hasText: nil, hasAudio: true),
+            .audioOnly
+        )
+        XCTAssertEqual(
+            Model.summary(liveTextOff: true, hasText: false, hasAudio: true),
+            .audioOnly
+        )
+    }
+
+    /// Live text was on but none arrived (offline, say): promising a
+    /// transcript below would be wrong.
+    func testARecordingWhoseTextNeverArrivedIsAudioOnlyToo() {
+        XCTAssertEqual(
+            Model.summary(liveTextOff: false, hasText: false, hasAudio: true),
+            .audioOnly
+        )
+    }
+
+    func testAnAudioOnlyRecordingThatHasSinceBeenRefinedHasText() {
+        XCTAssertEqual(
+            Model.summary(liveTextOff: true, hasText: true, hasAudio: true),
+            .textAndAudio
+        )
+    }
+
+    func testAudioAlreadyDeletedIsNotSaidToBeOnThisMac() {
+        XCTAssertEqual(
+            Model.summary(liveTextOff: false, hasText: true, hasAudio: false),
+            .textOnly
+        )
+    }
+
+    /// Copy and Share are about the text; with none they are not offered.
+    func testCopyAndShareNeedText() {
+        let withText = Model.make(
+            seconds: 754, liveTextOff: false, hasText: true, hasAudio: true, refine: .available
+        )
+        let audioOnly = Model.make(
+            seconds: 754, liveTextOff: true, hasText: nil, hasAudio: true, refine: .available
+        )
+        XCTAssertTrue(withText.hasText)
+        XCTAssertFalse(audioOnly.hasText)
+        XCTAssertEqual(withText.duration, RecordingPresentation.duration(ms: 754_000))
+        XCTAssertNotNil(withText.duration)
+    }
+
+    // MARK: Refine row
+
+    private func refine(
+        task: NotebookTabStatus? = nil,
+        hasRefinedText: Bool = false,
+        isRequesting: Bool = false,
+        showingRefined: Bool = false,
+        hasAudio: Bool = true,
+        hasReadyPersonalKey: Bool = true,
+        recordedOn: String? = nil
+    ) -> Model.Refine? {
+        Model.refine(
+            task: task,
+            hasRefinedText: hasRefinedText,
+            isRequesting: isRequesting,
+            showingRefined: showingRefined,
+            hasAudio: hasAudio,
+            hasReadyPersonalKey: hasReadyPersonalKey,
+            recordedOn: recordedOn
+        )
+    }
+
+    func testRefineIsOfferedWhenItCanStart() {
+        XCTAssertEqual(refine(), .available)
+    }
+
+    /// Today refining runs on the person's own key. Without one the row says
+    /// so and leads to Settings — never a button that does nothing.
+    func testWithoutAKeyRefineLeadsToSettings() {
+        XCTAssertEqual(refine(hasReadyPersonalKey: false), .needsSetup)
+        // A refine already queued waits for the key in the same way.
+        XCTAssertEqual(refine(task: .pending, hasReadyPersonalKey: false), .needsSetup)
+    }
+
+    func testRefineUnderWayHasNothingToPress() {
+        XCTAssertEqual(refine(task: .pending), .inProgress)
+        XCTAssertEqual(refine(isRequesting: true), .inProgress)
+    }
+
+    func testAFinishedRefineLeadsToTheRefinedTranscript() {
+        XCTAssertEqual(refine(task: .ready, hasRefinedText: true), .ready)
+        XCTAssertEqual(refine(task: .ready), .ready)
+        XCTAssertEqual(refine(task: .failed), .failed)
+    }
+
+    /// The refined view's own status bar says how it went; the card does not
+    /// offer a button to the page already on screen.
+    func testTheRowIsDroppedWhenTheRefinedTranscriptIsAlreadyOnScreen() {
+        XCTAssertNil(refine(task: .ready, hasRefinedText: true, showingRefined: true))
+        XCTAssertNil(refine(task: .failed, showingRefined: true))
+        // Still worth saying while it is on its way, and still startable.
+        XCTAssertEqual(refine(task: .pending, showingRefined: true), .inProgress)
+        XCTAssertEqual(refine(showingRefined: true), .available)
+    }
+
+    func testNothingToRefineWithoutAudioOnThisMac() {
+        XCTAssertNil(refine(hasAudio: false))
+        XCTAssertNil(refine(recordedOn: "Another Mac"))
+    }
+
+    // MARK: Archive line
+
+    private func filing(_ state: FfiCityFilingState) -> FfiCityFiling {
+        FfiCityFiling(
+            sessionId: "just-ended",
+            eventId: "event-1",
+            eventTitle: "Language Exchange",
+            eventStartMs: 1_794_547_200_000,
+            channelTitle: nil,
+            state: state,
+            filedAtEpoch: nil,
+            signerName: "Sam",
+            languages: [],
+            speakers: 0,
+            marks: 0,
+            changedSentences: 0,
+            errorCode: nil,
+            webUrl: nil
+        )
+    }
+
+    func testARecordingNeverGivenAnEventHasNoArchiveLine() {
+        XCTAssertNil(Model.city(signedIn: true, filing: nil, busy: false, offline: false))
+        XCTAssertNil(Model.city(signedIn: false, filing: filing(.filed), busy: false, offline: false))
+    }
+
+    func testAFiledRecordingSaysSo() {
+        let status = Model.city(signedIn: true, filing: filing(.filed), busy: false, offline: false)
+        XCTAssertEqual(status?.kind, .filed)
+        XCTAssertEqual(status, CityFilingStatus.resolve(filing(.filed), busy: false, offline: false))
+    }
+
+    func testAQueuedRecordingSaysItIsWaiting() {
+        XCTAssertEqual(
+            Model.city(signedIn: true, filing: filing(.queued), busy: false, offline: false)?.kind,
+            .waiting
+        )
+        // Being filed this very moment, before the core has a row for it.
+        XCTAssertEqual(
+            Model.city(signedIn: true, filing: nil, busy: true, offline: false)?.kind,
+            .sending
+        )
+    }
+}
+
+/// The one button that replaced the 实时版 | 精修版 switch names the version
+/// you can go to, not the one you are on.
+final class TranscriptVersionButtonTests: XCTestCase {
+    func testTheButtonNamesTheOtherVersion() {
+        XCTAssertEqual(
+            TranscriptVersionButtonPolicy.labelKey(showing: .asyncTranscript),
+            "session.version.show_live"
+        )
+        XCTAssertEqual(
+            TranscriptVersionButtonPolicy.labelKey(showing: .realtimeTranscript),
+            "session.version.show_refined"
+        )
+        XCTAssertNil(TranscriptVersionButtonPolicy.labelKey(showing: .manualNote))
+        XCTAssertEqual(
+            TranscriptVersionButtonPolicy.destination(showing: .asyncTranscript),
+            .realtimeTranscript
+        )
+        XCTAssertEqual(
+            TranscriptVersionButtonPolicy.destination(showing: .realtimeTranscript),
+            .asyncTranscript
+        )
+    }
+
+    /// An imported file, or a recording made with live text off, has no live
+    /// version to go back to.
+    func testThereIsNoWayBackToALiveVersionThatDoesNotExist() {
+        XCTAssertFalse(TranscriptVersionButtonPolicy.isOffered(
+            showing: .asyncTranscript, hasLiveVersion: false
+        ))
+        XCTAssertTrue(TranscriptVersionButtonPolicy.isOffered(
+            showing: .asyncTranscript, hasLiveVersion: true
+        ))
+        // The refined view is always reachable: it is also where refining
+        // an older recording starts.
+        XCTAssertTrue(TranscriptVersionButtonPolicy.isOffered(
+            showing: .realtimeTranscript, hasLiveVersion: false
+        ))
+    }
+
+    /// One name for the thing in every language's new copy: the keys exist
+    /// and the reference wording is the one the interface rules fix.
+    func testTheReferenceWordingIsTheAgreedOne() throws {
+        let strings = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("ZuTalk/Resources/zh-Hans.lproj/Localizable.strings"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(strings.contains("\"session.version.show_refined\" = \"看精修稿\";"))
+        XCTAssertTrue(strings.contains("\"session.version.show_live\" = \"看边录边出的那一版\";"))
+        XCTAssertTrue(strings.contains("\"transcript.copy_all\" = \"复制全文\";"))
+        XCTAssertTrue(strings.contains(
+            "\"recording.result.summary.audio_only\" = \"这一场只录了音。精修一遍就有文字稿。\";"
+        ))
+    }
+}

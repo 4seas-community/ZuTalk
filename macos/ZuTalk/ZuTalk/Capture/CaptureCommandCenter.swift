@@ -2,6 +2,21 @@ import AppKit
 import Combine
 import SwiftUI
 
+/// The recording a Stop just saved: which one, how long it ran, and whether
+/// it was getting text as it went. Kept only for the card on its page
+/// (`RecordingResultCard`); nothing of it survives a relaunch.
+struct FinishedRecording: Equatable {
+    let sessionId: String
+    /// How long it ran, by the recording clock.
+    let seconds: Int
+    /// Live text was off for this one: so far there is audio and no transcript.
+    let audioOnly: Bool
+    /// The stop already said "saved" in a toast (it came from the menu bar,
+    /// the caption window or the shortcut). A page that decides not to turn
+    /// to the result card uses this to avoid saying it twice — or not at all.
+    var announced = false
+}
+
 /// Every recording command, for every surface that offers one: a topic's
 /// Record button, Home, the recording bar above every page, the menu bar,
 /// and the global shortcuts.
@@ -23,6 +38,10 @@ final class CaptureCommandCenter: ObservableObject {
     private var stopAttempt: UUID?
     /// When the last mark landed, so the surface that made it can say so.
     @Published private(set) var lastMarkedAt: Date?
+    /// The recording a Stop just saved, until the card on its page is closed
+    /// or another recording is opened. Pressing Stop in the main window used
+    /// to leave no sign that anything had been kept.
+    @Published private(set) var justFinished: FinishedRecording?
     /// The person's own choice, once they have made one.
     @Published private var storedCaptionsChoice: Bool?
 
@@ -41,7 +60,10 @@ final class CaptureCommandCenter: ObservableObject {
     private let defaults: UserDefaults
     private let coreProvider: @MainActor () -> (any ZuTalkCoreProtocol)?
     private let inviteReady: @MainActor () -> Bool
+    private let mainWindowIsShowing: @MainActor () -> Bool
+    private let openRecording: @MainActor (String) -> Void
     private var settlementObservers: Set<AnyCancellable> = []
+    private var openedRecordingObserver: AnyCancellable?
 
     static let realtimeCaptionsDefaultsKey = "capture.realtime_captions.enabled"
 
@@ -53,19 +75,26 @@ final class CaptureCommandCenter: ObservableObject {
         coreProvider: @escaping @MainActor () -> (any ZuTalkCoreProtocol)? = {
             CoreClient.shared.core
         },
-        inviteReady: (@MainActor () -> Bool)? = nil
+        inviteReady: (@MainActor () -> Bool)? = nil,
+        mainWindowIsShowing: (@MainActor () -> Bool)? = nil,
+        openRecording: (@MainActor (String) -> Void)? = nil
     ) {
         let invite = invite ?? .shared
+        let navigation = navigation ?? .shared
         self.capture = capture ?? .shared
-        self.navigation = navigation ?? .shared
+        self.navigation = navigation
         self.invite = invite
         self.defaults = defaults
         self.coreProvider = coreProvider
         self.inviteReady = inviteReady ?? { invite.isEnabled && invite.isActive }
+        self.mainWindowIsShowing = mainWindowIsShowing
+            ?? { WindowCoordinator.shared.isMainWindowVisible() }
+        self.openRecording = openRecording ?? { navigation.openSession($0) }
         storedCaptionsChoice = defaults.object(forKey: Self.realtimeCaptionsDefaultsKey) != nil
             ? defaults.bool(forKey: Self.realtimeCaptionsDefaultsKey)
             : nil
         observeRecordingForInviteSettlement()
+        observeOpenedRecordings()
     }
 
     // MARK: - Invite settlement
@@ -194,6 +223,9 @@ final class CaptureCommandCenter: ObservableObject {
                 capture: capture,
                 navigation: navigation
             ).start(notebookId: notebookId)
+            // A new recording is under way: the one before it is no longer
+            // the one that "just" finished.
+            justFinished = nil
             return true
         } catch {
             // Return any invite reservation made above; a no-op when none exists.
@@ -256,9 +288,10 @@ final class CaptureCommandCenter: ObservableObject {
         }
     }
 
-    /// Ends the recording. `announce` says so in a toast with how much was
-    /// kept — for a stop made from outside the window, where nothing else
-    /// on screen would.
+    /// Ends the recording. A stop that succeeds lands on the recording's own
+    /// page (`recordingFinished`). `announce` also says so in a toast with
+    /// how much was kept — for a stop made from outside the window, where
+    /// that page may not be on screen.
     func stop(announce: Bool = false) {
         guard canStop else { return }
         let retrying = capture.stopRecoveryRequired
@@ -282,11 +315,29 @@ final class CaptureCommandCenter: ObservableObject {
                 }
             }
             let usedSeconds = Int(capture.elapsedRecordingTime.rounded(.up))
+            // Read before the Stop is answered: which recording this is and
+            // whether it was getting live text are the store's to forget
+            // once it has ended.
+            let ending = capture.sessionId.map {
+                FinishedRecording(
+                    sessionId: $0,
+                    seconds: usedSeconds,
+                    audioOnly: capture.profile.remoteRealtimeEnabled == false,
+                    announced: announce
+                )
+            }
             do {
                 if retrying {
                     try await capture.retryStopRecovery()
                 } else {
                     try await capture.stop()
+                }
+                // Only a Stop that came back saved lands anywhere; one that
+                // failed may still be recording. Nor does one whose place
+                // another recording has already taken. Before the invite is
+                // settled: that asks a server, and the page should not wait.
+                if let ending, capture.isCaptureActive == false {
+                    recordingFinished(ending)
                 }
                 await invite.settleRealtimeSession(usedSeconds: usedSeconds)
                 if announce {
@@ -305,6 +356,44 @@ final class CaptureCommandCenter: ObservableObject {
                 )
             }
         }
+    }
+
+    // MARK: - After Stop
+
+    /// A recording has ended, saved. Its page shows a card saying so until
+    /// the card is closed; if the main window is on screen, that page is
+    /// brought up now. With the window closed nothing is navigated: the
+    /// toast is the sign, and the card is there when the page is next opened.
+    func recordingFinished(_ recording: FinishedRecording) {
+        justFinished = recording
+        guard mainWindowIsShowing() else { return }
+        let alreadyShowing = navigation.activeTab == .editor
+            && navigation.selectedSessionID == recording.sessionId
+        if alreadyShowing == false {
+            openRecording(recording.sessionId)
+        }
+    }
+
+    /// The person closed the card.
+    func dismissJustFinished() {
+        justFinished = nil
+    }
+
+    /// The card belongs to the recording that just finished. Opening a
+    /// different one means the person has moved on; going Home, or to a
+    /// topic's list, has not.
+    private func observeOpenedRecordings() {
+        openedRecordingObserver = navigation.$activeEditorRoute
+            .map { $0?.selectedSessionID }
+            .removeDuplicates()
+            .sink { [weak self] opened in
+                guard let self,
+                      let opened,
+                      let finished = self.justFinished,
+                      opened != finished.sessionId
+                else { return }
+                self.justFinished = nil
+            }
     }
 
     func restartTranscription() {

@@ -209,8 +209,10 @@ final class ProviderConnectionsViewModel: ObservableObject {
 }
 
 struct ProviderSettingsView: View {
-    /// 设置分三节以后,这份视图出现在两处:「实时字幕」里是字幕要用的密钥
-    /// 与邀请,「通用」里只有可选的语言模型(整理标记)。
+    /// 这份视图在「设置 › 高级」里出现两次,各管一把自己的密钥:`.captions` 是
+    /// 出字和精修用的那一把,`.languageModel` 是整理标记用的那一把(可选)。
+    /// 邀请码不在这里,在「账号 › 转录和翻译」;引擎和模型的名字在同一页的
+    /// 「诊断信息」里。供应商的名字只在这一节出现,所以标题直接叫它的名字。
     enum Scope {
         case captions
         case languageModel
@@ -219,7 +221,6 @@ struct ProviderSettingsView: View {
     var scope: Scope = .captions
 
     @StateObject private var viewModel = ProviderConnectionsViewModel()
-    @ObservedObject private var engineStore = NotebookCaptureEnginePresentationStore.shared
     @ObservedObject private var verificationStore = ProviderConnectionVerificationStore.shared
     @ObservedObject private var modelStore = LanguageModelPresentationStore.shared
     @ObservedObject private var assistance = LanguageModelAssistanceStore.shared
@@ -248,7 +249,6 @@ struct ProviderSettingsView: View {
         }
         .onAppear {
             viewModel.refresh()
-            engineStore.refresh()
             modelStore.refresh()
             assistance.pushToCore()
             guard !TestEnvironment.isAnyTestMode else { return }
@@ -278,48 +278,47 @@ struct ProviderSettingsView: View {
         }
     }
 
+    /// 「自己的 Soniox 密钥」。名字从账户来,不在这里写死。
+    private func ownKeyTitle(_ accounts: [ProviderCredentialAccount]) -> String {
+        String(
+            format: String(localized: "settings.advanced.own_key_format"),
+            ListFormatter.localizedString(byJoining: accounts.map(\.displayName))
+        )
+    }
+
     @ViewBuilder
     private var captionsContent: some View {
-        SettingsPageHeader(
-            title: String(localized: "settings.section.captions_name"),
-            subtitle: String(localized: "settings.services.subtitle")
-        )
-
-        if let recoveryError = viewModel.recoveryError {
-            credentialRecoveryBanner(recoveryError)
-        }
-
-        SettingsCard(
-            title: String(localized: "settings.services.connection.title"),
-            subtitle: String(localized: "settings.services.connection.subtitle")
+        SettingsGroup(
+            title: ownKeyTitle(captureAccounts),
+            subtitle: String(localized: "settings.advanced.capture_key_subtitle")
         ) {
-            ForEach(Array(captureAccounts.enumerated()), id: \.element.id) { index, account in
-                if index > 0 {
-                    SettingsRowDivider()
-                }
-                credentialRow(account)
+            if let recoveryError = viewModel.recoveryError {
+                credentialRecoveryBanner(recoveryError)
             }
+
+            SettingsCard {
+                ForEach(Array(captureAccounts.enumerated()), id: \.element.id) { index, account in
+                    if index > 0 {
+                        SettingsRowDivider()
+                    }
+                    credentialRow(account)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: Spacing.sm) {
+                Label(
+                    String(localized: "settings.credentials.trust_boundary_notice"),
+                    systemImage: "externaldrive.fill.badge.checkmark"
+                )
+                Label(
+                    String(localized: "settings.services.no_egress_notice"),
+                    systemImage: "lock.shield.fill"
+                )
+            }
+            .font(Font.sans11)
+            .foregroundColor(.textSecondary)
+            .fixedSize(horizontal: false, vertical: true)
         }
-
-        CommunityInviteSettingsCard()
-
-        Label(
-            String(localized: "settings.credentials.trust_boundary_notice"),
-            systemImage: "externaldrive.fill.badge.checkmark"
-        )
-        .font(.caption)
-        .foregroundColor(.textSecondary)
-        .fixedSize(horizontal: false, vertical: true)
-
-        engineCard
-
-        Label(
-            String(localized: "settings.services.no_egress_notice"),
-            systemImage: "lock.shield.fill"
-        )
-        .font(.caption)
-        .foregroundColor(.textSecondary)
-        .fixedSize(horizontal: false, vertical: true)
     }
 
     /// Credentials the app needs before it can transcribe anything.
@@ -342,81 +341,87 @@ struct ProviderSettingsView: View {
     @ViewBuilder
     private var languageModelCard: some View {
         if languageModelAccounts.isEmpty == false {
-            SettingsCard(
-                title: String(localized: "settings.services.model.title"),
+            SettingsGroup(
+                title: ownKeyTitle(languageModelAccounts),
                 subtitle: String(
                     format: String(localized: "settings.services.model.subtitle_format"),
                     activeModelId
                 )
             ) {
-                SettingsFullRow {
-                    Toggle(isOn: Binding(
-                        get: { assistance.isEnabled },
-                        set: { assistance.setEnabled($0) }
-                    )) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(String(localized: "settings.services.model.enable"))
-                                .font(Font.sans12)
-                                .foregroundColor(.textPrimary)
-                            Text(String(localized: "settings.services.model.enable_detail"))
-                                .font(.caption)
-                                .foregroundColor(.textSecondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                    .toggleStyle(.switch)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityIdentifier("settings.services.model.enable")
-                }
-
-                SettingsRowDivider()
-
-                if let offer = invite.coversPassageDigest ? invite.passageDigestOffer : nil {
-                    inviteCleanupRow(offer)
-                    SettingsRowDivider()
-                }
-
-                ForEach(Array(languageModelAccounts.enumerated()), id: \.element.id) { index, account in
-                    if index > 0 {
-                        SettingsRowDivider()
-                    }
-                    credentialRow(account)
-                }
-
-                SettingsRowDivider()
-
-                SettingsFullRow {
-                    VStack(alignment: .leading, spacing: Spacing.xs) {
-                        Label(
-                            String(localized: "settings.services.model.egress_notice"),
-                            systemImage: "paperplane"
-                        )
-                        .font(.caption)
-                        .foregroundColor(.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                        Text(String(localized: "settings.services.model.audio_notice"))
-                            .font(.caption)
-                            .foregroundColor(.textTertiary)
-                            .fixedSize(horizontal: false, vertical: true)
-
-                        if let consoleURL = modelStore.engine.consoleURL {
-                            Link(
-                                String(localized: "settings.services.model.console_link"),
-                                destination: consoleURL
-                            )
-                            .font(.caption)
-                            .padding(.top, 2)
-                            .accessibilityIdentifier("settings.services.model.console_link")
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
+                languageModelRows
+                    .accessibilityIdentifier("settings.services.model")
             }
-            .accessibilityIdentifier("settings.services.model")
             .task {
                 guard invite.isEnabled, invite.isActive else { return }
                 await invite.refreshQuota()
+            }
+        }
+    }
+
+    private var languageModelRows: some View {
+        SettingsCard {
+            SettingsFullRow {
+                Toggle(isOn: Binding(
+                    get: { assistance.isEnabled },
+                    set: { assistance.setEnabled($0) }
+                )) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(String(localized: "settings.services.model.enable"))
+                            .font(Font.sans12)
+                            .foregroundColor(.textPrimary)
+                        Text(String(localized: "settings.services.model.enable_detail"))
+                            .font(.caption)
+                            .foregroundColor(.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .toggleStyle(.switch)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("settings.services.model.enable")
+            }
+
+            SettingsRowDivider()
+
+            if let offer = invite.coversPassageDigest ? invite.passageDigestOffer : nil {
+                inviteCleanupRow(offer)
+                SettingsRowDivider()
+            }
+
+            ForEach(Array(languageModelAccounts.enumerated()), id: \.element.id) { index, account in
+                if index > 0 {
+                    SettingsRowDivider()
+                }
+                credentialRow(account)
+            }
+
+            SettingsRowDivider()
+
+            SettingsFullRow {
+                VStack(alignment: .leading, spacing: Spacing.xs) {
+                    Label(
+                        String(localized: "settings.services.model.egress_notice"),
+                        systemImage: "paperplane"
+                    )
+                    .font(.caption)
+                    .foregroundColor(.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                    Text(String(localized: "settings.services.model.audio_notice"))
+                        .font(.caption)
+                        .foregroundColor(.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if let consoleURL = modelStore.engine.consoleURL {
+                        Link(
+                            String(localized: "settings.services.model.console_link"),
+                            destination: consoleURL
+                        )
+                        .font(.caption)
+                        .padding(.top, 2)
+                        .accessibilityIdentifier("settings.services.model.console_link")
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
@@ -481,69 +486,6 @@ struct ProviderSettingsView: View {
                 viewModel.requestDeletion(.account($0))
             }
         )
-    }
-
-    private var engineCard: some View {
-        let engine = engineStore.engine
-        return SettingsCard(
-            title: String(localized: "settings.services.engine.title"),
-            subtitle: String(localized: "settings.services.engine.subtitle")
-        ) {
-            SettingsRow(String(localized: "settings.services.engine.service")) {
-                Text(engine.providerDisplayName)
-                    .font(.bodyMedium)
-                    .foregroundColor(.textPrimary)
-            }
-            SettingsRowDivider()
-            SettingsRow(
-                String(localized: "settings.services.engine.realtime"),
-                description: String(localized: "settings.services.engine.realtime_detail")
-            ) {
-                HStack(spacing: Spacing.xs) {
-                    Text(engine.realtimeSummary)
-                        .font(.captionMedium)
-                        .foregroundColor(.textSecondary)
-                    Label(String(localized: "settings.services.engine.fixed"), systemImage: "lock.fill")
-                        .font(.caption)
-                        .foregroundColor(.textTertiary)
-                }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel(String(
-                    format: String(localized: "settings.services.engine.accessibility_format"),
-                    engine.realtimeSummary
-                ))
-            }
-            SettingsRowDivider()
-            SettingsRow(
-                String(localized: "settings.services.engine.post_stop"),
-                description: String(localized: engine.postStopUsesAsyncFileApi == true
-                    ? "settings.services.engine.post_stop_detail"
-                    : "settings.services.engine.post_stop_unavailable_detail")
-            ) {
-                HStack(spacing: Spacing.xs) {
-                    Text(engine.postStopSummary)
-                        .font(.captionMedium)
-                        .foregroundColor(.textSecondary)
-                    Label(
-                        engine.postStopExecutionSummary,
-                        systemImage: "arrow.triangle.2.circlepath"
-                    )
-                    .font(.caption)
-                    .foregroundColor(.textTertiary)
-                }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel(postStopAccessibilityLabel(for: engine))
-            }
-        }
-    }
-
-    private func postStopAccessibilityLabel(
-        for engine: NotebookCaptureEnginePresentation
-    ) -> String {
-        let key: String.LocalizationValue = engine.postStopUsesAsyncFileApi == true
-            ? "settings.services.engine.post_stop_accessibility_format"
-            : "settings.services.engine.post_stop_unavailable_accessibility_format"
-        return String(format: String(localized: key), engine.postStopSummary)
     }
 
     @ViewBuilder

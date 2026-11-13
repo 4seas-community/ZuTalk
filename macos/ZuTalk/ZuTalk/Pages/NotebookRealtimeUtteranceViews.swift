@@ -142,11 +142,19 @@ struct NotebookRealtimeUtteranceView: View {
         )
     }
 
+    /// The run this view draws is the one being recorded. Its state, its
+    /// length and Copy are then the recording bar's to show — the clock and
+    /// the one sentence beside it, and 复制文字 under ⋯ — so the header
+    /// keeps only what the bar does not say.
+    private var isBeingRecorded: Bool {
+        liveChunks != nil
+    }
+
     private var runHeader: some View {
         runHeaderContent
             .padding(.horizontal, Spacing.lg)
             .padding(.vertical, Spacing.sm)
-            .frame(minHeight: 52)
+            .frame(minHeight: isBeingRecorded ? 36 : 52)
     }
 
     /// Re-laid out on every capture publish, inside stacks that probe it at
@@ -186,13 +194,19 @@ struct NotebookRealtimeUtteranceView: View {
             .foregroundColor(.textPrimary)
     }
 
+    /// How long the recording is. Not for the one in progress: what it has
+    /// here is the length the catalog knew when the page loaded, standing
+    /// still beside the bar's running clock.
+    @ViewBuilder
     private var runMetadata: some View {
-        Label(durationText, systemImage: run.hasAudio ? "waveform" : "waveform.slash")
-            .font(.caption)
-            .foregroundColor(.textSecondary)
-            .accessibilityLabel(Text(
-                "\(String(localized: "session.tab.audio")), \(durationText)"
-            ))
+        if isBeingRecorded == false {
+            Label(durationText, systemImage: run.hasAudio ? "waveform" : "waveform.slash")
+                .font(.caption)
+                .foregroundColor(.textSecondary)
+                .accessibilityLabel(Text(
+                    "\(String(localized: "session.tab.audio")), \(durationText)"
+                ))
+        }
     }
 
     private var snapshotUnavailablePlaceholder: some View {
@@ -226,10 +240,12 @@ struct NotebookRealtimeUtteranceView: View {
     }
 
     /// Said only when it is not the ordinary finished-and-saved state, which
-    /// nearly every recording is in.
+    /// nearly every recording is in — and never for the recording in
+    /// progress, whose state is the recording bar's sentence.
     @ViewBuilder
     private var captureStateLabel: some View {
-        if run.captureState != .completed || run.projectionState != .ready {
+        if isBeingRecorded == false,
+           run.captureState != .completed || run.projectionState != .ready {
             CaptureStateLabel(
                 captureState: run.captureState,
                 remoteHealth: run.remoteHealth,
@@ -241,18 +257,20 @@ struct NotebookRealtimeUtteranceView: View {
 
     @ViewBuilder
     private var statusActions: some View {
-        Button(action: copyTranscript) {
-            Label(
-                String(localized: "capture.transcript.copy"),
-                systemImage: Icon.copy
-            )
+        if isBeingRecorded == false {
+            Button(action: copyTranscript) {
+                Label(
+                    String(localized: "capture.transcript.copy"),
+                    systemImage: Icon.copy
+                )
+            }
+            .buttonStyle(.borderless)
+            .frame(minWidth: 44, minHeight: 44)
+            .disabled(canCopyTranscript == false)
+            .help(copyTranscriptHint)
+            .accessibilityLabel(Text(String(localized: "capture.transcript.copy")))
+            .accessibilityHint(Text(copyTranscriptHint))
         }
-        .buttonStyle(.borderless)
-        .frame(minWidth: 44, minHeight: 44)
-        .disabled(canCopyTranscript == false)
-        .help(copyTranscriptHint)
-        .accessibilityLabel(Text(String(localized: "capture.transcript.copy")))
-        .accessibilityHint(Text(copyTranscriptHint))
 
         if hasAnyEditableLane == false {
             Label(String(localized: "capture.transcript.read_only"), systemImage: "lock.fill")
@@ -297,37 +315,10 @@ struct NotebookRealtimeUtteranceView: View {
 
     private func copyTranscript() {
         guard canCopyTranscript else { return }
-        guard let core = CoreClient.shared.core else {
-            ToastCenter.shared.error(
-                String(localized: "capture.transcript.copy_failed"),
-                detail: String(localized: "capture.route.unavailable_detail")
-            )
-            return
-        }
-
-        do {
-            let text = try core.getSessionTranscriptClipboardText(
-                sessionId: run.sessionId
-            )
-            guard TranscriptClipboard.write(text) else {
-                ToastCenter.shared.error(
-                    String(localized: "capture.transcript.copy_failed"),
-                    detail: String(localized: "capture.transcript.copy_clipboard_failed")
-                )
-                return
-            }
-            ToastCenter.shared.success(
-                String(localized: "capture.transcript.copy_success"),
-                detail: run.captureState.isActive
-                    ? String(localized: "capture.transcript.copy_success_live_detail")
-                    : String(localized: "capture.transcript.copy_success_detail")
-            )
-        } catch {
-            ToastCenter.shared.error(
-                String(localized: "capture.transcript.copy_failed"),
-                detail: error.localizedDescription
-            )
-        }
+        NotebookTranscriptCopy.copy(
+            sessionId: run.sessionId,
+            isLive: run.captureState.isActive
+        )
     }
 
     @ViewBuilder
@@ -470,6 +461,47 @@ struct NotebookRealtimeUtteranceView: View {
         guard let sessionSpeakerId = utterance.sessionSpeakerId else { return }
         history.refreshSessionSpeakers(sessionId: run.sessionId)
         speakerSelection = NotebookSpeakerSelection(id: sessionSpeakerId)
+    }
+}
+
+/// Copies a recording's transcript and says how it went. One implementation
+/// for the Copy button above a finished transcript and for 复制文字 under
+/// the recording bar's ⋯, which stands in for that button while the
+/// recording is still running.
+@MainActor
+enum NotebookTranscriptCopy {
+    static func copy(sessionId: String, isLive: Bool) {
+        guard let core = CoreClient.shared.core else {
+            ToastCenter.shared.error(
+                String(localized: "capture.transcript.copy_failed"),
+                detail: String(localized: "capture.route.unavailable_detail")
+            )
+            return
+        }
+
+        do {
+            let text = try core.getSessionTranscriptClipboardText(
+                sessionId: sessionId
+            )
+            guard TranscriptClipboard.write(text) else {
+                ToastCenter.shared.error(
+                    String(localized: "capture.transcript.copy_failed"),
+                    detail: String(localized: "capture.transcript.copy_clipboard_failed")
+                )
+                return
+            }
+            ToastCenter.shared.success(
+                String(localized: "capture.transcript.copy_success"),
+                detail: isLive
+                    ? String(localized: "capture.transcript.copy_success_live_detail")
+                    : String(localized: "capture.transcript.copy_success_detail")
+            )
+        } catch {
+            ToastCenter.shared.error(
+                String(localized: "capture.transcript.copy_failed"),
+                detail: error.localizedDescription
+            )
+        }
     }
 }
 

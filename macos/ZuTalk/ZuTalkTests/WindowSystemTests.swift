@@ -598,7 +598,9 @@ final class WindowSystemTests: XCTestCase {
 
         XCTAssertEqual(store.activeNotebookID, quick.id)
         XCTAssertEqual(store.selectedSessionID, "quick-live")
-        XCTAssertEqual(store.activeNotebookTitle, String(localized: "home.record.unfiled"))
+        // A recording in no topic is named for Home, never for a topic it
+        // does not have.
+        XCTAssertEqual(store.activeNotebookTitle, String(localized: "sidebar.home"))
         XCTAssertEqual(
             store.activeNotebookTabID,
             try core.listNotebookTabs(notebookId: quick.id)
@@ -634,7 +636,7 @@ final class WindowSystemTests: XCTestCase {
 
         XCTAssertEqual(store.activeNotebookID, quick.id)
         XCTAssertEqual(store.selectedSessionID, sessionId)
-        XCTAssertEqual(store.activeNotebookTitle, String(localized: "home.record.unfiled"))
+        XCTAssertEqual(store.activeNotebookTitle, String(localized: "sidebar.home"))
     }
 
     func testMainShellView_exposesOnlyMinimalMVPNavigation() throws {
@@ -653,10 +655,10 @@ final class WindowSystemTests: XCTestCase {
         XCTAssertFalse(contents.contains("sidebarWidth"))
         XCTAssertFalse(contents.contains(".frame(width: 64)"))
 
-        // Recording first, then where recordings are kept, then settings.
+        // Home first — it is where a recording starts and where recordings
+        // are kept — then topics once there is one, then trash and settings.
         // Terms and background live in each topic's settings, not up here.
         let destinations = [
-            "sidebar.record",
             "sidebar.home",
             "sidebar.topics",
             "sidebar.trash",
@@ -671,6 +673,11 @@ final class WindowSystemTests: XCTestCase {
             previous = found.upperBound
         }
         XCTAssertFalse(contents.contains("sidebar.knowledge"))
+        // Starting a recording is not a destination of its own any more.
+        XCTAssertFalse(contents.contains("\"sidebar.record\""))
+        XCTAssertFalse(contents.contains("RecordStartPage"))
+        XCTAssertFalse(contents.contains("store.select(tab: .record)"))
+        XCTAssertTrue(contents.contains("SidebarTopicsGate("))
         XCTAssertTrue(contents.contains("store.openLiveRecording()"))
         for deferredDestination in [
             "store.select(tab: .people)",

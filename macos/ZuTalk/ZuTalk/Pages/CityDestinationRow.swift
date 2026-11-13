@@ -1,23 +1,24 @@
 // CityDestinationRow.swift
-// 「开始录音」页上「归到活动」那一行,紧跟在「归入主题」下面。
+// 首页开始卡片上「归到活动」那一行,紧跟在「这一场会怎么录」那句话下面。
 //
 // 这一行就是每场录音的那一次确认:归到哪场活动、以谁的名义、会交什么、音频
-// 不交,按下开始之前都摆在眼前。没有「记住以后自动发」的全局开关。
+// 不交,按下开始之前都摆在眼前。没有「记住以后自动发」的全局开关。所以它
+// 不收进「更改」里:在主持活动的人每次开始之前都看得到它。不主持的人看不到
+// 它,也就什么都不会交(`StartCardHosting`)。
 //
 //   - 只有一场活动在进行:替人选好,主办直接按开始;
 //   - 同时有好几场:不替人选,列出来让人挑;
 //   - 一场都没有:这场先不交,录完可以再归。
 //
-// 三种情况下开始按钮都能按 —— 这一行从不挡录音。没登录时整行不出现,页面
-// 和原来一样。
+// 三种情况下开始按钮都能按 —— 这一行从不挡录音。没登录时整行不出现。
 
 import Combine
 import SwiftUI
 
 struct CityDestinationRow: View {
-    /// 这一页正在编辑的语言设置:那一句里要把这场录音的语言一个个念出来。
+    /// 开始卡片正在编辑的语言设置:那一句里要把这场录音的语言一个个念出来。
     let editor: NotebookCaptureProfileEditorModel?
-    /// 录进哪个主题;未归入主题时为 nil,也就没有频道。
+    /// 放进哪个主题;不放时为 nil,也就没有频道。
     let topicId: String?
 
     @ObservedObject private var city = CityStore.shared
@@ -31,32 +32,30 @@ struct CityDestinationRow: View {
 
     var body: some View {
         if let account = city.account {
-            VStack(alignment: .leading, spacing: 0) {
-                content(account: account, now: now)
-                // 和页面上别的行之间一样的分隔线;跟着这一行一起出现、一起消失。
-                Divider().padding(.horizontal, Spacing.md)
-            }
-            .onAppear {
-                city.prepareNextRecording()
-                if let topicId { city.loadTopicChannel(notebookId: topicId) }
-                showAsOfNow()
-            }
-            .onReceive(everyMinute) { _ in showAsOfNow() }
-            .montereyOnChange(of: topicId) { _, topicId in
-                if let topicId { city.loadTopicChannel(notebookId: topicId) }
-            }
-            .montereyOnChange(of: commands.isStarting) { _, isStarting in
-                // 开始没成(成了的话去向已经绑上):那次确认作废。
-                if isStarting == false { city.cancelConfirmedDestination() }
-            }
-            .sheet(isPresented: $showsPicker) {
-                CityEventPickerSheet(
-                    selectedEventId: city.nextEvent(now: now)?.id,
-                    recording: nil
-                ) { event in
-                    city.chooseNext(event.map { .event($0) } ?? .notFiling)
+            // 上面那条分隔线由卡片画:这一行是卡片的最后一行还是中间一行,
+            // 只有卡片知道。
+            content(account: account, now: now)
+                .onAppear {
+                    city.prepareNextRecording()
+                    if let topicId { city.loadTopicChannel(notebookId: topicId) }
+                    showAsOfNow()
                 }
-            }
+                .onReceive(everyMinute) { _ in showAsOfNow() }
+                .montereyOnChange(of: topicId) { _, topicId in
+                    if let topicId { city.loadTopicChannel(notebookId: topicId) }
+                }
+                .montereyOnChange(of: commands.isStarting) { _, isStarting in
+                    // 开始没成(成了的话去向已经绑上):那次确认作废。
+                    if isStarting == false { city.cancelConfirmedDestination() }
+                }
+                .sheet(isPresented: $showsPicker) {
+                    CityEventPickerSheet(
+                        selectedEventId: city.nextEvent(now: now)?.id,
+                        recording: nil
+                    ) { event in
+                        city.chooseNext(event.map { .event($0) } ?? .notFiling)
+                    }
+                }
         }
     }
 

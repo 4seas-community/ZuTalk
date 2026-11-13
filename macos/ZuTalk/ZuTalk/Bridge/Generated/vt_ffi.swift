@@ -1576,6 +1576,16 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
      */
     func exportSessionZip(sessionId: String, outputPath: String, options: ExportZipOptions) throws  -> ExportZipOutcome
 
+    /**
+     * The refined transcript alone, for the clipboard.
+     *
+     * `get_session_transcript_clipboard_text` prefers what was written down
+     * while recording, as ZIP export does. Someone reading the refined
+     * transcript who presses Copy expects the text in front of them, so the
+     * page showing that version asks for it by name.
+     */
+    func getSessionRefinedTranscriptClipboardText(sessionId: String) throws  -> String
+
     func getSessionTranscriptAvailability(sessionId: String) throws  -> SessionTranscriptAvailabilityInfo
 
     /**
@@ -3898,6 +3908,23 @@ open func exportSessionZip(sessionId: String, outputPath: String, options: Expor
         FfiConverterString.lower(sessionId),
         FfiConverterString.lower(outputPath),
         FfiConverterTypeExportZipOptions_lower(options),$0
+    )
+})
+}
+
+    /**
+     * The refined transcript alone, for the clipboard.
+     *
+     * `get_session_transcript_clipboard_text` prefers what was written down
+     * while recording, as ZIP export does. Someone reading the refined
+     * transcript who presses Copy expects the text in front of them, so the
+     * page showing that version asks for it by name.
+     */
+open func getSessionRefinedTranscriptClipboardText(sessionId: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_get_session_refined_transcript_clipboard_text(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),$0
     )
 })
 }
@@ -13881,6 +13908,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_export_session_zip() != 39759) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_get_session_refined_transcript_clipboard_text() != 52713) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_get_session_transcript_availability() != 57811) {

@@ -15,7 +15,7 @@ error:
     parse: "解析错误: %{detail}"
     server_error: "服务器错误 %{status}: %{detail}"
     api_error: "API 错误 %{status}: [%{kind}] %{detail}"
-    transcription_failed: "转录失败: [%{kind}] %{detail}"
+    transcription_failed: "转成文字失败: [%{kind}] %{detail}"
     http: "HTTP 错误: %{detail}"
     timeout: "超时: %{operation} 等待 %{duration}"
     cancelled: "已取消"
