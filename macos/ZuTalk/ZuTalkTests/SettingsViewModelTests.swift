@@ -1,4 +1,5 @@
 import CoreAudio
+import SwiftUI
 import XCTest
 @testable import ZuTalk
 
@@ -1593,15 +1594,19 @@ final class CityTextTests: XCTestCase {
     }
 
     func testFilingRowsSayWhatHappenedNotOnlyByColour() {
-        let filed = CityFilingsCard.status(filing(state: .filed), signer: "Sam")
-        let changed = CityFilingsCard.status(filing(state: .filed, changed: 6), signer: "Sam")
-        let offline = CityFilingsCard.status(filing(state: .queued, errorCode: "city.error.offline"), signer: "Sam")
-        let refused = CityFilingsCard.status(filing(state: .failed, errorCode: "city.error.not_allowed"), signer: "Sam")
+        let status = { (filing: FfiCityFiling) in
+            CityFilingStatus.resolve(filing, busy: false, offline: false, signer: "Sam")
+        }
+        let filed = status(filing(state: .filed))
+        let changed = status(filing(state: .filed, changed: 6))
+        let waiting = status(filing(state: .queued, errorCode: "city.error.offline"))
+        let refused = status(filing(state: .failed, errorCode: "city.error.not_allowed"))
 
-        XCTAssertEqual(Set([filed, changed, offline, refused]).count, 4)
-        XCTAssertTrue(changed.contains("6"))
-        XCTAssertTrue(refused.contains("Sam"))
-        XCTAssertTrue(CityFilingsCard.detail(filing(state: .filed), signer: "Sam").hasSuffix(filed))
+        XCTAssertEqual(Set([filed, changed, waiting, refused].map(\.label)).count, 4)
+        XCTAssertEqual(Set([filed, changed, waiting, refused].map(\.symbol)).count, 4)
+        XCTAssertTrue(changed.label.contains("6"))
+        XCTAssertEqual(refused.reason?.contains("Sam"), true)
+        XCTAssertTrue(CityFilingsCard.detail(filing(state: .filed), status: filed).hasSuffix(filed.label))
     }
 
     func testEventTimesAreShownInTheGivenTimeZone() {
@@ -1660,6 +1665,445 @@ final class CityTextTests: XCTestCase {
             }
             // The public note sets the archive against the 24-hour link.
             XCTAssertTrue(try XCTUnwrap(strings["city.share.public_note"]).contains("24"), language)
+        }
+    }
+
+    private func strings(_ language: String) throws -> [String: String] {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("ZuTalk/Resources", isDirectory: true)
+            .appendingPathComponent("\(language).lproj", isDirectory: true)
+            .appendingPathComponent("Localizable.strings")
+        return try XCTUnwrap(NSDictionary(contentsOf: url) as? [String: String])
+    }
+}
+
+// MARK: - 交到档案馆:一套状态
+
+/// Where one recording's filing stands. The recording's page, the lists, the
+/// Share panel, Settings and the sidebar all read this one answer, so what it
+/// says for each state — and what it offers to do next — is pinned here.
+@MainActor
+final class CityFilingStatusTests: XCTestCase {
+    private static let languages = ["en", "th", "ja", "ko", "fr", "es", "de", "zh-Hans"]
+    private static let offlineCode = "city.error.offline"
+    private static let goneCode = "city.error.event_gone"
+
+    private func filing(
+        _ state: FfiCityFilingState,
+        session: String = "session-1",
+        changed: UInt32 = 0,
+        errorCode: String? = nil,
+        webUrl: String? = nil,
+        filedAt: Int64? = nil
+    ) -> FfiCityFiling {
+        FfiCityFiling(
+            sessionId: session,
+            eventId: "event-1",
+            eventTitle: "Language Exchange",
+            eventStartMs: 1_794_547_200_000,
+            channelTitle: nil,
+            state: state,
+            filedAtEpoch: filedAt,
+            signerName: "Sam",
+            languages: [FfiCityLanguageCount(language: "en", sentences: 412)],
+            speakers: 4,
+            marks: 7,
+            changedSentences: changed,
+            errorCode: errorCode,
+            webUrl: webUrl
+        )
+    }
+
+    private func status(
+        _ filing: FfiCityFiling?,
+        busy: Bool = false,
+        offline: Bool = false
+    ) -> CityFilingStatus {
+        CityFilingStatus.resolve(filing, busy: busy, offline: offline, signer: "Sam")
+    }
+
+    func testEachStateOfTheLedgerHasItsOwnStatus() {
+        XCTAssertEqual(status(nil).kind, .notFiled)
+        XCTAssertEqual(status(filing(.bound)).kind, .chosen)
+        XCTAssertEqual(status(filing(.queued, errorCode: Self.offlineCode)).kind, .waiting)
+        XCTAssertEqual(status(filing(.filed)).kind, .filed)
+        XCTAssertEqual(status(filing(.filed, changed: 6)).kind, .changed)
+        XCTAssertEqual(status(filing(.filed, errorCode: Self.goneCode)).kind, .eventGone)
+        XCTAssertEqual(status(filing(.failed, errorCode: "city.error.refused")).kind, .failed)
+        XCTAssertEqual(status(filing(.withdrawn)).kind, .withdrawn)
+        // The archive does not show an item whose event is gone, so that
+        // outranks "you changed some sentences": updating it would not help.
+        XCTAssertEqual(status(filing(.filed, changed: 6, errorCode: Self.goneCode)).kind, .eventGone)
+    }
+
+    func testEveryStatusHasItsOwnWordsAndItsOwnSymbol() {
+        let all = [
+            status(nil),
+            status(filing(.bound)),
+            status(filing(.bound), busy: true),
+            status(filing(.queued)),
+            status(filing(.queued), offline: true),
+            status(filing(.filed)),
+            status(filing(.filed, changed: 6)),
+            status(filing(.filed, errorCode: Self.goneCode)),
+            status(filing(.failed, errorCode: "city.error.refused")),
+            status(filing(.withdrawn)),
+        ]
+        // Colour is never the only signal: the words and the icon differ too.
+        XCTAssertEqual(Set(all.map(\.label)).count, all.count)
+        XCTAssertEqual(Set(all.map(\.symbol)).count, all.count)
+        for one in all {
+            XCTAssertFalse(one.label.isEmpty)
+            XCTAssertFalse(one.label.hasPrefix("city."), "\(one.kind) shows its key")
+            XCTAssertFalse(one.label.contains("%"), "\(one.kind) shows a format specifier")
+        }
+        XCTAssertTrue(status(filing(.filed, changed: 6)).label.contains("6"))
+    }
+
+    /// "Filing…" is said only while something is on its way up. An update or
+    /// a withdrawal in flight leaves the item in the archive, so it keeps
+    /// saying what the archive has.
+    func testSendingIsSaidOnlyWhileARecordingIsBeingFiled() {
+        for state in [FfiCityFilingState.bound, .queued, .failed, .withdrawn] {
+            XCTAssertEqual(status(filing(state), busy: true).kind, .sending, "\(state)")
+        }
+        XCTAssertEqual(status(nil, busy: true).kind, .sending)
+        XCTAssertEqual(status(filing(.filed), busy: true).kind, .filed)
+        XCTAssertEqual(status(filing(.filed, changed: 2), busy: true).kind, .changed)
+        XCTAssertEqual(status(filing(.filed, errorCode: Self.goneCode), busy: true).kind, .eventGone)
+
+        // Nothing can be started on a recording that has a request in flight.
+        let inFlight: [FfiCityFiling?] = [
+            nil, filing(.bound), filing(.queued), filing(.failed), filing(.withdrawn),
+            filing(.filed, webUrl: "https://city.example/archive/item"), filing(.filed, changed: 2),
+        ]
+        for row in inFlight {
+            XCTAssertNil(status(row, busy: true).primaryAction)
+        }
+    }
+
+    /// The owner was told "this Mac is offline" while it was online: the route
+    /// to the city's server had timed out. Only the system's own verdict may
+    /// produce those words; the core's code never does.
+    func testOnlyTheSystemMaySayThisMacIsOffline() {
+        let unreachable = filing(.queued, errorCode: Self.offlineCode)
+
+        let online = status(unreachable, offline: false)
+        XCTAssertEqual(online.label, String(localized: "city.status.waiting"))
+        XCTAssertEqual(online.primaryAction, .retry)
+        XCTAssertNil(online.reason)
+
+        let offline = status(unreachable, offline: true)
+        XCTAssertEqual(offline.label, String(localized: "city.status.waiting_offline"))
+        XCTAssertEqual(offline.symbol, "wifi.slash")
+        // Retrying with no network at all cannot work; it goes by itself later.
+        XCTAssertNil(offline.primaryAction)
+
+        // Reachability changes the wording of a queued filing and nothing else.
+        for other in [filing(.bound), filing(.filed), filing(.failed, errorCode: Self.offlineCode), filing(.withdrawn)] {
+            XCTAssertEqual(status(other, offline: true).label, status(other, offline: false).label)
+        }
+    }
+
+    func testGreenIsSuccessGoldAsksForALookAndRedIsOnlyFailure() {
+        XCTAssertEqual(status(filing(.filed)).tone, .success)
+        XCTAssertEqual(status(filing(.filed, changed: 1)).tone, .warning)
+        XCTAssertEqual(status(filing(.filed, errorCode: Self.goneCode)).tone, .warning)
+        XCTAssertEqual(status(filing(.failed)).tone, .failure)
+        let quiet: [CityFilingStatus] = [
+            status(nil), status(filing(.bound)), status(filing(.bound), busy: true),
+            status(filing(.queued)), status(filing(.queued), offline: true), status(filing(.withdrawn)),
+        ]
+        for one in quiet {
+            XCTAssertEqual(one.tone, .quiet, "\(one.kind)")
+        }
+        // Orange stays with recording activity; no filing status uses it.
+        for tone in [CityFilingStatus.Tone.quiet, .success, .warning, .failure] {
+            XCTAssertNotEqual(tone.color, Color.accentOrange)
+        }
+        XCTAssertEqual(CityFilingStatus.Tone.success.color, Color.success)
+        XCTAssertEqual(CityFilingStatus.Tone.warning.color, Color.warning)
+        XCTAssertEqual(CityFilingStatus.Tone.failure.color, Color.error)
+    }
+
+    func testEachStatusOffersTheOneThingThatMakesSense() throws {
+        let url = try XCTUnwrap(URL(string: "https://city.example/archive/c/event-1/b/block-1"))
+
+        XCTAssertEqual(status(nil).primaryAction, .chooseEvent)
+        XCTAssertEqual(status(filing(.bound)).primaryAction, .file)
+        XCTAssertEqual(status(filing(.withdrawn)).primaryAction, .file)
+        XCTAssertEqual(status(filing(.queued)).primaryAction, .retry)
+        XCTAssertEqual(status(filing(.filed, webUrl: url.absoluteString)).primaryAction, .open(url))
+        XCTAssertEqual(status(filing(.filed, changed: 3, webUrl: url.absoluteString)).primaryAction, .update)
+        XCTAssertEqual(status(filing(.failed, errorCode: "city.error.not_allowed")).primaryAction, .retry)
+        XCTAssertEqual(status(filing(.failed, errorCode: "city.error.no_transcript")).primaryAction, .retry)
+
+        // Nothing to open when the city gave no page, or gave something that
+        // is not a web address.
+        XCTAssertNil(status(filing(.filed)).primaryAction)
+        XCTAssertNil(status(filing(.filed, webUrl: "file:///private/etc/hosts")).primaryAction)
+
+        // The event is gone from the city: retrying cannot help, and opening
+        // would show an empty page. Another event is the way forward.
+        XCTAssertEqual(
+            status(filing(.filed, errorCode: Self.goneCode, webUrl: url.absoluteString)).primaryAction,
+            .chooseEvent
+        )
+        XCTAssertEqual(status(filing(.failed, errorCode: Self.goneCode)).primaryAction, .chooseEvent)
+    }
+
+    func testAReasonIsGivenWhereThePersonNeedsOne() {
+        // Why it failed, with the name the host is to add.
+        let refused = status(filing(.failed, errorCode: "city.error.not_allowed"))
+        XCTAssertEqual(refused.reason, CityText.message(forCode: "city.error.not_allowed", signer: "Sam"))
+        XCTAssertEqual(refused.reason?.contains("Sam"), true)
+
+        // Filed, but the event was deleted: say what that means and what
+        // changing the event will do.
+        let gone = status(filing(.filed, errorCode: Self.goneCode))
+        XCTAssertEqual(gone.reason, String(localized: "city.status.event_gone_detail"))
+        XCTAssertEqual(
+            status(filing(.failed, errorCode: Self.goneCode)).reason,
+            String(localized: "city.error.event_gone")
+        )
+
+        // An update or withdrawal that did not go through leaves the item
+        // filed, with the cause on the record. It must not vanish.
+        let stale = status(filing(.filed, changed: 2, errorCode: Self.offlineCode))
+        XCTAssertEqual(stale.kind, .changed)
+        XCTAssertEqual(stale.reason?.contains(String(localized: "city.error.offline")), true)
+
+        for plain in [status(nil), status(filing(.bound)), status(filing(.queued, errorCode: Self.offlineCode)),
+                      status(filing(.filed)), status(filing(.withdrawn))] {
+            XCTAssertNil(plain.reason, "\(plain.kind)")
+        }
+    }
+
+    /// An icon in a list needs the whole sentence for its tooltip and for
+    /// VoiceOver: which thing this is about, the status, and the event.
+    func testTheSpokenFormNamesTheArchiveTheStatusAndTheEvent() {
+        let filed = status(filing(.filed))
+        let spoken = filed.described(event: "Language Exchange")
+
+        XCTAssertTrue(spoken.contains(filed.label))
+        XCTAssertTrue(spoken.contains("Language Exchange"))
+        XCTAssertNotEqual(spoken, filed.label)
+        XCTAssertFalse(spoken.contains("%"))
+        XCTAssertEqual(filed.described(event: nil), filed.label)
+        XCTAssertEqual(filed.described(event: ""), filed.label)
+    }
+
+    func testTheTallyCountsWhatIsInTheArchiveWhatIsWaitingAndWhatNeedsSomeone() {
+        let list = [
+            filing(.filed, session: "a"),
+            filing(.filed, session: "b", changed: 4),
+            filing(.queued, session: "c", errorCode: Self.offlineCode),
+            filing(.bound, session: "d"),
+            filing(.failed, session: "e", errorCode: "city.error.refused"),
+            filing(.filed, session: "f", errorCode: Self.goneCode),
+            filing(.bound, session: "g"),
+            filing(.withdrawn, session: "h"),
+        ]
+        // "d" is being filed right now: on its way, neither merely chosen nor
+        // stuck in the queue.
+        let tally = CityFilingTally.count(list, busy: ["d"])
+
+        XCTAssertEqual(
+            tally,
+            CityFilingTally(filed: 2, sending: 1, waiting: 1, failed: 1, eventGone: 1, chosen: 1)
+        )
+        let summary = tally.summary ?? ""
+        XCTAssertEqual(summary.components(separatedBy: " · ").count, 6)
+        XCTAssertFalse(summary.contains("%"))
+
+        // Only what there is gets said; nothing at all when nothing is listed.
+        XCTAssertEqual(CityFilingTally(filed: 3).summary?.components(separatedBy: " · ").count, 1)
+        XCTAssertNil(CityFilingTally().summary)
+        XCTAssertNil(CityFilingTally.count([filing(.withdrawn)], busy: []).summary)
+    }
+
+    /// The sidebar says one thing: the most pressing. Nothing when all is well.
+    func testTheSidebarLineAppearsOnlyWhenSomethingIsPendingOrWrong() {
+        XCTAssertNil(CityFilingTally().attention)
+        XCTAssertNil(CityFilingTally(filed: 5, chosen: 2).attention)
+
+        // The few seconds of an ordinary upload are not a queue.
+        let sending = CityFilingTally(filed: 5, sending: 1).attention
+        XCTAssertEqual(sending?.tone, .quiet)
+        XCTAssertEqual(sending?.text.contains("1"), true)
+
+        let waiting = CityFilingTally(filed: 5, sending: 1, waiting: 2).attention
+        XCTAssertEqual(waiting?.tone, .quiet)
+        XCTAssertEqual(waiting?.text.contains("2"), true)
+
+        let gone = CityFilingTally(waiting: 2, eventGone: 1).attention
+        XCTAssertEqual(gone?.tone, .warning)
+        XCTAssertEqual(gone?.text.contains("1"), true)
+
+        let failed = CityFilingTally(waiting: 2, failed: 3, eventGone: 1).attention
+        XCTAssertEqual(failed?.tone, .failure)
+        XCTAssertEqual(failed?.text.contains("3"), true)
+
+        XCTAssertEqual(Set([sending?.text, waiting?.text, gone?.text, failed?.text]).count, 4)
+    }
+
+    /// Settings is where every filing can be dealt with: beyond the first
+    /// button, each row's menu holds the other things that make sense for it.
+    func testEachSettingsRowOffersWhatCanBeDoneWithIt() throws {
+        let url = try XCTUnwrap(URL(string: "https://city.example/archive/item"))
+        let menu = { (filing: FfiCityFiling) in
+            CityFilingsCard.menu(for: self.status(filing), filing: filing)
+        }
+
+        // A choice not acted on yet can be changed or dropped.
+        for state in [FfiCityFilingState.bound, .queued, .withdrawn] {
+            XCTAssertEqual(menu(filing(state)), [.changeEvent, .drop, .showRecording], "\(state)")
+        }
+        XCTAssertEqual(
+            menu(filing(.failed, errorCode: "city.error.not_allowed")),
+            [.changeEvent, .drop, .showRecording]
+        )
+        // What is in the archive can be withdrawn; the first button already
+        // opens it (or updates it, and then the menu opens it).
+        XCTAssertEqual(menu(filing(.filed, webUrl: url.absoluteString)), [.withdraw, .showRecording])
+        XCTAssertEqual(
+            menu(filing(.filed, changed: 2, webUrl: url.absoluteString)),
+            [.open(url), .withdraw, .showRecording]
+        )
+        // Event gone: the first button changes the event. The menu does not
+        // offer a page that would be empty.
+        XCTAssertEqual(
+            menu(filing(.filed, errorCode: Self.goneCode, webUrl: url.absoluteString)),
+            [.withdraw, .showRecording]
+        )
+        XCTAssertEqual(menu(filing(.failed, errorCode: Self.goneCode)), [.retry, .drop, .showRecording])
+        // The first button is never repeated in the menu.
+        let rows = [
+            filing(.bound), filing(.queued), filing(.failed), filing(.filed, changed: 1),
+            filing(.failed, errorCode: Self.goneCode),
+        ]
+        for row in rows {
+            let resolved = status(row)
+            let repeated: CityFilingsCard.MenuAction?
+            switch resolved.primaryAction {
+            case .retry: repeated = .retry
+            case .chooseEvent: repeated = .changeEvent
+            default: repeated = nil
+            }
+            if let repeated {
+                XCTAssertFalse(CityFilingsCard.menu(for: resolved, filing: row).contains(repeated))
+            }
+        }
+    }
+
+    /// The list of all filings never counts changed sentences (that means
+    /// reading a whole transcript); a count read for one recording must
+    /// survive the next reload of the list.
+    func testACountOfChangedSentencesSurvivesAReloadOfTheList() {
+        let known = [
+            "edited": filing(.filed, session: "edited", changed: 6, filedAt: 100),
+            "refiled": filing(.filed, session: "refiled", changed: 3, filedAt: 100),
+            "withdrawn": filing(.filed, session: "withdrawn", changed: 2, filedAt: 100),
+        ]
+        let reloaded = [
+            filing(.filed, session: "edited", filedAt: 100),
+            // Filed again since: the old count describes another filing.
+            filing(.filed, session: "refiled", filedAt: 200),
+            filing(.withdrawn, session: "withdrawn", filedAt: 100),
+            filing(.filed, session: "new", filedAt: 100),
+        ]
+
+        let merged = CityStore.carryingChangedCounts(from: known, into: reloaded)
+
+        XCTAssertEqual(merged.map(\.sessionId), ["edited", "refiled", "withdrawn", "new"])
+        XCTAssertEqual(merged.map(\.changedSentences), [6, 0, 0, 0])
+        XCTAssertEqual(merged[2].state, .withdrawn)
+    }
+
+    func testComingBackToTheAppRetriesQueuedFilingsButNotInABurst() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        let gap = CityStore.activationRetryGap
+
+        XCTAssertFalse(CityStore.retriesOnActivation(queued: false, lastRetryAt: nil, now: now))
+        XCTAssertTrue(CityStore.retriesOnActivation(queued: true, lastRetryAt: nil, now: now))
+        XCTAssertFalse(
+            CityStore.retriesOnActivation(queued: true, lastRetryAt: now.addingTimeInterval(-gap / 2), now: now)
+        )
+        XCTAssertTrue(
+            CityStore.retriesOnActivation(queued: true, lastRetryAt: now.addingTimeInterval(-gap), now: now)
+        )
+        // While anything is queued it is retried every two minutes.
+        XCTAssertEqual(CityStore.retryInterval, 120)
+    }
+
+    func testStatusWordingExistsInEveryInterfaceLanguage() throws {
+        let plain = [
+            "city.status.not_filed", "city.status.chosen", "city.status.sending",
+            "city.status.waiting", "city.status.waiting_offline", "city.status.filed",
+            "city.status.event_gone", "city.status.event_gone_detail", "city.status.failed",
+            "city.status.withdrawn", "city.status.open_share_hint", "city.sidebar.hint",
+            "city.action.drop", "city.action.show_recording", "city.error.event_gone",
+            "city.toast.update_failed", "city.toast.withdraw_failed", "city.toast.move_failed",
+        ]
+        let counted = [
+            "city.status.changed_format", "city.tally.filed_format", "city.tally.sending_format",
+            "city.tally.waiting_format", "city.tally.failed_format", "city.tally.event_gone_format",
+            "city.tally.chosen_format", "city.sidebar.sending_format", "city.sidebar.waiting_format",
+            "city.sidebar.failed_format", "city.sidebar.event_gone_format",
+        ]
+        for language in Self.languages {
+            let strings = try self.strings(language)
+            for key in plain {
+                let value = try XCTUnwrap(strings[key], "\(language) lacks \(key)")
+                XCTAssertFalse(value.isEmpty, "\(language) \(key)")
+                XCTAssertFalse(value.contains("%"), "\(language) \(key)")
+            }
+            for key in counted {
+                let value = try XCTUnwrap(strings[key], "\(language) lacks \(key)")
+                XCTAssertTrue(value.contains("%lld"), "\(language) \(key)")
+            }
+            let named = try XCTUnwrap(strings["city.status.for_event_format"], language)
+            XCTAssertTrue(named.contains("%1$@") && named.contains("%2$@"), language)
+            // The two waiting labels must not read alike: one of them claims
+            // the Mac has no network.
+            XCTAssertNotEqual(strings["city.status.waiting"], strings["city.status.waiting_offline"], language)
+        }
+    }
+
+    /// `city.error.offline` means the city's server could not be reached. It
+    /// says nothing about this Mac, so its wording must not either: the
+    /// remedy is to wait or retry.
+    func testNotReachingTheCityIsNeverWordedAsThisMacBeingOffline() throws {
+        let english = try strings("en")
+        let chinese = try strings("zh-Hans")
+        // Said from the core's code alone, with no word from the system.
+        let fromTheCoreAlone = [
+            "city.error.offline", "city.status.waiting", "city.share.queued", "city.toast.queued",
+            "city.picker.empty_never", "city.when.automatic_detail",
+        ]
+        for key in fromTheCoreAlone {
+            let en = try XCTUnwrap(english[key], key)
+            let zh = try XCTUnwrap(chinese[key], key)
+            XCTAssertFalse(en.contains("this Mac") || en.contains("This Mac"), "\(key): \(en)")
+            XCTAssertFalse(en.localizedCaseInsensitiveContains("online"), "\(key): \(en)")
+            XCTAssertFalse(en.localizedCaseInsensitiveContains("connect to the internet"), "\(key): \(en)")
+            XCTAssertFalse(zh.contains("这台 Mac"), "\(key): \(zh)")
+            XCTAssertFalse(zh.contains("联网"), "\(key): \(zh)")
+            XCTAssertFalse(zh.contains("断网"), "\(key): \(zh)")
+        }
+        XCTAssertEqual(
+            chinese["city.error.offline"],
+            "连不上城的服务器。过一会儿再试；一直不行就看看网络。"
+        )
+        XCTAssertEqual(
+            chinese["city.error.event_gone"],
+            "这场活动在城里已经删除或取消了。换一场活动，再交一次。"
+        )
+        // Chinese says 「转录稿」 for a transcript throughout.
+        for (key, value) in chinese where key.hasPrefix("city.") {
+            XCTAssertFalse(value.contains("文字稿"), "\(key): \(value)")
         }
     }
 

@@ -126,8 +126,15 @@ enum AccessibilityID {
     static let citySettingsFilingUpdate = "settings.city.filing.update"
     static let citySettingsFilingWithdraw = "settings.city.filing.withdraw"
     static let citySettingsFilingRetry = "settings.city.filing.retry"
+    static let citySettingsFilingFile = "settings.city.filing.file"
+    static let citySettingsFilingChange = "settings.city.filing.change"
+    static let citySettingsFilingDrop = "settings.city.filing.drop"
+    static let citySettingsFilingShow = "settings.city.filing.show"
+    static let citySettingsFilingMore = "settings.city.filing.more"
+    /// 表头那一行:「3 场已交 · 1 场排队 · 1 场没交上」
+    static let citySettingsFilingsSummary = "settings.city.filings.summary"
 
-    /// 「已交到档案馆」表里的一行 (拼接 session id)
+    /// 「交到档案馆的录音」表里的一行 (拼接 session id)
     static func citySettingsFiling(sessionId: String) -> String {
         "settings.city.filing.\(sessionId)"
     }
@@ -186,6 +193,17 @@ enum AccessibilityID {
     static let cityShareRetry = "share.city.retry"
     static let cityShareChange = "share.city.change"
     static let cityShareWithdraw = "share.city.withdraw"
+
+    /// 录音页顶栏上「交到哪一步了」那一枚;点它打开共享面板
+    static let cityRecordingStatus = "session.city.status"
+
+    /// 录音列表里一行上的记号 (拼接 session id)
+    static func cityRowMark(sessionId: String) -> String {
+        "recording.row.city.\(sessionId)"
+    }
+
+    /// 侧栏底部「档案馆:1 场排队中」那一行;点它打开「设置 › 城」
+    static let citySidebarLine = "sidebar.city.pending"
 
     /// 窗口底部「已交到档案馆」那条提示和它的按钮
     static let cityNotice = "city.notice"

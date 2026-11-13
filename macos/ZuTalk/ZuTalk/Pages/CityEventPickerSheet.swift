@@ -163,7 +163,7 @@ struct CityEventPickerSheet: View {
                 groups: groups,
                 emptyText: emptyText(dayCount: dayCount),
                 now: now,
-                filedEventIds: Set(city.filedList.filter { $0.state == .filed }.map(\.eventId)),
+                filedEventIds: Set(city.filingList.filter { $0.state == .filed }.map(\.eventId)),
                 calendar: calendar,
                 selection: $selection
             )
@@ -303,7 +303,7 @@ struct CityEventPickerSheet: View {
         }
         month = CityCalendarLayout.startOfMonth(day, calendar: calendar)
         city.refreshCalendarIfStale(now: now)
-        city.reloadFiledList()
+        city.reloadFilings()
     }
 
     private func choose(_ event: FfiCityEvent?) {

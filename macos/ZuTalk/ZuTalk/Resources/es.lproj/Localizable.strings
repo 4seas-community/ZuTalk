@@ -1497,21 +1497,15 @@
 "city.when.row" = "Cuándo enviar";
 "city.when.automatic" = "Automáticamente";
 "city.when.ask" = "Preguntarme antes";
-"city.when.automatic_detail" = "Se envía en segundo plano al detener la grabación, sin esperar. Sin red, se envía cuando vuelva la conexión.";
+"city.when.automatic_detail" = "Se envía en segundo plano al detener la grabación, sin esperar. Si no se puede contactar con la ciudad, queda en cola y se reintenta automáticamente.";
 "city.when.ask_detail" = "Al detener, la grabación solo queda asignada a su evento; no se envía nada hasta que elijas «Enviar al archivo».";
 "city.options.save_failed" = "No se pudo guardar este ajuste";
 
-/* City: what has been filed from this Mac. */
-"city.filings.title" = "Enviado al archivo";
-"city.filings.subtitle" = "Todo lo que has enviado desde este Mac. Puedes retirarlo cuando quieras.";
-"city.filings.empty" = "Todavía no has enviado nada.";
-"city.filing.filed" = "Enviado";
-"city.filing.changed_format" = "Has cambiado %lld frases; el archivo aún tiene las anteriores";
-"city.filing.queued" = "En espera de envío";
-"city.filing.queued_offline" = "En espera: se enviará solo al volver la conexión";
-"city.filing.failed_format" = "No enviado: %@";
-"city.filing.bound" = "Asignado al evento, aún sin enviar";
-"city.filing.withdrawn" = "Retirado";
+/* City: the list in Settings of every recording assigned to an event from this Mac. */
+"city.filings.title" = "Grabaciones para el archivo";
+"city.filings.subtitle" = "Todas las grabaciones que has asignado a un evento desde este Mac: enviadas, en espera o sin enviar. Cada una se gestiona desde aquí.";
+"city.filings.empty" = "Todavía no has asignado ninguna grabación a un evento.";
+"city.filings.more_format" = "Más acciones para «%@»";
 
 /* City: actions shared by several surfaces. */
 "city.action.open" = "Abrir";
@@ -1522,9 +1516,38 @@
 "city.action.not_filing" = "No enviar esta";
 "city.action.pick_from_calendar" = "Elegir en el calendario…";
 "city.action.change_event" = "Cambiar de evento…";
+"city.action.drop" = "Ya no enviar";
+"city.action.show_recording" = "Mostrar la grabación";
 "city.withdraw.confirm_title" = "¿Retirar esta transcripción del archivo?";
 "city.withdraw.confirm_message" = "Desaparece de las páginas del archivo. Aun así, los registros de transcripción ya enviados siguen en el registro de la ciudad y hoy no se pueden borrar de allí.";
 "city.withdraw.button" = "Retirar";
+
+/* City: where one recording’s filing stands. One vocabulary, used by the recording’s page, the lists of recordings, the Share panel, Settings and the sidebar. */
+"city.status.not_filed" = "Sin enviar";
+"city.status.chosen" = "Evento elegido, aún sin enviar";
+"city.status.sending" = "Enviando…";
+"city.status.waiting" = "En espera: se reintentará automáticamente";
+"city.status.waiting_offline" = "En espera: se enviará solo cuando este Mac tenga conexión";
+"city.status.filed" = "Enviado al archivo";
+"city.status.changed_format" = "Enviado · %lld frases cambiadas";
+"city.status.event_gone" = "Evento eliminado en la ciudad";
+"city.status.event_gone_detail" = "Este evento se eliminó o canceló en la ciudad, así que el archivo no muestra esta transcripción. Al cambiar de evento, primero se retira del anterior y luego se asigna al nuevo; después tendrás que enviarla otra vez.";
+"city.status.failed" = "No se pudo enviar";
+"city.status.withdrawn" = "Retirado";
+"city.status.last_problem_format" = "El último intento no salió bien: %@";
+"city.status.for_event_format" = "Archivo: %1$@ · %2$@";
+"city.status.open_share_hint" = "Abre el panel Compartir; en la sección Archivo puedes gestionarlo";
+"city.tally.filed_format" = "%lld enviadas";
+"city.tally.sending_format" = "%lld enviándose";
+"city.tally.waiting_format" = "%lld en espera";
+"city.tally.failed_format" = "%lld sin poder enviarse";
+"city.tally.event_gone_format" = "%lld con el evento eliminado";
+"city.tally.chosen_format" = "%lld aún sin enviar";
+"city.sidebar.waiting_format" = "Archivo: %lld en espera";
+"city.sidebar.failed_format" = "Archivo: %lld sin poder enviarse";
+"city.sidebar.sending_format" = "Archivo: enviando %lld…";
+"city.sidebar.event_gone_format" = "Archivo: %lld con el evento eliminado";
+"city.sidebar.hint" = "Revísalo en Configuración › Ciudad";
 
 /* City: a topic’s channel. */
 "city.topic.title" = "Archivo";
@@ -1583,7 +1606,7 @@
 "city.picker.tag_filed" = "Enviado";
 "city.picker.empty_day" = "No hay eventos ese día.";
 "city.picker.empty_mine" = "Ese día no organizas nada.";
-"city.picker.empty_never" = "La lista de eventos aún no se ha cargado. Conéctate a internet y pulsa Actualizar.";
+"city.picker.empty_never" = "La lista de eventos aún no se ha cargado. Pulsa Actualizar para volver a intentarlo.";
 "city.picker.refresh" = "Actualizar";
 "city.picker.updated_format" = "Lista de eventos actualizada: %@";
 "city.picker.never_updated" = "Lista de eventos aún sin cargar";
@@ -1601,7 +1624,6 @@
 
 /* City: the archive section of a recording’s Share panel. */
 "city.share.title" = "Archivo";
-"city.share.filed" = "Enviado al archivo";
 "city.share.filed_format" = "Enviado al archivo · %@";
 "city.share.fact.event" = "Evento";
 "city.share.fact.channel" = "Canal";
@@ -1615,8 +1637,8 @@
 "city.share.open" = "Abrir en el navegador";
 "city.share.withdraw" = "Retirar del archivo…";
 "city.share.public_note" = "Lo que está en el archivo es público y permanece allí, a diferencia del enlace de abajo, que caduca a las 24 horas.";
-"city.share.queued" = "En espera de envío al archivo…";
-"city.share.queued_offline" = "Sin red. Se enviará al archivo automáticamente cuando vuelva la conexión.";
+"city.share.queued" = "En espera: no se pudo contactar con el servidor de la ciudad. Se reintentará automáticamente; también puedes reintentar ahora.";
+"city.share.queued_offline" = "Este Mac no tiene conexión ahora mismo. Se enviará al archivo automáticamente en cuanto la tenga.";
 "city.share.retry_now" = "Reintentar ahora";
 "city.share.failed_format" = "No enviado: %@";
 "city.share.failed_safe" = "La transcripción sigue entera en este Mac: no se ha perdido nada.";
@@ -1630,14 +1652,17 @@
 "city.notice.ask_format" = "Grabación asignada a «%@»; aún sin enviar.";
 "city.toast.failed" = "No se pudo enviar al archivo";
 "city.toast.failed_format" = "No se pudo enviar al archivo · %@";
-"city.toast.queued" = "En cola: se enviará al archivo en breve.";
-"city.toast.queued_offline" = "Sin red. La transcripción se enviará al archivo automáticamente cuando vuelva la conexión.";
+"city.toast.queued" = "Ahora mismo no se pudo contactar con el servidor de la ciudad. Queda en cola y se reintentará automáticamente.";
+"city.toast.queued_offline" = "Este Mac no tiene conexión. Queda en cola y se enviará al archivo automáticamente en cuanto la tenga.";
 "city.toast.withdrawn" = "Retirado del archivo";
+"city.toast.update_failed" = "No se pudo actualizar el archivo";
+"city.toast.withdraw_failed" = "No se pudo retirar del archivo";
+"city.toast.move_failed" = "No se cambió el evento: no se pudo retirar el envío anterior";
 "city.bind.failed" = "No se pudo asignar el evento";
 
 /* City: errors. The keys are the stable codes the core reports; each says what to do next. */
-"city.error.offline" = "Este Mac no está conectado a internet. Conéctalo e inténtalo de nuevo.";
-"city.error.server" = "Ahora mismo no se puede contactar con el servidor de la ciudad. Inténtalo dentro de un rato.";
+"city.error.offline" = "No se pudo contactar con el servidor de la ciudad. Inténtalo de nuevo en un momento; si sigue fallando, revisa tu red.";
+"city.error.server" = "El servidor de la ciudad respondió con un error. Inténtalo dentro de un rato.";
 "city.error.bad_address" = "Eso no parece la dirección de una ciudad. Escríbela tal como te la dio la ciudad: solo el dominio.";
 "city.error.no_city" = "No se encontró ninguna ciudad en esa dirección. Revisa que no haya erratas.";
 "city.error.bad_key" = "Esa clave de recuperación no es correcta. Compárala con la que guardaste y vuelve a escribirla: cuenta cada carácter.";
@@ -1646,6 +1671,7 @@
 "city.error.unbound" = "Esta grabación aún no está asignada a ningún evento. Elige primero un evento y luego envíala.";
 "city.error.not_allowed" = "Este evento solo acepta material de sus organizadores y relatores. Pide a un organizador que te añada en «Relatores» del evento y vuelve a intentarlo.";
 "city.error.not_allowed_named_format" = "Este evento solo acepta material de sus organizadores y relatores. Pide a un organizador que te añada (%@) en «Relatores» del evento y vuelve a intentarlo.";
+"city.error.event_gone" = "Este evento se eliminó o canceló en la ciudad. Elige otro evento y vuelve a enviar.";
 "city.error.no_transcript" = "Esta grabación aún no tiene transcripción. Cuando termine la transcripción, abre «Compartir…» en la grabación y vuelve a intentarlo.";
 "city.error.refused" = "La ciudad no aceptó esta transcripción. Inténtalo una vez más; si la vuelve a rechazar, dile a un coordinador de la ciudad de qué evento se trata.";
 "city.error.busy" = "Esta grabación ya se está enviando. Espera a que termine y vuelve a intentarlo.";

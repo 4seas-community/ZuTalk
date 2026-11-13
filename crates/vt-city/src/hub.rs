@@ -42,6 +42,13 @@ pub const ROLE_INVITER: &str = "inviter";
 /// A relay poll is held open by the server for up to 25 seconds.
 const RELAY_TIMEOUT: Duration = Duration::from_secs(40);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+/// A page of a tag can be large: a busy city's calendar is over a megabyte,
+/// read on whatever network the venue has.
+const TAG_TIMEOUT: Duration = Duration::from_secs(90);
+/// A read that did not get through is tried again once, after this pause:
+/// the route to a city's server is often briefly unreachable while the
+/// machine itself is online.
+const RETRY_PAUSE: Duration = Duration::from_millis(800);
 /// A tag is read in pages; this bounds a server that never says "done".
 const MAX_PAGES: usize = 2_000;
 const MAX_KINDS: usize = 24;
@@ -236,7 +243,7 @@ impl Hub {
             return Err(CityError::malformed("not a relay room"));
         }
         let body = self
-            .get(&format!("/relay/{room}?since={since}"), RELAY_TIMEOUT)
+            .get_once(&format!("/relay/{room}?since={since}"), RELAY_TIMEOUT)
             .await?;
         let page: RoomPage =
             serde_json::from_slice(&body).map_err(|_| CityError::protocol("relay room"))?;
@@ -282,10 +289,7 @@ impl Hub {
         let (mut since, mut restarts) = (0u64, 0u8);
         for _ in 0..MAX_PAGES {
             let body = self
-                .get(
-                    &format!("{path}?since={since}&wait=0{filter}"),
-                    REQUEST_TIMEOUT,
-                )
+                .get(&format!("{path}?since={since}&wait=0{filter}"), TAG_TIMEOUT)
                 .await?;
             let (recs, n, more) = parse_page(&body)?;
             if !more {
@@ -403,7 +407,19 @@ impl Hub {
         Ok(card)
     }
 
+    /// A read. One that did not get through is tried once more: reads change
+    /// nothing, and a single lost connection should not surface as a failure.
     async fn get(&self, path: &str, timeout: Duration) -> Result<Vec<u8>> {
+        match self.get_once(path, timeout).await {
+            Err(CityError::Offline) => {
+                tokio::time::sleep(RETRY_PAUSE).await;
+                self.get_once(path, timeout).await
+            }
+            answer => answer,
+        }
+    }
+
+    async fn get_once(&self, path: &str, timeout: Duration) -> Result<Vec<u8>> {
         let response = self
             .http
             .get(format!("{}{path}", self.base))

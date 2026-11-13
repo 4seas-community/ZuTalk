@@ -1497,21 +1497,15 @@
 "city.when.row" = "什么时候交";
 "city.when.automatic" = "自动交";
 "city.when.ask" = "先问我";
-"city.when.automatic_detail" = "停止录音后在后台交，不用等；断网会等联网再交。";
+"city.when.automatic_detail" = "停止录音后在后台交，不用等；一时交不上会排队，自动再试。";
 "city.when.ask_detail" = "停止录音后只归到活动，不发出去；等你点了「交到档案馆」才交。";
 "city.options.save_failed" = "没能保存这项设置";
 
-/* City: what has been filed from this Mac. */
-"city.filings.title" = "已交到档案馆";
-"city.filings.subtitle" = "你从这台 Mac 交出去的都在这里，可以随时撤下。";
-"city.filings.empty" = "还没有交过。";
-"city.filing.filed" = "已交";
-"city.filing.changed_format" = "你改了 %lld 句，档案馆里还是旧的";
-"city.filing.queued" = "排队中";
-"city.filing.queued_offline" = "排队中，联网后自动交";
-"city.filing.failed_format" = "没交上：%@";
-"city.filing.bound" = "已归到活动，还没交";
-"city.filing.withdrawn" = "已撤下";
+/* City: the list in Settings of every recording assigned to an event from this Mac. */
+"city.filings.title" = "交到档案馆的录音";
+"city.filings.subtitle" = "在这台 Mac 上归过活动的录音都在这里：交了的、排队的、没交上的，每一场都能在这里处理。";
+"city.filings.empty" = "还没有归过活动的录音。";
+"city.filings.more_format" = "「%@」的更多操作";
 
 /* City: actions shared by several surfaces. */
 "city.action.open" = "打开";
@@ -1522,9 +1516,38 @@
 "city.action.not_filing" = "这场不交";
 "city.action.pick_from_calendar" = "从日历里选…";
 "city.action.change_event" = "换一场活动…";
+"city.action.drop" = "不交了";
+"city.action.show_recording" = "打开这场录音";
 "city.withdraw.confirm_title" = "从档案馆撤下这份转录稿？";
 "city.withdraw.confirm_message" = "它会从档案馆的页面上消失。但已经交上去的转录记录仍留在城的日志里，目前删不掉。";
 "city.withdraw.button" = "撤下";
+
+/* City: where one recording’s filing stands. One vocabulary, used by the recording’s page, the lists of recordings, the Share panel, Settings and the sidebar. */
+"city.status.not_filed" = "未交";
+"city.status.chosen" = "已选活动，还没交";
+"city.status.sending" = "正在交…";
+"city.status.waiting" = "排队中，稍后自动再试";
+"city.status.waiting_offline" = "排队中，这台 Mac 联网后自动交";
+"city.status.filed" = "已交到档案馆";
+"city.status.changed_format" = "已交 · 改了 %lld 句";
+"city.status.event_gone" = "活动在城里已删除";
+"city.status.event_gone_detail" = "这场活动在城里已经删除或取消了，所以档案馆里看不到这份转录稿。换一场活动，会先把它从原来那场撤下，再归到新的一场，之后由你再交一次。";
+"city.status.failed" = "没交上";
+"city.status.withdrawn" = "已撤下";
+"city.status.last_problem_format" = "上次没办成：%@";
+"city.status.for_event_format" = "档案馆：%1$@ · %2$@";
+"city.status.open_share_hint" = "打开共享面板，在「档案馆」那一段查看和处理";
+"city.tally.filed_format" = "%lld 场已交";
+"city.tally.sending_format" = "%lld 场正在交";
+"city.tally.waiting_format" = "%lld 场排队";
+"city.tally.failed_format" = "%lld 场没交上";
+"city.tally.event_gone_format" = "%lld 场的活动已删除";
+"city.tally.chosen_format" = "%lld 场还没交";
+"city.sidebar.waiting_format" = "档案馆：%lld 场排队中";
+"city.sidebar.failed_format" = "档案馆：%lld 场没交上";
+"city.sidebar.sending_format" = "档案馆：正在交 %lld 场…";
+"city.sidebar.event_gone_format" = "档案馆：%lld 场的活动已删除";
+"city.sidebar.hint" = "到「设置 › 城」查看和处理";
 
 /* City: a topic’s channel. */
 "city.topic.title" = "档案馆";
@@ -1583,7 +1606,7 @@
 "city.picker.tag_filed" = "已交";
 "city.picker.empty_day" = "这一天没有活动。";
 "city.picker.empty_mine" = "这一天没有你主办的活动。";
-"city.picker.empty_never" = "还没有读到活动列表。联网后点「刷新」。";
+"city.picker.empty_never" = "还没有读到活动列表。点「刷新」再试一次。";
 "city.picker.refresh" = "刷新";
 "city.picker.updated_format" = "活动列表 %@ 更新";
 "city.picker.never_updated" = "活动列表还没读到";
@@ -1601,7 +1624,6 @@
 
 /* City: the archive section of a recording’s Share panel. */
 "city.share.title" = "档案馆";
-"city.share.filed" = "已交到档案馆";
 "city.share.filed_format" = "已交到档案馆 · %@";
 "city.share.fact.event" = "活动";
 "city.share.fact.channel" = "频道";
@@ -1615,8 +1637,8 @@
 "city.share.open" = "在浏览器打开";
 "city.share.withdraw" = "从档案馆撤下…";
 "city.share.public_note" = "档案馆里的内容是公开的，会一直留着，和下面 24 小时失效的链接不一样。";
-"city.share.queued" = "排队中，正在交到档案馆…";
-"city.share.queued_offline" = "没有网络。联网后会自动交到档案馆。";
+"city.share.queued" = "排队中：刚才连不上城的服务器。稍后会自动再试，也可以现在重试。";
+"city.share.queued_offline" = "这台 Mac 现在没有联网。联网后会自动交到档案馆。";
 "city.share.retry_now" = "现在重试";
 "city.share.failed_format" = "没交上：%@";
 "city.share.failed_safe" = "转录稿都在这台 Mac 上，没有丢。";
@@ -1630,14 +1652,17 @@
 "city.notice.ask_format" = "录音已归到「%@」，还没交。";
 "city.toast.failed" = "没交上档案馆";
 "city.toast.failed_format" = "没交上档案馆 · %@";
-"city.toast.queued" = "已排队，稍后交到档案馆。";
-"city.toast.queued_offline" = "没有网络。联网后自动交到档案馆。";
+"city.toast.queued" = "一时连不上城的服务器。已排队，稍后自动再试。";
+"city.toast.queued_offline" = "这台 Mac 没有联网。已排队，联网后自动交到档案馆。";
 "city.toast.withdrawn" = "已从档案馆撤下";
+"city.toast.update_failed" = "没能更新档案馆";
+"city.toast.withdraw_failed" = "没能从档案馆撤下";
+"city.toast.move_failed" = "没能换活动：原来那份没撤下来";
 "city.bind.failed" = "没能归到这场活动";
 
 /* City: errors. The keys are the stable codes the core reports; each says what to do next. */
-"city.error.offline" = "这台 Mac 没有联网。连上网络再试。";
-"city.error.server" = "城的服务器现在连不上。过一会儿再试。";
+"city.error.offline" = "连不上城的服务器。过一会儿再试；一直不行就看看网络。";
+"city.error.server" = "城的服务器出了错，没有办成。过一会儿再试。";
 "city.error.bad_address" = "这不像是一座城的网址。照城给你的地址填，只要域名。";
 "city.error.no_city" = "这个网址上没有找到城。检查一下有没有打错。";
 "city.error.bad_key" = "这把恢复密钥不对。对照你保存的那一份再填一遍，一个字都不能差。";
@@ -1646,6 +1671,7 @@
 "city.error.unbound" = "这场录音还没有归到活动。先选一场活动，再交。";
 "city.error.not_allowed" = "这场活动只收主办和记录员交的素材。请主办在活动的「记录员」里加上你，再重试。";
 "city.error.not_allowed_named_format" = "这场活动只收主办和记录员交的素材。请主办在活动的「记录员」里加上你（%@），再重试。";
+"city.error.event_gone" = "这场活动在城里已经删除或取消了。换一场活动，再交一次。";
 "city.error.no_transcript" = "这场录音还没有转录稿。等转写完成后，在这场录音的「共享…」里点重试。";
 "city.error.refused" = "城没有收下这份转录稿。重试一次；还是不行的话，把活动名告诉城的协调者。";
 "city.error.busy" = "这场录音正在交。等它交完再试。";

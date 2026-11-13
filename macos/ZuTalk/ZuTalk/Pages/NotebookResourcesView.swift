@@ -1513,6 +1513,14 @@ private struct NotebookResourceBlock: View {
 
                 Spacer()
 
+                // Whether this recording reached the city's archive. Nothing,
+                // and no space, for a recording that was never given an event.
+                CityFilingMark(
+                    sessionId: item.id,
+                    title: item.title.isEmpty ? item.preview : item.title,
+                    isRecording: item.isRecording
+                )
+
                 Menu {
                     Button {
                         isRenaming = true

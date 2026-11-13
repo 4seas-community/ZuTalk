@@ -11,6 +11,8 @@ name = "vt_city"
 
 [dependencies]
 reqwest = { workspace = true }
+# Only for the pause before a read is tried again.
+tokio = { workspace = true }
 serde.workspace = true
 # `float_roundtrip`: a record's name is a hash over its numbers as JavaScript
 # prints them, so a float parsed one unit off is a record that cannot be verified.

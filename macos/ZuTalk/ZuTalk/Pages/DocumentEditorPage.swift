@@ -1069,6 +1069,13 @@ private struct DocumentTabBar: View {
                     )
                     .padding(.trailing, Spacing.sm)
                 }
+                // Whether this recording reached the city's archive, beside
+                // the menu that holds Share…; it opens that same panel. Not
+                // for the recording in progress (no `onShare`): where that
+                // one will go is in the recording bar.
+                if let sessionId, let onShare {
+                    CityFilingChip(sessionId: sessionId, onOpen: onShare)
+                }
                 recordingMenu
             }
         }

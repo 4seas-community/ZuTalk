@@ -65,6 +65,7 @@ mod code {
     pub const SIGNED_OUT: &str = "city.error.signed_out";
     pub const UNBOUND: &str = "city.error.unbound";
     pub const NOT_ALLOWED: &str = "city.error.not_allowed";
+    pub const EVENT_GONE: &str = "city.error.event_gone";
     pub const NO_TRANSCRIPT: &str = "city.error.no_transcript";
     pub const REFUSED: &str = "city.error.refused";
     pub const BUSY: &str = "city.error.busy";
@@ -245,6 +246,9 @@ struct StoredEvent {
     /// 从别处的日历收进来的:城里能审的人都算它的主办。
     #[serde(default)]
     imported: bool,
+    /// 取消了的活动不拿出来给人选,可它在城里还在:交过的素材照样看得到。
+    #[serde(default)]
+    cancelled: bool,
 }
 
 impl StoredEvent {
@@ -259,6 +263,7 @@ impl StoredEvent {
             hosts: event.hosts.clone(),
             crew: event.crew.clone(),
             imported: event.imported,
+            cancelled: event.cancelled,
         }
     }
 
@@ -636,7 +641,10 @@ impl ZuTalkCore {
     }
 
     fn city_hub(&self, server: &str, timeout: Duration) -> Result<Hub, CoreError> {
-        let builder = reqwest::Client::builder().timeout(timeout);
+        // 连不上就早点知道,好再试一次:城的服务器常有一阵连不上,机器本身在线。
+        let builder = reqwest::Client::builder()
+            .timeout(timeout)
+            .connect_timeout(Duration::from_secs(10));
         // 调试构建认 `ZUTALK_CITY_RESOLVE=<主机名>=<地址:端口>`:城的服务器不肯
         // 把自己开在裸 IP 上,对着本机起的那一台联调时要替它解析名字。发布构建
         // 不认。
@@ -864,11 +872,42 @@ impl ZuTalkCore {
         } else {
             0
         };
-        Some(filing.snapshot(
+        let mut snapshot = filing.snapshot(
             session_id,
             account.as_ref().map(|a| a.server.as_str()),
             changed,
-        ))
+        );
+        self.city_note_gone(&self.city_calendar_copy(), &filing, &mut snapshot);
+        Some(snapshot)
+    }
+
+    fn city_calendar_copy(&self) -> StoredCalendar {
+        read_json(&self.city_path(CALENDAR_FILE)).unwrap_or_default()
+    }
+
+    /// 交上去以后,活动在城里被删了、取消了:素材在城里就看不到了。本机说
+    /// 「已交」而城里没有,人会以为没同步 —— 照实标出来。只在活动列表是交了
+    /// 以后才读的那一份时才下这个结论。
+    fn city_note_gone(
+        &self,
+        calendar: &StoredCalendar,
+        filing: &StoredFiling,
+        snapshot: &mut FfiCityFiling,
+    ) {
+        let read_since = filing
+            .filed_at
+            .is_some_and(|filed_at| calendar.fetched_at > filed_at);
+        // 比「上次没更新成」「上次没撤下来」要紧:素材在城里已经看不到了,
+        // 该做的是换一场活动,不是再试一次。
+        if filing.state == FilingState::Filed
+            && read_since
+            && !calendar
+                .events
+                .iter()
+                .any(|event| event.id == filing.event_id)
+        {
+            snapshot.error_code = Some(code::EVENT_GONE.to_string());
+        }
     }
 
     fn city_set_state(
@@ -953,7 +992,6 @@ impl ZuTalkCore {
         let mut events: Vec<StoredEvent> =
             vt_city::calendar::reduce_events_curated(&records, &curators)
                 .iter()
-                .filter(|event| !event.cancelled)
                 .map(StoredEvent::of)
                 .collect();
         events.sort_by(|a, b| (a.start_ms, &a.id).cmp(&(b.start_ms, &b.id)));
@@ -1125,8 +1163,9 @@ impl ZuTalkCore {
             .map_err(|error| failure_code(&error))?
             .events
             .into_iter()
-            .find(|event| event.id == filing.event_id)
-            .ok_or(code::NOT_ALLOWED)?;
+            .find(|event| event.id == filing.event_id && !event.cancelled)
+            // 活动在城里被删了、取消了:不往一场没办的活动里交。
+            .ok_or(code::EVENT_GONE)?;
         if !may_file(&event, account) {
             return Err(code::NOT_ALLOWED);
         }
@@ -1654,6 +1693,7 @@ impl ZuTalkCore {
             events: stored
                 .events
                 .iter()
+                .filter(|event| !event.cancelled)
                 .map(|event| event.snapshot(&account.person_id))
                 .collect(),
             fetched_at_epoch: stored.fetched_at,
@@ -1764,9 +1804,14 @@ impl ZuTalkCore {
         let ledger = self.city_ledger();
         let mut filings: Vec<(&String, &StoredFiling)> = ledger.filings.iter().collect();
         filings.sort_by(|a, b| b.1.updated_at.cmp(&a.1.updated_at));
+        let calendar = self.city_calendar_copy();
         filings
             .into_iter()
-            .map(|(session_id, filing)| filing.snapshot(session_id, server, 0))
+            .map(|(session_id, filing)| {
+                let mut snapshot = filing.snapshot(session_id, server, 0);
+                self.city_note_gone(&calendar, filing, &mut snapshot);
+                snapshot
+            })
             .collect()
     }
 
@@ -2199,6 +2244,93 @@ mod tests {
         assert!(core.city_account().is_none());
         assert!(!core.key_store.key_exists(CITY_IDENTITY_KEY_REF));
         step("signed-out", json!(true));
+    }
+
+    #[test]
+    fn a_filed_recording_whose_event_the_city_deleted_says_so() {
+        let temp = tempfile::tempdir().unwrap();
+        let core = ZuTalkCore::new_for_test(temp.path().to_string_lossy().to_string()).unwrap();
+        let event = FfiCityEvent {
+            id: "kept".into(),
+            title: "Kept".into(),
+            place: String::new(),
+            start_ms: 1,
+            end_ms: 2,
+            residents_only: false,
+            mine: true,
+        };
+        for (session, id) in [("session-kept", "kept"), ("session-gone", "gone")] {
+            core.city_bind_session(
+                session.into(),
+                Some(FfiCityEvent {
+                    id: id.into(),
+                    ..event.clone()
+                }),
+            )
+            .unwrap();
+        }
+        core.with_city_ledger(|ledger| {
+            for filing in ledger.filings.values_mut() {
+                filing.state = FilingState::Filed;
+                filing.filed_at = Some(1_000);
+            }
+        })
+        .unwrap();
+        let calendar = |fetched_at| StoredCalendar {
+            fetched_at,
+            events: vec![StoredEvent {
+                id: "kept".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        // 活动列表是交之前读的:说明不了什么。
+        write_private_json(&core.city_path(CALENDAR_FILE), &calendar(900)).unwrap();
+        assert_eq!(
+            core.city_filing("session-gone".into()).unwrap().error_code,
+            None
+        );
+
+        // 交了以后又读过,那一场不在了。
+        write_private_json(&core.city_path(CALENDAR_FILE), &calendar(2_000)).unwrap();
+        let gone = core.city_filing("session-gone".into()).unwrap();
+        assert_eq!(gone.state, FfiCityFilingState::Filed);
+        assert_eq!(gone.error_code.as_deref(), Some(code::EVENT_GONE));
+        assert_eq!(
+            core.city_filing("session-kept".into()).unwrap().error_code,
+            None
+        );
+        let listed: Vec<_> = core
+            .city_filings()
+            .into_iter()
+            .map(|filing| (filing.session_id, filing.error_code))
+            .collect();
+        assert!(listed.contains(&("session-gone".into(), Some(code::EVENT_GONE.to_string()))));
+        assert!(listed.contains(&("session-kept".into(), None)));
+
+        // 上次更新没成,不该把「活动没了」盖住。
+        core.with_city_ledger(|ledger| {
+            ledger.filings.get_mut("session-gone").unwrap().error_code =
+                Some(code::OFFLINE.to_string());
+        })
+        .unwrap();
+        assert_eq!(
+            core.city_filing("session-gone".into())
+                .unwrap()
+                .error_code
+                .as_deref(),
+            Some(code::EVENT_GONE)
+        );
+
+        // 取消了的活动在城里还在:交过的不算没了,只是不再拿出来给人选。
+        let mut cancelled = calendar(3_000);
+        cancelled.events[0].cancelled = true;
+        write_private_json(&core.city_path(CALENDAR_FILE), &cancelled).unwrap();
+        assert_eq!(
+            core.city_filing("session-kept".into()).unwrap().error_code,
+            None
+        );
     }
 
     #[test]

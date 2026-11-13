@@ -251,6 +251,13 @@ struct MainShellView: View {
 
             softwareUpdateRow
 
+            // Transcripts still waiting to reach the city's archive, or that
+            // could not be filed. Absent when signed out or all is well; its
+            // own view, so the window does not follow `CityStore`.
+            CitySidebarLine {
+                store.openSettings(section: .city)
+            }
+
             if communityInvite.isEnabled, communityInvite.isActive {
                 Label(
                     communityTimeLabel,

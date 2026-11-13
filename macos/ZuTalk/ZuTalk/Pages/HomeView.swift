@@ -1029,6 +1029,14 @@ private struct HomeSessionRow: View {
                 .accessibilityLabel(String(localized: "home.row.assign_to_topic"))
             }
 
+            // Whether this recording reached the city's archive. Nothing, and
+            // no space, for a recording that was never given an event.
+            CityFilingMark(
+                sessionId: session.id,
+                title: titleForDisplay,
+                isRecording: session.isRecording
+            )
+
             Menu {
                 // 正在录的删不了(Core 软删与彻底删除都拒绝)。禁用而不是
                 // 藏起来 —— 按钮消失了用户会以为是别的毛病,禁用配一句

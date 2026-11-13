@@ -21,10 +21,16 @@ enum CityText {
         "city.error.signed_out",
         "city.error.unbound",
         "city.error.not_allowed",
+        "city.error.event_gone",
         "city.error.no_transcript",
         "city.error.refused",
         "city.error.busy",
     ]
+
+    /// 活动在城里被删掉或取消了。交的时候发现,是「没交上」的原因;交上去
+    /// 以后才发现,核心把它写在一份「已交」的记录上 —— 两处都要认它,所以
+    /// 起个名字。
+    static let eventGoneCode = "city.error.event_gone"
 
     /// 从核心抛出的错误里取出稳定代码;不是城的错误就没有。
     static func errorCode(_ error: Error) -> String? {
@@ -58,6 +64,7 @@ enum CityText {
                 return String(format: String(localized: "city.error.not_allowed_named_format"), signer)
             }
             return String(localized: "city.error.not_allowed")
+        case "city.error.event_gone": return String(localized: "city.error.event_gone")
         case "city.error.no_transcript": return String(localized: "city.error.no_transcript")
         case "city.error.refused": return String(localized: "city.error.refused")
         case "city.error.busy": return String(localized: "city.error.busy")

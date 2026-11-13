@@ -175,3 +175,95 @@ fn the_city_is_asked_about_importers_and_those_who_changed_an_import() {
     assert_eq!(curator_candidates(&records), expected);
     assert_eq!(importers(&records), vec![importer.id().to_string()]);
 }
+
+/// A city with one event of its own, and the records that tie people to keys.
+fn city_event(host: &Identity, city: &str) -> record::Signed {
+    sign(
+        host,
+        "ev/event",
+        json!({ "title": "Created by mistake", "start": NOW, "scope": "public", "polis": city }),
+        &[],
+        NOW - 86_400_000,
+    )
+}
+
+#[test]
+fn an_event_a_reviewer_deleted_is_not_offered() {
+    let (host, reviewer) = (person(0), person(1));
+    let city = "c".repeat(64);
+    let event = city_event(&host, &city);
+    let deleted = sign(
+        &reviewer,
+        "polis/trash",
+        json!({ "on": true }),
+        &[city.clone(), event.id.clone()],
+        NOW - 3_600_000,
+    );
+    let records = vec![
+        host.inception().clone(),
+        reviewer.inception().clone(),
+        event.rec,
+        deleted.rec,
+    ];
+    let curators = vec![reviewer.id().to_string()];
+    assert!(reduce_events_curated(&records, &curators).is_empty());
+    assert_eq!(
+        reduce_events(&records).len(),
+        1,
+        "without knowing who reviews, a deletion cannot be believed"
+    );
+    assert_eq!(curator_candidates(&records), curators);
+}
+
+#[test]
+fn a_restored_event_is_offered_again_and_a_strangers_deletion_is_ignored() {
+    let (host, reviewer, stranger) = (person(0), person(1), person(2));
+    let city = "c".repeat(64);
+    let event = city_event(&host, &city);
+    let links = [city.clone(), event.id.clone()];
+    let deleted = sign(
+        &reviewer,
+        "polis/trash",
+        json!({ "on": true }),
+        &links,
+        NOW - 3_000,
+    );
+    let restored = sign(
+        &reviewer,
+        "polis/trash",
+        json!({ "on": false }),
+        &links,
+        NOW - 2_000,
+    );
+    let meddling = sign(
+        &stranger,
+        "polis/trash",
+        json!({ "on": true }),
+        &links,
+        NOW - 1_000,
+    );
+    let elsewhere = sign(
+        &reviewer,
+        "polis/trash",
+        json!({ "on": true }),
+        &["d".repeat(64), event.id.clone()],
+        NOW - 500,
+    );
+    let records = vec![
+        host.inception().clone(),
+        reviewer.inception().clone(),
+        stranger.inception().clone(),
+        event.rec,
+        deleted.rec,
+        restored.rec,
+        meddling.rec,
+        elsewhere.rec,
+    ];
+    let curators = vec![reviewer.id().to_string()];
+    let events = reduce_events_curated(&records, &curators);
+    assert_eq!(
+        events.len(),
+        1,
+        "the reviewer's latest word is that it stays"
+    );
+}

@@ -25,8 +25,11 @@ pub enum CityError {
     #[error("the city answered HTTP {status}")]
     Http { status: u16 },
 
-    /// The city could not be reached at all: no route, no name, no TLS, or no
-    /// answer in time. Retrying later is the only remedy.
+    /// The city's server could not be reached, or did not answer in time: no
+    /// route, no name, no TLS, a connection that stalled. It says nothing
+    /// about whether this machine is online — the path to one server fails
+    /// often enough on its own — so callers must not word it that way.
+    /// Retrying later is the only remedy.
     #[error("the city could not be reached")]
     Offline,
 

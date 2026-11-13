@@ -9,7 +9,11 @@
 //     或者自己从日历里挑了一场。替人选好的那一场,快捷键、菜单栏开的录音
 //     不会用上 —— 没人看着它按下开始;
 //   - 停止录音不等上传:录音先存好,交档案馆在后台,交完出一条提示;
-//   - 断网的留在「排队」,联网后、下次启动时接着交;
+//   - 没连上的留在「排队」,自己接着试:启动时、网络回来时、切回 App 时,
+//     还有排着队的期间每两分钟一次。去城的那条路常有一阵连不上,机器本身
+//     在线,所以不能只等「网络回来」那一下;
+//   - 各场录音交到哪一步了,这里存一份、按录音查得到:录音页、列表、共享
+//     面板、设置、侧栏都读这一份,不各自去问核心;
 //   - 走网络的调用(出码、等确认、读活动列表、交、更新、撤下)一律不在
 //     主线程上等。
 // 这条路只碰文字,音频从不经过这里。
@@ -92,12 +96,16 @@ final class CityStore: ObservableObject {
     /// 这一场本来归了活动,录到一半改成了不交。录音条上的去向留着,好让人
     /// 再改回来。
     @Published private(set) var activeDestinationCleared = false
-    /// 看过的录音各自交得怎么样,按需读。
+    /// 归过活动的每一场录音交到哪一步了,按录音查。录音页顶栏、列表里的
+    /// 记号、共享面板各取各的那一场;列表里几百行,不能一行问一次核心。
     @Published private(set) var filings: [String: FfiCityFiling] = [:]
-    /// 设置里「已交到档案馆」那张表,新的在前。
-    @Published private(set) var filedList: [FfiCityFiling] = []
+    /// 同一批,最近动过的在前:设置里那张表、侧栏底部那一行据此列。
+    @Published private(set) var filingList: [FfiCityFiling] = []
     /// 正在交、更新或撤下的录音。
     @Published private(set) var busySessions: Set<String> = []
+    /// 系统确认这台 Mac 没有网络。只有这时才说「没有联网」;核心报的
+    /// 「没连上城的服务器」说明不了这一点。
+    @Published private(set) var offline = false
     @Published private(set) var notice: CityNotice?
 
     private var core: (any ZuTalkCoreProtocol)? { CoreClient.shared.core }
@@ -110,28 +118,50 @@ final class CityStore: ObservableObject {
     /// 确认只管紧接着的那一次开始。开始流程最多几秒到十几秒;过了这么久还
     /// 没等到会话号,这次确认就不再算数。
     private static let confirmationLifetime: TimeInterval = 120
+    /// 还有排着队的期间,隔这么久自己再试一次。
+    static let retryInterval: TimeInterval = 120
+    /// 切回 App 时顺手再试,但离上一次不到这么久就不试:来回切窗口不该
+    /// 变成对着城的服务器连环敲门。
+    static let activationRetryGap: TimeInterval = 30
     private var retryingPending = false
+    private var lastRetryAt: Date?
+    private var retryTimer: Timer?
+    private var reloadingFilings = false
+    private var countingChanges = false
+    private var reloadFilingsAgain = false
+    /// 每记下一场的新结果就加一:整张单子读回来时对一下,读的途中有新结果
+    /// 进来过,那一份就可能已经旧了。
+    private var filingsRevision = 0
     private var started = false
     private var observers: Set<AnyCancellable> = []
     private var noticeTimer: Timer?
 
     private init() {
         account = core?.cityAccount()
-        if account != nil { loadLocalState() }
+        if account != nil {
+            loadLocalState()
+            reloadFilings()
+        }
     }
 
-    /// 启动时调用:把上次没交完的接着交,并在网络回来时再试。
+    /// 启动时调用:把上次没交完的接着交,并在网络回来时、切回 App 时再试。
     func start() {
         guard started == false else { return }
         started = true
+        offline = NetworkReachability.shared.isOffline
         NetworkReachability.shared.$isOffline
             .removeDuplicates()
             .dropFirst()
             .sink { [weak self] offline in
+                self?.offline = offline
                 if offline == false { self?.retryPending() }
             }
             .store(in: &observers)
+        NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
+            .sink { [weak self] _ in self?.appBecameActive() }
+            .store(in: &observers)
         retryPending()
+        scheduleRetries()
     }
 
     /// 只读本机:选项、存着的活动列表、频道。都是即时的。
@@ -284,7 +314,7 @@ final class CityStore: ObservableObject {
         self.account = account
         loadLocalState()
         refreshCalendar()
-        reloadFiledList()
+        reloadFilings()
         retryPending()
     }
 
@@ -314,7 +344,9 @@ final class CityStore: ObservableObject {
         activeFiling = nil
         activeDestinationCleared = false
         filings = [:]
-        filedList = []
+        filingList = []
+        filingsRevision += 1
+        scheduleRetries()
         dismissNotice()
     }
 
@@ -367,6 +399,8 @@ final class CityStore: ObservableObject {
                 calendarProblem = nil
                 // 频道跟着活动列表一起读回来。
                 channels = core.cityChannels()
+                // 交上去的那几场,活动还在不在,核心照这份新列表重新对。
+                reloadFilings()
             case .failure(let error):
                 calendarProblem = CityText.describe(error)
                 noteFailure(error)
@@ -489,7 +523,7 @@ final class CityStore: ObservableObject {
         // 以核心里记的为准:录到一半可能改过去向。
         let filing = await Task.detached { core.cityFiling(sessionId: sessionId) }.value
         guard account != nil, let filing, filing.state == .bound else { return }
-        filings[sessionId] = filing
+        remember(filing, sessionId: sessionId)
         guard options.automatic else {
             post(
                 CityNotice(
@@ -505,6 +539,16 @@ final class CityStore: ObservableObject {
 
     // MARK: - 各场录音
 
+    /// 一场录音此刻交到哪一步了,全 App 同一套说法(`CityFilingStatus`)。
+    func status(sessionId: String) -> CityFilingStatus {
+        CityFilingStatus.resolve(
+            filings[sessionId],
+            busy: busySessions.contains(sessionId),
+            offline: offline,
+            signer: account?.personName
+        )
+    }
+
     /// 读一场录音交得怎么样。核心顺带重算改了几句,长录音要一会儿,所以在
     /// 后台读。
     @discardableResult
@@ -512,15 +556,33 @@ final class CityStore: ObservableObject {
         guard account != nil, let core else { return nil }
         let filing = await Task.detached { core.cityFiling(sessionId: sessionId) }.value
         guard account != nil else { return nil }
+        // 交、更新、撤下正在路上:它回来时带的才是准的,这一份读在它之前。
+        guard busySessions.contains(sessionId) == false else { return filings[sessionId] }
         remember(filing, sessionId: sessionId)
         return filing
     }
 
+    /// 这场录音的起止。补归、换活动时,时间重合的活动排最前。
+    func recordingSpan(sessionId: String) async -> CityRecordingSpan? {
+        guard let core else { return nil }
+        return await Task.detached { () -> CityRecordingSpan? in
+            guard let info = try? core.getSession(id: sessionId) else { return nil }
+            return CityRecordingSpan(
+                start: Date(timeIntervalSince1970: TimeInterval(info.createdAtUnixMs) / 1_000),
+                duration: TimeInterval(info.durationMs) / 1_000
+            )
+        }.value
+    }
+
     /// 选(或用 nil 清掉)一场录音归到的活动。录音前、录音中、录完以后都能改;
-    /// 已经交上去的要先撤下才能换。
+    /// 已经交上去的要先撤下才能换(见 `move`)。
     @discardableResult
     func bind(sessionId: String, event: FfiCityEvent?) async -> FfiCityFiling? {
         guard account != nil, let core else { return nil }
+        // 这一场正有东西在路上(自动重试可能就在人按下的前一刻开始):等它回来
+        // 再改。中途把去向清掉或换掉,发出去的那一份和本机的账就对不上了。
+        // 界面上这时本来就不给按,这里是防那一刻的先后。
+        guard busySessions.contains(sessionId) == false else { return filings[sessionId] }
         let result = await Task.detached {
             Result { try core.cityBindSession(sessionId: sessionId, event: event) }
         }.value
@@ -541,6 +603,30 @@ final class CityStore: ObservableObject {
         }
     }
 
+    /// 换一场活动。还没交上去的直接换。已经交上去的,核心不让直接换 ——
+    /// 换了,档案馆里那一件还挂在原来那场下面 —— 所以先撤下,撤成了再归到
+    /// 新的一场:人按的是一下,这里按顺序做两步。撤不下来就停在原处,照实说。
+    /// 归好以后还没交:再往外发一次,要人自己按「交到档案馆」。
+    @discardableResult
+    func move(sessionId: String, to event: FfiCityEvent) async -> FfiCityFiling? {
+        guard filings[sessionId]?.state == .filed else {
+            return await bind(sessionId: sessionId, event: event)
+        }
+        let withdrawn = await send(sessionId: sessionId, announce: false) { core in
+            try core.cityWithdrawFiling(sessionId: sessionId)
+        }
+        // 抛错的那几种 `send` 已经说过了。
+        guard let withdrawn else { return nil }
+        guard withdrawn.state == .withdrawn else {
+            ToastCenter.shared.error(
+                String(localized: "city.toast.move_failed"),
+                detail: CityText.message(forCode: withdrawn.errorCode, signer: account?.personName)
+            )
+            return withdrawn
+        }
+        return await bind(sessionId: sessionId, event: event)
+    }
+
     /// 交到档案馆。`announce` 给后台交的用:界面上没有别的地方会说结果。
     @discardableResult
     func file(sessionId: String, announce: Bool = false) async -> FfiCityFiling? {
@@ -553,9 +639,18 @@ final class CityStore: ObservableObject {
     /// 所以只在人按下时调用。
     @discardableResult
     func update(sessionId: String) async -> FfiCityFiling? {
-        await send(sessionId: sessionId, announce: false) { core in
+        let filing = await send(sessionId: sessionId, announce: false) { core in
             try core.cityUpdateFiling(sessionId: sessionId)
         }
+        // 没更新成时核心不抛错:状态留在「已交」,原因写在 errorCode 里。不说
+        // 的话,人按了「更新」却什么都没发生。
+        if let filing, let code = filing.errorCode, code != CityText.eventGoneCode {
+            ToastCenter.shared.error(
+                String(localized: "city.toast.update_failed"),
+                detail: CityText.message(forCode: code, signer: account?.personName)
+            )
+        }
+        return filing
     }
 
     /// 从档案馆撤下。
@@ -564,14 +659,21 @@ final class CityStore: ObservableObject {
         let filing = await send(sessionId: sessionId, announce: false) { core in
             try core.cityWithdrawFiling(sessionId: sessionId)
         }
-        if filing?.state == .withdrawn {
+        guard let filing else { return nil }
+        if filing.state == .withdrawn {
             ToastCenter.shared.success(String(localized: "city.toast.withdrawn"))
+        } else {
+            // 没撤下来:东西还在档案馆。和更新一样,核心只把原因写在记录上。
+            ToastCenter.shared.error(
+                String(localized: "city.toast.withdraw_failed"),
+                detail: CityText.message(forCode: filing.errorCode, signer: account?.personName)
+            )
         }
         return filing
     }
 
-    /// 交、更新、撤下共用的一段。这三个调用没交成也把那一份记录还回来:断网
-    /// 是「排队」,被拒是「没交上」,都写在 `state` 和 `errorCode` 里;只有
+    /// 交、更新、撤下共用的一段。这三个调用没交成也把那一份记录还回来:没连
+    /// 上是「排队」,被拒是「没交上」,都写在 `state` 和 `errorCode` 里;只有
     /// 没登录、没归活动、同一场正在交才抛错。
     private func send(
         sessionId: String,
@@ -586,7 +688,7 @@ final class CityStore: ObservableObject {
         switch result {
         case .success(let filing):
             remember(filing, sessionId: sessionId)
-            reloadFiledList()
+            reloadFilings()
             if announce { self.announce(filing) }
             return filing
         case .failure(let error):
@@ -614,8 +716,9 @@ final class CityStore: ObservableObject {
                 lasting: 10
             )
         case .queued:
-            // 会自己再试,所以是一句交代,不是报错。
-            ToastCenter.shared.info(String(localized: filing.errorCode == "city.error.offline"
+            // 会自己再试,所以是一句交代,不是报错。「没有联网」只在系统确认
+            // 没有网络时才说;否则只是去城的那条路一时不通。
+            ToastCenter.shared.info(String(localized: offline
                 ? "city.toast.queued_offline"
                 : "city.toast.queued"))
         case .failed:
@@ -628,46 +731,151 @@ final class CityStore: ObservableObject {
         }
     }
 
+    /// 记下一场的新结果(nil 是这一场不再归任何活动)。按录音查的那一份和
+    /// 排好序的那一份一起改,免得两处对不上。
     private func remember(_ filing: FfiCityFiling?, sessionId: String) {
+        filingsRevision += 1
         if filings[sessionId] != filing {
             filings[sessionId] = filing
+        }
+        if let filing {
+            if let at = filingList.firstIndex(where: { $0.sessionId == sessionId }) {
+                if filingList[at] != filing { filingList[at] = filing }
+            } else {
+                // 刚归的一场,就是最近动过的。
+                filingList.insert(filing, at: 0)
+            }
+        } else if filingList.contains(where: { $0.sessionId == sessionId }) {
+            filingList.removeAll { $0.sessionId == sessionId }
         }
         if sessionId == activeSessionId, activeFiling != filing {
             activeFiling = filing
         }
+        scheduleRetries()
     }
 
-    /// 设置里「已交到档案馆」那张表。在后台读:核心可能顺带核对改了几句。
-    func reloadFiledList() {
+    /// 把归过活动的每一场重读一遍。读的是本机的账,不走网络,但仍在后台读。
+    /// 同一时间只读一趟;读的途中又有人要读、或有单场的新结果进来,就再读
+    /// 一趟,不拿可能已经旧了的那一份盖掉新的。
+    func reloadFilings() {
         guard account != nil, let core else { return }
+        guard reloadingFilings == false else {
+            reloadFilingsAgain = true
+            return
+        }
+        reloadingFilings = true
+        reloadFilingsAgain = false
+        let revision = filingsRevision
         Task {
             let list = await Task.detached { core.cityFilings() }.value
+            reloadingFilings = false
             guard account != nil else { return }
-            if list != filedList { filedList = list }
+            if reloadFilingsAgain || revision != filingsRevision {
+                reloadFilings()
+                return
+            }
+            let merged = Self.carryingChangedCounts(from: filings, into: list)
+            if merged != filingList { filingList = merged }
+            let index = Dictionary(merged.map { ($0.sessionId, $0) }, uniquingKeysWith: { first, _ in first })
+            if index != filings { filings = index }
+            scheduleRetries()
+        }
+    }
+
+    /// 整张单子不数「交上去以后改了几句」(数一遍要读整场转录稿),一律给 0;
+    /// 逐场读到过的数先留着,不让一次重读把「改了 6 句」冲成「已交」。交的
+    /// 是不是同一次,看交上去的时刻。
+    nonisolated static func carryingChangedCounts(
+        from known: [String: FfiCityFiling],
+        into list: [FfiCityFiling]
+    ) -> [FfiCityFiling] {
+        list.map { fresh in
+            guard fresh.state == .filed,
+                  fresh.changedSentences == 0,
+                  let before = known[fresh.sessionId],
+                  before.state == .filed,
+                  before.filedAtEpoch == fresh.filedAtEpoch,
+                  before.changedSentences > 0
+            else { return fresh }
+            var kept = fresh
+            kept.changedSentences = before.changedSentences
+            return kept
+        }
+    }
+
+    /// 设置里那张表出现时调用:把已交的每一场各读一遍,数出交上去以后改了
+    /// 几句。一场一场在后台读,不抢正在交的那一场。
+    func refreshChangedCounts() {
+        guard account != nil, countingChanges == false else { return }
+        countingChanges = true
+        let sessions = filingList.filter { $0.state == .filed }.map(\.sessionId)
+        Task {
+            for sessionId in sessions {
+                guard account != nil else { break }
+                await loadFiling(sessionId: sessionId)
+            }
+            countingChanges = false
         }
     }
 
     // MARK: - 排队的
 
-    /// 启动时、网络回来时:把还在排队的一场一场交上去。
+    /// 把还在排队的一场一场交上去。启动时、网络回来时、切回 App 时调用,
+    /// 还有排着队的期间每两分钟一次。同一时间只跑一趟。
     func retryPending() {
         guard account != nil, retryingPending == false, let core,
               NetworkReachability.shared.isOffline == false
         else { return }
         retryingPending = true
+        lastRetryAt = Date()
         Task {
             let pending = await Task.detached { core.cityPendingSessions() }.value
             for sessionId in pending {
                 guard account != nil else { break }
                 let filing = await file(sessionId: sessionId, announce: false)
-                // 排队的这回交上了要说一声;还交不上的不再弹一遍,共享面板和
-                // 设置里那张表上看得到。
-                if let filing, filing.state == .filed {
+                // 这回有了结果要说一声:交上了,或者这回是被拒的(不会再自己
+                // 试了)。还是没连上的不再弹一遍,录音上、侧栏底部都看得到。
+                if let filing, filing.state == .filed || filing.state == .failed {
                     announce(filing)
                 }
             }
             retryingPending = false
         }
+    }
+
+    /// 还有排着队的就定时再试,没有了就停表。去城的那条路常有一阵连不上而
+    /// 机器一直在线,「网络回来」那一下等不到;以前这样的一场要等到下次启动。
+    private func scheduleRetries() {
+        let waiting = started && account != nil && filingList.contains { $0.state == .queued }
+        guard waiting else {
+            retryTimer?.invalidate()
+            retryTimer = nil
+            return
+        }
+        guard retryTimer == nil else { return }
+        let timer = Timer.scheduledTimer(withTimeInterval: Self.retryInterval, repeats: true) { _ in
+            Task { @MainActor in CityStore.shared.retryPending() }
+        }
+        // 晚几秒无所谓,让系统把它和别的唤醒凑到一起。
+        timer.tolerance = 10
+        retryTimer = timer
+    }
+
+    /// 切回 App:账重读一遍(便宜,只读本机);有排着队的、离上一次又够久,
+    /// 顺手再试。
+    private func appBecameActive() {
+        guard account != nil else { return }
+        reloadFilings()
+        let queued = filingList.contains { $0.state == .queued }
+        if Self.retriesOnActivation(queued: queued, lastRetryAt: lastRetryAt, now: Date()) {
+            retryPending()
+        }
+    }
+
+    static func retriesOnActivation(queued: Bool, lastRetryAt: Date?, now: Date) -> Bool {
+        guard queued else { return false }
+        guard let lastRetryAt else { return true }
+        return now.timeIntervalSince(lastRetryAt) >= activationRetryGap
     }
 
     // MARK: - 提示

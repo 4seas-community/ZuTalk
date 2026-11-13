@@ -8,7 +8,11 @@
 //     一次对外发送;
 //   - 没交上要写人能照做的话:谁、在哪、做什么;
 //   - 撤下撤不干净:那一件从档案馆页面上消失,但已经交上去的转录记录还留
-//     在城的日志里,现在删不掉。
+//     在城的日志里,现在删不掉;
+//   - 交上去以后活动在城里被删了:档案馆里看不到这一件,要明说,并给一条
+//     路(换一场活动)。本机写着「已交」而城里没有,人会以为没同步。
+// 停在哪一步、说哪句短话,和录音页、列表、设置里是同一套(`CityFilingStatus`);
+// 这里是把那一步展开来说、并且能动手的地方。
 // 只有登录了城才出现。这里只交文字。
 
 import AppKit
@@ -20,6 +24,9 @@ struct CityShareSection: View {
     @ObservedObject private var city = CityStore.shared
     @State private var loaded = false
     @State private var showsPicker = false
+    /// 在日历那张表上按了「这场不交」、而这一场已经交上去了:等那张表收起来
+    /// 再问撤不撤。
+    @State private var withdrawAfterPicking = false
     /// 这场录音的起止:补归时,时间重合的活动排最前。
     @State private var span: CityRecordingSpan?
     @State private var languages: [String] = []
@@ -29,6 +36,7 @@ struct CityShareSection: View {
 
     var body: some View {
         if let account = city.account {
+            let status = city.status(sessionId: request.sessionId)
             VStack(alignment: .leading, spacing: Spacing.sm) {
                 Label(String(localized: "city.share.title"), systemImage: "archivebox")
                     .font(.bodyMedium)
@@ -37,14 +45,18 @@ struct CityShareSection: View {
                 if loaded == false {
                     ProgressView().controlSize(.small)
                 } else if let filing {
-                    switch filing.state {
-                    case .filed:
-                        filed(filing)
-                    case .queued:
-                        queued(filing)
+                    switch status.kind {
+                    case .filed, .changed:
+                        filed(filing, status: status)
+                    case .eventGone:
+                        eventGone(filing, status: status)
+                    case .sending:
+                        sending(filing, status: status)
+                    case .waiting:
+                        queued(filing, status: status)
                     case .failed:
-                        failed(filing, account: account)
-                    case .bound, .withdrawn:
+                        failed(filing, status: status)
+                    case .notFiled, .chosen, .withdrawn:
                         notFiled(filing, account: account)
                     }
                 } else {
@@ -52,10 +64,13 @@ struct CityShareSection: View {
                 }
             }
             .task(id: request.sessionId) { await load() }
-            .sheet(isPresented: $showsPicker) {
-                CityEventPickerSheet(selectedEventId: filing?.eventId, recording: span) { event in
-                    Task { await city.bind(sessionId: request.sessionId, event: event) }
-                }
+            .sheet(isPresented: $showsPicker, onDismiss: {
+                guard withdrawAfterPicking else { return }
+                withdrawAfterPicking = false
+                // 那张表刚收起来;确认框是模态的,让这一轮先走完再弹。
+                DispatchQueue.main.async { confirmWithdraw() }
+            }) {
+                CityEventPickerSheet(selectedEventId: filing?.eventId, recording: span, onChoose: choose)
             }
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier(AccessibilityID.cityShare)
@@ -70,14 +85,29 @@ struct CityShareSection: View {
             )
             languages = [info.sourceLanguage] + info.targetLanguages
         }
+        // 活动在城里还在不在,要一份新近的活动列表才看得出来。
+        city.refreshCalendarIfStale()
         await city.loadFiling(sessionId: request.sessionId)
         loaded = true
+    }
+
+    /// 日历那张表上选好了。已经交上去的那一份换活动,是先撤下再归到新的一场,
+    /// 一步做完(`CityStore.move`);「这场不交」对它来说就是撤下,照样先问一句。
+    private func choose(_ event: FfiCityEvent?) {
+        let sessionId = request.sessionId
+        if let event {
+            Task { await city.move(sessionId: sessionId, to: event) }
+        } else if filing?.state == .filed {
+            withdrawAfterPicking = true
+        } else {
+            Task { await city.bind(sessionId: sessionId, event: nil) }
+        }
     }
 
     // MARK: - 已交
 
     @ViewBuilder
-    private func filed(_ filing: FfiCityFiling) -> some View {
+    private func filed(_ filing: FfiCityFiling, status: CityFilingStatus) -> some View {
         let when = filing.filedAtEpoch.map { CityText.moment(epoch: $0) } ?? ""
         if filing.changedSentences > 0 {
             strip(
@@ -99,13 +129,20 @@ struct CityShareSection: View {
         } else {
             Label(
                 when.isEmpty
-                    ? String(localized: "city.share.filed")
+                    ? status.label
                     : String(format: String(localized: "city.share.filed_format"), when),
-                systemImage: "checkmark.circle"
+                systemImage: status.symbol
             )
             .font(.bodySM)
             .foregroundColor(.success)
             .accessibilityIdentifier(AccessibilityID.cityShareStatus)
+        }
+        if let reason = status.reason {
+            // 上一次更新或撤下没成:东西还在档案馆,原因留在这,不让它无声无息。
+            Text(reason)
+                .font(.bodySM)
+                .foregroundColor(.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
 
         VStack(alignment: .leading, spacing: Spacing.sm - 2) {
@@ -150,55 +187,126 @@ struct CityShareSection: View {
         }
     }
 
-    // MARK: - 排队
+    // MARK: - 活动在城里被删了
+
+    /// 交上去了,活动后来在城里被删掉或取消:档案馆里看不到这一件。明说,给
+    /// 两条路 —— 换一场活动(先撤下再归到新的一场),或者撤下。不给「在浏览器
+    /// 打开」:那边只会是一个空页面。
+    @ViewBuilder
+    private func eventGone(_ filing: FfiCityFiling, status: CityFilingStatus) -> some View {
+        strip(
+            tint: .warning,
+            fill: .accentGoldSoft,
+            title: status.label,
+            detail: status.reason ?? ""
+        ) {
+            Button(String(localized: "city.action.change_event")) {
+                showsPicker = true
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(busy)
+            .accessibilityIdentifier(AccessibilityID.cityShareChange)
+        }
+
+        VStack(alignment: .leading, spacing: Spacing.sm - 2) {
+            fact(String(localized: "city.share.fact.event"), filing.eventTitle)
+            if let when = filing.filedAtEpoch.map({ CityText.moment(epoch: $0) }) {
+                fact(
+                    String(localized: "city.share.fact.last"),
+                    String(format: String(localized: "city.share.last_format"), when, filing.signerName)
+                )
+            }
+        }
+
+        HStack(spacing: Spacing.sm) {
+            Button(String(localized: "city.share.withdraw"), role: .destructive) {
+                confirmWithdraw()
+            }
+            .disabled(busy)
+            .accessibilityIdentifier(AccessibilityID.cityShareWithdraw)
+            if busy { ProgressView().controlSize(.small) }
+        }
+    }
+
+    // MARK: - 正在交
 
     @ViewBuilder
-    private func queued(_ filing: FfiCityFiling) -> some View {
+    private func sending(_ filing: FfiCityFiling, status: CityFilingStatus) -> some View {
         HStack(spacing: Spacing.sm) {
-            if busy { ProgressView().controlSize(.small) }
+            ProgressView().controlSize(.small)
+            Text(status.label)
+                .font(.bodySM)
+                .foregroundColor(.textSecondary)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier(AccessibilityID.cityShareStatus)
+        fact(String(localized: "city.share.fact.event"), filing.eventTitle)
+        publicNote
+    }
+
+    // MARK: - 排队
+
+    /// 没连上城的服务器,排着队。会自己再试,所以是一句交代,不是报错。
+    /// 「这台 Mac 没有联网」只在系统确认没有网络时才说;那时现在重试也是
+    /// 白试,按钮就不出。
+    @ViewBuilder
+    private func queued(_ filing: FfiCityFiling, status: CityFilingStatus) -> some View {
+        HStack(spacing: Spacing.sm) {
             Label(
-                String(localized: filing.errorCode == "city.error.offline"
-                    ? "city.share.queued_offline"
-                    : "city.share.queued"),
-                systemImage: filing.errorCode == "city.error.offline" ? "wifi.slash" : "clock"
+                String(localized: city.offline ? "city.share.queued_offline" : "city.share.queued"),
+                systemImage: status.symbol
             )
             .font(.bodySM)
             .foregroundColor(.textSecondary)
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityIdentifier(AccessibilityID.cityShareStatus)
             Spacer(minLength: Spacing.sm)
-            Button(String(localized: "city.share.retry_now")) {
-                Task { await city.file(sessionId: request.sessionId) }
+            if status.primaryAction == .retry {
+                Button(String(localized: "city.share.retry_now")) {
+                    Task { await city.file(sessionId: request.sessionId) }
+                }
+                .accessibilityIdentifier(AccessibilityID.cityShareRetry)
             }
-            .disabled(busy)
-            .accessibilityIdentifier(AccessibilityID.cityShareRetry)
         }
-        fact(String(localized: "city.share.fact.event"), filing.eventTitle)
+        fact(String(localized: "city.share.fact.event"), filing.eventTitle) {
+            changeButton
+        }
         publicNote
     }
 
     // MARK: - 没交上
 
     @ViewBuilder
-    private func failed(_ filing: FfiCityFiling, account: FfiCityAccount) -> some View {
+    private func failed(_ filing: FfiCityFiling, status: CityFilingStatus) -> some View {
+        // 活动在城里没了:重试多少次都一样,头一个按钮换成「换一场活动」。
+        let needsAnotherEvent = status.primaryAction == .chooseEvent
         strip(
             tint: .error,
             fill: Color.error.opacity(0.08),
-            title: String(
-                format: String(localized: "city.share.failed_format"),
-                CityText.message(forCode: filing.errorCode, signer: account.personName)
-            ),
+            title: String(format: String(localized: "city.share.failed_format"), status.reason ?? ""),
             // 没交上最让人慌的是「是不是丢了」:先把这句说了。
             detail: String(localized: "city.share.failed_safe")
         ) {
-            Button(String(localized: "city.action.retry")) {
-                Task { await city.file(sessionId: request.sessionId) }
+            if needsAnotherEvent {
+                Button(String(localized: "city.action.change_event")) {
+                    showsPicker = true
+                }
+                .disabled(busy)
+                .accessibilityIdentifier(AccessibilityID.cityShareChange)
+            } else {
+                Button(String(localized: "city.action.retry")) {
+                    Task { await city.file(sessionId: request.sessionId) }
+                }
+                .disabled(busy)
+                .accessibilityIdentifier(AccessibilityID.cityShareRetry)
             }
-            .disabled(busy)
-            .accessibilityIdentifier(AccessibilityID.cityShareRetry)
         }
-        fact(String(localized: "city.share.fact.event"), filing.eventTitle) {
-            changeButton
+        if needsAnotherEvent {
+            fact(String(localized: "city.share.fact.event"), filing.eventTitle)
+        } else {
+            fact(String(localized: "city.share.fact.event"), filing.eventTitle) {
+                changeButton
+            }
         }
     }
 

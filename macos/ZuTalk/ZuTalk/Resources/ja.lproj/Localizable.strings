@@ -1497,21 +1497,15 @@
 "city.when.row" = "提出するタイミング";
 "city.when.automatic" = "自動で提出";
 "city.when.ask" = "先に確認する";
-"city.when.automatic_detail" = "停止すると、待たずにバックグラウンドで提出します。オフラインのときは、接続が戻ってから提出します。";
+"city.when.automatic_detail" = "停止すると、待たずにバックグラウンドで提出します。シティに接続できないときは提出待ちにして、自動的に再試行します。";
 "city.when.ask_detail" = "停止してもイベントに割り当てるだけで、送信はしません。「アーカイブに提出」を押したときに提出します。";
 "city.options.save_failed" = "この設定を保存できませんでした";
 
-/* City: what has been filed from this Mac. */
-"city.filings.title" = "アーカイブに提出済み";
-"city.filings.subtitle" = "この Mac から提出したものはすべてここにあります。いつでも取り下げられます。";
-"city.filings.empty" = "まだ提出したものはありません。";
-"city.filing.filed" = "提出済み";
-"city.filing.changed_format" = "%lld 文を修正しました。アーカイブは古いままです";
-"city.filing.queued" = "提出待ち";
-"city.filing.queued_offline" = "提出待ち。オンラインになると自動で提出します";
-"city.filing.failed_format" = "提出できませんでした：%@";
-"city.filing.bound" = "イベントに割り当て済み（未提出）";
-"city.filing.withdrawn" = "取り下げ済み";
+/* City: the list in Settings of every recording assigned to an event from this Mac. */
+"city.filings.title" = "アーカイブに提出する録音";
+"city.filings.subtitle" = "この Mac でイベントに割り当てた録音がすべてここに並びます。提出済み、提出待ち、提出できなかったもの、どれもここで対応できます。";
+"city.filings.empty" = "イベントに割り当てた録音はまだありません。";
+"city.filings.more_format" = "「%@」のその他の操作";
 
 /* City: actions shared by several surfaces. */
 "city.action.open" = "開く";
@@ -1522,9 +1516,38 @@
 "city.action.not_filing" = "今回は提出しない";
 "city.action.pick_from_calendar" = "カレンダーから選ぶ…";
 "city.action.change_event" = "イベントを変更…";
+"city.action.drop" = "提出をやめる";
+"city.action.show_recording" = "この録音を開く";
 "city.withdraw.confirm_title" = "この文字起こしをアーカイブから取り下げますか？";
 "city.withdraw.confirm_message" = "アーカイブのページからは表示されなくなります。ただし、提出済みの文字起こしの記録はシティのログに残り、現時点では削除できません。";
 "city.withdraw.button" = "取り下げる";
+
+/* City: where one recording’s filing stands. One vocabulary, used by the recording’s page, the lists of recordings, the Share panel, Settings and the sidebar. */
+"city.status.not_filed" = "未提出";
+"city.status.chosen" = "イベントを選択済み（未提出）";
+"city.status.sending" = "提出中…";
+"city.status.waiting" = "提出待ち。あとで自動的に再試行します";
+"city.status.waiting_offline" = "提出待ち。この Mac がオンラインになると自動で提出します";
+"city.status.filed" = "アーカイブに提出済み";
+"city.status.changed_format" = "提出済み · %lld 文を修正";
+"city.status.event_gone" = "イベントはシティで削除されました";
+"city.status.event_gone_detail" = "このイベントはシティで削除または中止されたため、アーカイブにこの文字起こしは表示されません。イベントを変更すると、まず元のイベントから取り下げてから新しいイベントに割り当てます。そのあと、もう一度提出してください。";
+"city.status.failed" = "提出できませんでした";
+"city.status.withdrawn" = "取り下げ済み";
+"city.status.last_problem_format" = "前回はうまくいきませんでした：%@";
+"city.status.for_event_format" = "アーカイブ：%1$@ · %2$@";
+"city.status.open_share_hint" = "共有パネルを開きます。「アーカイブ」で確認・対応できます";
+"city.tally.filed_format" = "提出済み %lld 件";
+"city.tally.sending_format" = "提出中 %lld 件";
+"city.tally.waiting_format" = "提出待ち %lld 件";
+"city.tally.failed_format" = "提出できず %lld 件";
+"city.tally.event_gone_format" = "イベント削除 %lld 件";
+"city.tally.chosen_format" = "未提出 %lld 件";
+"city.sidebar.waiting_format" = "アーカイブ：提出待ち %lld 件";
+"city.sidebar.failed_format" = "アーカイブ：提出できず %lld 件";
+"city.sidebar.sending_format" = "アーカイブ：提出中 %lld 件…";
+"city.sidebar.event_gone_format" = "アーカイブ：イベント削除 %lld 件";
+"city.sidebar.hint" = "「設定 › シティ」で確認・対応";
 
 /* City: a topic’s channel. */
 "city.topic.title" = "アーカイブ";
@@ -1583,7 +1606,7 @@
 "city.picker.tag_filed" = "提出済み";
 "city.picker.empty_day" = "この日のイベントはありません。";
 "city.picker.empty_mine" = "この日にあなたが主催するイベントはありません。";
-"city.picker.empty_never" = "イベント一覧をまだ読み込めていません。インターネットに接続して「更新」を押してください。";
+"city.picker.empty_never" = "イベント一覧をまだ読み込めていません。「更新」を押して、もう一度お試しください。";
 "city.picker.refresh" = "更新";
 "city.picker.updated_format" = "イベント一覧：%@ に更新";
 "city.picker.never_updated" = "イベント一覧は未取得";
@@ -1601,7 +1624,6 @@
 
 /* City: the archive section of a recording’s Share panel. */
 "city.share.title" = "アーカイブ";
-"city.share.filed" = "アーカイブに提出済み";
 "city.share.filed_format" = "アーカイブに提出済み · %@";
 "city.share.fact.event" = "イベント";
 "city.share.fact.channel" = "チャンネル";
@@ -1615,8 +1637,8 @@
 "city.share.open" = "ブラウザで開く";
 "city.share.withdraw" = "アーカイブから取り下げる…";
 "city.share.public_note" = "アーカイブの内容は公開され、ずっと残ります。24 時間で無効になる下のリンクとは異なります。";
-"city.share.queued" = "アーカイブへの提出を待っています…";
-"city.share.queued_offline" = "ネットワークがありません。オンラインに戻ると自動でアーカイブに提出します。";
+"city.share.queued" = "提出待ちです。シティのサーバーに接続できませんでした。あとで自動的に再試行します。いま再試行することもできます。";
+"city.share.queued_offline" = "この Mac は現在オンラインではありません。オンラインになると自動でアーカイブに提出します。";
 "city.share.retry_now" = "いま再試行";
 "city.share.failed_format" = "提出できませんでした：%@";
 "city.share.failed_safe" = "文字起こしはすべてこの Mac にあり、失われていません。";
@@ -1630,14 +1652,17 @@
 "city.notice.ask_format" = "録音を「%@」に割り当てました。まだ提出していません。";
 "city.toast.failed" = "アーカイブに提出できませんでした";
 "city.toast.failed_format" = "アーカイブに提出できませんでした · %@";
-"city.toast.queued" = "提出待ちにしました。まもなくアーカイブに提出します。";
-"city.toast.queued_offline" = "ネットワークがありません。オンラインになると自動でアーカイブに提出します。";
+"city.toast.queued" = "シティのサーバーに接続できませんでした。提出待ちにして、あとで自動的に再試行します。";
+"city.toast.queued_offline" = "この Mac はオンラインではありません。提出待ちにして、オンラインになると自動でアーカイブに提出します。";
 "city.toast.withdrawn" = "アーカイブから取り下げました";
+"city.toast.update_failed" = "アーカイブを更新できませんでした";
+"city.toast.withdraw_failed" = "アーカイブから取り下げられませんでした";
+"city.toast.move_failed" = "イベントを変更できませんでした。元の提出を取り下げられませんでした";
 "city.bind.failed" = "イベントに割り当てられませんでした";
 
 /* City: errors. The keys are the stable codes the core reports; each says what to do next. */
-"city.error.offline" = "この Mac はインターネットに接続されていません。接続してからもう一度お試しください。";
-"city.error.server" = "シティのサーバーに現在接続できません。しばらくしてからもう一度お試しください。";
+"city.error.offline" = "シティのサーバーに接続できませんでした。少し待ってからもう一度お試しください。何度やってもだめなときは、ネットワークを確認してください。";
+"city.error.server" = "シティのサーバーがエラーを返しました。しばらくしてからもう一度お試しください。";
 "city.error.bad_address" = "シティのアドレスとして認識できません。シティから案内されたとおりに、ドメイン名だけを入力してください。";
 "city.error.no_city" = "このアドレスにシティが見つかりません。入力に誤りがないか確認してください。";
 "city.error.bad_key" = "復旧キーが正しくありません。保存しておいたものと照らし合わせて、もう一度入力してください。1 文字でも違うと使えません。";
@@ -1646,6 +1671,7 @@
 "city.error.unbound" = "この録音はまだイベントに割り当てられていません。先にイベントを選んでから提出してください。";
 "city.error.not_allowed" = "このイベントは、主催者と記録係からの資料だけを受け付けます。主催者にイベントの「記録係」へ追加してもらってから、もう一度お試しください。";
 "city.error.not_allowed_named_format" = "このイベントは、主催者と記録係からの資料だけを受け付けます。主催者にイベントの「記録係」へあなた（%@）を追加してもらってから、もう一度お試しください。";
+"city.error.event_gone" = "このイベントはシティで削除または中止されました。別のイベントを選んで、もう一度提出してください。";
 "city.error.no_transcript" = "この録音にはまだ文字起こしがありません。文字起こしが終わったら、録音の「共有…」からもう一度お試しください。";
 "city.error.refused" = "シティがこの文字起こしを受け付けませんでした。もう一度お試しください。それでも受け付けられない場合は、イベント名をシティのコーディネーターに伝えてください。";
 "city.error.busy" = "この録音は現在提出中です。終わってからもう一度お試しください。";

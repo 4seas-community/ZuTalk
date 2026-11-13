@@ -1497,21 +1497,15 @@
 "city.when.row" = "ส่งเมื่อไร";
 "city.when.automatic" = "ส่งอัตโนมัติ";
 "city.when.ask" = "ถามฉันก่อน";
-"city.when.automatic_detail" = "เมื่อหยุดบันทึกจะส่งอยู่เบื้องหลัง ไม่ต้องรอ ถ้าไม่มีเครือข่ายจะส่งเมื่อกลับมาออนไลน์";
+"city.when.automatic_detail" = "เมื่อหยุดบันทึกจะส่งอยู่เบื้องหลัง ไม่ต้องรอ ถ้าติดต่อเมืองไม่ได้จะเข้าคิวไว้แล้วลองส่งใหม่เอง";
 "city.when.ask_detail" = "เมื่อหยุดบันทึกจะจัดไว้กับกิจกรรมเท่านั้น ยังไม่ส่งออกไป จนกว่าคุณจะกด “ส่งเข้าคลังเอกสาร”";
 "city.options.save_failed" = "บันทึกการตั้งค่านี้ไม่สำเร็จ";
 
-/* City: what has been filed from this Mac. */
-"city.filings.title" = "ส่งเข้าคลังเอกสารแล้ว";
-"city.filings.subtitle" = "ทุกอย่างที่คุณส่งจาก Mac เครื่องนี้อยู่ที่นี่ ถอนออกได้ทุกเมื่อ";
-"city.filings.empty" = "ยังไม่ได้ส่งอะไร";
-"city.filing.filed" = "ส่งแล้ว";
-"city.filing.changed_format" = "คุณแก้ไป %lld ประโยค ในคลังเอกสารยังเป็นฉบับเดิม";
-"city.filing.queued" = "รอส่ง";
-"city.filing.queued_offline" = "รอส่ง จะส่งเองเมื่อออนไลน์";
-"city.filing.failed_format" = "ส่งไม่สำเร็จ: %@";
-"city.filing.bound" = "จัดเข้ากิจกรรมแล้ว ยังไม่ได้ส่ง";
-"city.filing.withdrawn" = "ถอนออกแล้ว";
+/* City: the list in Settings of every recording assigned to an event from this Mac. */
+"city.filings.title" = "การบันทึกที่ส่งเข้าคลังเอกสาร";
+"city.filings.subtitle" = "การบันทึกทุกรายการที่จัดเข้ากิจกรรมจาก Mac เครื่องนี้อยู่ที่นี่ ทั้งที่ส่งแล้ว รอส่ง และส่งไม่สำเร็จ จัดการแต่ละรายการได้จากที่นี่";
+"city.filings.empty" = "ยังไม่มีการบันทึกที่จัดเข้ากิจกรรม";
+"city.filings.more_format" = "การทำงานเพิ่มเติมสำหรับ “%@”";
 
 /* City: actions shared by several surfaces. */
 "city.action.open" = "เปิด";
@@ -1522,9 +1516,38 @@
 "city.action.not_filing" = "ครั้งนี้ไม่ส่ง";
 "city.action.pick_from_calendar" = "เลือกจากปฏิทิน…";
 "city.action.change_event" = "เปลี่ยนกิจกรรม…";
+"city.action.drop" = "ไม่ส่งแล้ว";
+"city.action.show_recording" = "เปิดการบันทึกนี้";
 "city.withdraw.confirm_title" = "ถอนบทถอดความนี้ออกจากคลังเอกสารไหม";
 "city.withdraw.confirm_message" = "รายการนี้จะหายไปจากหน้าคลังเอกสาร แต่บันทึกบทถอดความที่ส่งไปแล้วยังคงอยู่ในบันทึกของเมือง และตอนนี้ยังลบออกจากที่นั่นไม่ได้";
 "city.withdraw.button" = "ถอนออก";
+
+/* City: where one recording’s filing stands. One vocabulary, used by the recording’s page, the lists of recordings, the Share panel, Settings and the sidebar. */
+"city.status.not_filed" = "ยังไม่ได้ส่ง";
+"city.status.chosen" = "เลือกกิจกรรมแล้ว ยังไม่ได้ส่ง";
+"city.status.sending" = "กำลังส่ง…";
+"city.status.waiting" = "รอส่ง จะลองใหม่เองในอีกสักครู่";
+"city.status.waiting_offline" = "รอส่ง จะส่งเองเมื่อ Mac เครื่องนี้ออนไลน์";
+"city.status.filed" = "ส่งเข้าคลังเอกสารแล้ว";
+"city.status.changed_format" = "ส่งแล้ว · แก้ไป %lld ประโยค";
+"city.status.event_gone" = "กิจกรรมถูกลบในเมืองแล้ว";
+"city.status.event_gone_detail" = "กิจกรรมนี้ถูกลบหรือยกเลิกในเมืองแล้ว คลังเอกสารจึงไม่แสดงบทถอดความนี้ การเปลี่ยนกิจกรรมจะถอนออกจากกิจกรรมเดิมก่อน แล้วจัดเข้ากิจกรรมใหม่ จากนั้นคุณจึงส่งอีกครั้ง";
+"city.status.failed" = "ส่งไม่สำเร็จ";
+"city.status.withdrawn" = "ถอนออกแล้ว";
+"city.status.last_problem_format" = "ครั้งล่าสุดทำไม่สำเร็จ: %@";
+"city.status.for_event_format" = "คลังเอกสาร: %1$@ · %2$@";
+"city.status.open_share_hint" = "เปิดแผงแชร์ แล้วดูและจัดการได้ในส่วน “คลังเอกสาร”";
+"city.tally.filed_format" = "ส่งแล้ว %lld รายการ";
+"city.tally.sending_format" = "กำลังส่ง %lld รายการ";
+"city.tally.waiting_format" = "รอส่ง %lld รายการ";
+"city.tally.failed_format" = "ส่งไม่สำเร็จ %lld รายการ";
+"city.tally.event_gone_format" = "กิจกรรมถูกลบ %lld รายการ";
+"city.tally.chosen_format" = "ยังไม่ได้ส่ง %lld รายการ";
+"city.sidebar.waiting_format" = "คลังเอกสาร: รอส่ง %lld รายการ";
+"city.sidebar.failed_format" = "คลังเอกสาร: ส่งไม่สำเร็จ %lld รายการ";
+"city.sidebar.sending_format" = "คลังเอกสาร: กำลังส่ง %lld รายการ…";
+"city.sidebar.event_gone_format" = "คลังเอกสาร: กิจกรรมถูกลบ %lld รายการ";
+"city.sidebar.hint" = "ดูและจัดการที่ “การตั้งค่า › เมือง”";
 
 /* City: a topic’s channel. */
 "city.topic.title" = "คลังเอกสาร";
@@ -1583,7 +1606,7 @@
 "city.picker.tag_filed" = "ส่งแล้ว";
 "city.picker.empty_day" = "วันที่เลือกไม่มีกิจกรรม";
 "city.picker.empty_mine" = "วันที่เลือกไม่มีกิจกรรมที่คุณจัด";
-"city.picker.empty_never" = "ยังไม่ได้โหลดรายการกิจกรรม เชื่อมต่ออินเทอร์เน็ตแล้วกด “รีเฟรช”";
+"city.picker.empty_never" = "ยังไม่ได้โหลดรายการกิจกรรม กด “รีเฟรช” เพื่อลองอีกครั้ง";
 "city.picker.refresh" = "รีเฟรช";
 "city.picker.updated_format" = "รายการกิจกรรมอัปเดตเมื่อ %@";
 "city.picker.never_updated" = "ยังไม่ได้โหลดรายการกิจกรรม";
@@ -1601,7 +1624,6 @@
 
 /* City: the archive section of a recording’s Share panel. */
 "city.share.title" = "คลังเอกสาร";
-"city.share.filed" = "ส่งเข้าคลังเอกสารแล้ว";
 "city.share.filed_format" = "ส่งเข้าคลังเอกสารแล้ว · %@";
 "city.share.fact.event" = "กิจกรรม";
 "city.share.fact.channel" = "ช่อง";
@@ -1615,8 +1637,8 @@
 "city.share.open" = "เปิดในเบราว์เซอร์";
 "city.share.withdraw" = "ถอนออกจากคลังเอกสาร…";
 "city.share.public_note" = "สิ่งที่อยู่ในคลังเอกสารเป็นสาธารณะและจะอยู่ตลอดไป ต่างจากลิงก์ด้านล่างที่หมดอายุใน 24 ชั่วโมง";
-"city.share.queued" = "กำลังรอส่งเข้าคลังเอกสาร…";
-"city.share.queued_offline" = "ไม่มีเครือข่าย เมื่อกลับมาออนไลน์จะส่งเข้าคลังเอกสารเอง";
+"city.share.queued" = "รอส่งอยู่ เมื่อครู่ติดต่อเซิร์ฟเวอร์ของเมืองไม่ได้ จะลองส่งใหม่เอง หรือกดลองใหม่ตอนนี้ก็ได้";
+"city.share.queued_offline" = "Mac เครื่องนี้ยังไม่ได้ออนไลน์ เมื่อออนไลน์แล้วจะส่งเข้าคลังเอกสารเอง";
 "city.share.retry_now" = "ลองใหม่ตอนนี้";
 "city.share.failed_format" = "ส่งไม่สำเร็จ: %@";
 "city.share.failed_safe" = "บทถอดความยังอยู่บน Mac เครื่องนี้ครบ ไม่มีอะไรหาย";
@@ -1630,14 +1652,17 @@
 "city.notice.ask_format" = "จัดการบันทึกเข้า “%@” แล้ว ยังไม่ได้ส่ง";
 "city.toast.failed" = "ส่งเข้าคลังเอกสารไม่สำเร็จ";
 "city.toast.failed_format" = "ส่งเข้าคลังเอกสารไม่สำเร็จ · %@";
-"city.toast.queued" = "เข้าคิวแล้ว จะส่งเข้าคลังเอกสารในอีกสักครู่";
-"city.toast.queued_offline" = "ไม่มีเครือข่าย เมื่อออนไลน์แล้วจะส่งเข้าคลังเอกสารเอง";
+"city.toast.queued" = "ตอนนี้ติดต่อเซิร์ฟเวอร์ของเมืองไม่ได้ เข้าคิวไว้แล้ว จะลองส่งใหม่เอง";
+"city.toast.queued_offline" = "Mac เครื่องนี้ไม่ได้ออนไลน์ เข้าคิวไว้แล้ว เมื่อออนไลน์จะส่งเข้าคลังเอกสารเอง";
 "city.toast.withdrawn" = "ถอนออกจากคลังเอกสารแล้ว";
+"city.toast.update_failed" = "อัปเดตคลังเอกสารไม่สำเร็จ";
+"city.toast.withdraw_failed" = "ถอนออกจากคลังเอกสารไม่สำเร็จ";
+"city.toast.move_failed" = "เปลี่ยนกิจกรรมไม่สำเร็จ เพราะถอนรายการเดิมออกไม่ได้";
 "city.bind.failed" = "จัดเข้ากิจกรรมไม่สำเร็จ";
 
 /* City: errors. The keys are the stable codes the core reports; each says what to do next. */
-"city.error.offline" = "Mac เครื่องนี้ไม่ได้เชื่อมต่ออินเทอร์เน็ต เชื่อมต่อแล้วลองอีกครั้ง";
-"city.error.server" = "ตอนนี้ติดต่อเซิร์ฟเวอร์ของเมืองไม่ได้ ลองใหม่อีกสักครู่";
+"city.error.offline" = "ติดต่อเซิร์ฟเวอร์ของเมืองไม่ได้ ลองใหม่อีกสักครู่ ถ้ายังไม่ได้ให้ตรวจดูเครือข่าย";
+"city.error.server" = "เซิร์ฟเวอร์ของเมืองตอบกลับว่าเกิดข้อผิดพลาด ลองใหม่อีกสักครู่";
 "city.error.bad_address" = "ที่อยู่นี้ดูไม่เหมือนที่อยู่ของเมือง กรอกตามที่เมืองแจ้งไว้ เฉพาะชื่อโดเมน";
 "city.error.no_city" = "ไม่พบเมืองที่ที่อยู่นี้ ตรวจดูว่าพิมพ์ผิดหรือไม่";
 "city.error.bad_key" = "คีย์กู้คืนนี้ไม่ถูกต้อง ตรวจเทียบกับที่คุณเก็บไว้แล้วกรอกอีกครั้ง ต้องตรงทุกตัวอักษร";
@@ -1646,6 +1671,7 @@
 "city.error.unbound" = "การบันทึกนี้ยังไม่ได้จัดเข้ากิจกรรม เลือกกิจกรรมก่อนแล้วจึงส่ง";
 "city.error.not_allowed" = "กิจกรรมนี้รับเฉพาะเอกสารจากผู้จัดและผู้บันทึก ขอให้ผู้จัดเพิ่มคุณใน “ผู้บันทึก” ของกิจกรรม แล้วลองอีกครั้ง";
 "city.error.not_allowed_named_format" = "กิจกรรมนี้รับเฉพาะเอกสารจากผู้จัดและผู้บันทึก ขอให้ผู้จัดเพิ่มคุณ (%@) ใน “ผู้บันทึก” ของกิจกรรม แล้วลองอีกครั้ง";
+"city.error.event_gone" = "กิจกรรมนี้ถูกลบหรือยกเลิกในเมืองแล้ว เลือกกิจกรรมอื่นแล้วส่งอีกครั้ง";
 "city.error.no_transcript" = "การบันทึกนี้ยังไม่มีบทถอดความ เมื่อถอดเสียงเสร็จแล้ว เปิด “แชร์…” ของการบันทึกนี้แล้วลองอีกครั้ง";
 "city.error.refused" = "เมืองไม่รับบทถอดความนี้ ลองอีกครั้ง ถ้ายังไม่ได้ ให้แจ้งชื่อกิจกรรมกับผู้ประสานงานของเมือง";
 "city.error.busy" = "การบันทึกนี้กำลังส่งอยู่ รอให้เสร็จแล้วลองอีกครั้ง";

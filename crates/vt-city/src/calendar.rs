@@ -17,8 +17,10 @@
 //!   there it has only the importing key as host. A caller that has asked
 //!   the city who reviews it passes them to [`reduce_events_curated`], and
 //!   their edits to imported events (naming a recorder, for instance) count;
-//! - host lists and deletions signed by reviewers who are not hosts are not
-//!   seen, so an event a curator deleted is still listed;
+//! - a reviewer deletes an event by signing `polis/trash` for it. Without
+//!   knowing who reviews, [`reduce_events`] still lists it;
+//!   [`reduce_events_curated`] leaves it out. Host lists signed by reviewers
+//!   who are not hosts are not seen by either;
 //! - a recorder named by a placeholder the person later claimed is listed
 //!   under the placeholder.
 //!
@@ -46,14 +48,20 @@ pub const KINDS: &[&str] = &[
 ];
 
 /// The `kinds=` filter for reading a city's `polis:` tag for both
-/// [`reduce_events`] and [`crate::channels::reduce_channels`].
+/// [`reduce_events_curated`] and [`crate::channels::reduce_channels`].
+///
+/// `arc/edit` is left out on purpose. It would carry a channel's later
+/// retitling or closing, but the server cannot narrow it to channels, and on
+/// a real city it is mostly link previews with their pictures inline: a
+/// quarter of the whole answer, for a calendar that is read on a venue's
+/// network. A channel is offered under the title it was made with.
 pub const CITY_KINDS: &[&str] = &[
     "ev/event",
     "ev/edit",
     "ev/state",
     "ev/hosts",
+    "polis/trash",
     "arc/channel",
-    "arc/edit",
     "id/inception",
     "id/did",
 ];
@@ -138,7 +146,9 @@ pub fn reduce_events(recs: &[Value]) -> Vec<CityEvent> {
 /// are those people and keys — whoever [`curator_candidates`] names that the
 /// city confirms is a coordinator or curator, or is the importing key itself.
 /// For an event one of them imported, records the others sign count as a
-/// host's, so a recorder a coordinator named is a recorder here too.
+/// host's, so a recorder a coordinator named is a recorder here too. An
+/// event one of them has deleted from the city (`polis/trash`) is left out:
+/// the city shows nothing filed under it.
 ///
 /// Only pass records read from the city's own tag: its server admits nothing
 /// there from anyone who neither lives in the city nor holds its import key,
@@ -199,6 +209,31 @@ pub fn reduce_events_curated(recs: &[Value], curators: &[String]) -> Vec<CityEve
         }
     }
 
+    // A reviewer's deletion, or its undoing: the latest one about an event
+    // decides, and it must name the city the event belongs to.
+    let mut verdicts: HashMap<&str, (f64, &str, bool)> = HashMap::new();
+    for fact in facts.iter().filter(|fact| fact.kind == "polis/trash") {
+        let Some(draft) = drafts.get(fact.link(1)) else {
+            continue;
+        };
+        if draft.city.is_empty()
+            || fact.link(0) != draft.city
+            || !curators.iter().any(|curator| curator == fact.by)
+        {
+            continue;
+        }
+        let verdict = (fact.at, fact.id.as_str(), facts::truthy(fact.get("on")));
+        let latest = verdicts.entry(fact.link(1)).or_insert(verdict);
+        if (verdict.0, verdict.1) > (latest.0, latest.1) {
+            *latest = verdict;
+        }
+    }
+    for (id, (_, _, deleted)) in verdicts {
+        if let (true, Some(draft)) = (deleted, drafts.get_mut(id)) {
+            draft.removed = true;
+        }
+    }
+
     let mut events: Vec<CityEvent> = drafts
         .into_iter()
         .filter(|(_, draft)| !draft.removed)
@@ -226,10 +261,10 @@ pub fn reduce_events_curated(recs: &[Value], curators: &[String]) -> Vec<CityEve
     events
 }
 
-/// Whose standing in the city decides how imported events reduce: whoever
-/// signed an event that says it came from an outside calendar, and whoever
-/// signed a change to one. Ask the city about each and pass those it
-/// confirms to [`reduce_events_curated`].
+/// Whose standing in the city decides how its calendar reduces: whoever
+/// signed an event that says it came from an outside calendar, whoever
+/// signed a change to one, and whoever signed an event's deletion. Ask the
+/// city about each and pass those it confirms to [`reduce_events_curated`].
 pub fn curator_candidates(recs: &[Value]) -> Vec<String> {
     let facts = facts::admit(recs);
     let imports: Vec<&str> = facts
@@ -242,6 +277,8 @@ pub fn curator_candidates(recs: &[Value]) -> Vec<String> {
         .filter(|fact| match fact.kind {
             "ev/event" => sourced(fact),
             "ev/edit" | "ev/state" => imports.contains(&fact.link(0)),
+            // Deleting an event is a reviewer's act whatever the event.
+            "polis/trash" => true,
             _ => false,
         })
         .map(|fact| fact.by.to_string())

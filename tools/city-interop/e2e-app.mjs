@@ -106,6 +106,10 @@ await post(otherTag, [owner.inception, other.rec], "someone else's event");
 await post(cityTag, [owner.inception, other.rec], "someone else's event");
 const channel = await O("arc/channel", { title: "Field notes", about: "", status: "open", polis: town.id }, [], NOW - DAY);
 await post(cityTag, [owner.inception, channel.rec], "a channel");
+/* An event the coordinator deleted. A recording filed under it would be placed nowhere, so ZuTalk must not offer it. */
+const mistake = await F("ev/event", { title: "Created by mistake", start: NOW - HOUR, end: NOW + HOUR, tz: "Asia/Bangkok", scope: "public", polis: town.id }, [], NOW - DAY);
+const deleted = await F("polis/trash", { on: true }, [town.id, mistake.id], NOW - 3 * HOUR);
+await post(cityTag, [founder.inception, mistake.rec, deleted.rec], "an event and its deletion");
 
 /* The city's own reading of that calendar: the recorder may put things in the imported event. */
 {
@@ -114,6 +118,7 @@ await post(cityTag, [owner.inception, channel.rec], "a channel");
   ok(!!events.get(imported.id)?.src, "the city itself treats the event as imported");
   ok(ev.canPut(events.get(imported.id), recorder.id), "and its coordinator's choice of recorder stands");
   ok(!ev.canPut(events.get(other.id), recorder.id), "but the recorder has no place in the other event");
+  ok(!ev.events(w.query, { cities }).has(mistake.id) || events.get(mistake.id)?.removed, "the city no longer lists the deleted event");
 }
 
 /* ---- ZuTalk's core does what the app does ---- */
@@ -155,7 +160,7 @@ for await (const line of createInterface({ input: rust.stdout })) {
     same([s.value.id, s.value.name, s.value.city, s.value.roles], [recorder.id, "Ada of the Garden", "Harbour Town", ["resident"]], "signed in as the recorder, a resident of the city");
   } else if (s.step === "calendar") {
     same([...s.value].sort((a, b) => a.title.localeCompare(b.title)), [{ title: "Evening walk", mine: false }, { title: "Language Exchange", mine: true }],
-      "both events are on the calendar; the recorder the coordinator named sees the imported one as theirs");
+      "both events are on the calendar, the deleted one is not; the recorder the coordinator named sees the imported one as theirs");
   } else if (s.step === "channels") {
     same(s.value, ["Field notes"], "the open city channel is offered");
   } else if (s.step === "not-allowed") {

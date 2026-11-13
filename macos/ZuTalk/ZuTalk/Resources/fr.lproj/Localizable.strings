@@ -1497,21 +1497,15 @@
 "city.when.row" = "Quand déposer";
 "city.when.automatic" = "Automatiquement";
 "city.when.ask" = "Me demander d’abord";
-"city.when.automatic_detail" = "Déposé en arrière-plan dès l’arrêt, sans attendre. Sans réseau, le dépôt se fait au retour de la connexion.";
+"city.when.automatic_detail" = "Déposé en arrière-plan dès l’arrêt, sans attendre. Si la ville est injoignable, le dépôt est mis en attente et retenté automatiquement.";
 "city.when.ask_detail" = "À l’arrêt, l’enregistrement reste simplement rattaché à son événement ; rien n’est envoyé tant que vous n’avez pas choisi « Déposer aux archives ».";
 "city.options.save_failed" = "Impossible d’enregistrer ce réglage";
 
-/* City: what has been filed from this Mac. */
-"city.filings.title" = "Déposé aux archives";
-"city.filings.subtitle" = "Tout ce que vous avez déposé depuis ce Mac. Vous pouvez le retirer à tout moment.";
-"city.filings.empty" = "Rien n’a encore été déposé.";
-"city.filing.filed" = "Déposé";
-"city.filing.changed_format" = "Vous avez modifié %lld phrases ; les archives ont encore l’ancienne version";
-"city.filing.queued" = "En attente de dépôt";
-"city.filing.queued_offline" = "En attente : dépôt automatique au retour du réseau";
-"city.filing.failed_format" = "Non déposé : %@";
-"city.filing.bound" = "Rattaché à l’événement, pas encore déposé";
-"city.filing.withdrawn" = "Retiré";
+/* City: the list in Settings of every recording assigned to an event from this Mac. */
+"city.filings.title" = "Enregistrements pour les archives";
+"city.filings.subtitle" = "Tous les enregistrements rattachés à un événement depuis ce Mac : déposés, en attente ou non déposés. Chacun se gère ici.";
+"city.filings.empty" = "Aucun enregistrement n’a encore été rattaché à un événement.";
+"city.filings.more_format" = "Autres actions pour « %@ »";
 
 /* City: actions shared by several surfaces. */
 "city.action.open" = "Ouvrir";
@@ -1522,9 +1516,38 @@
 "city.action.not_filing" = "Ne pas déposer";
 "city.action.pick_from_calendar" = "Choisir dans le calendrier…";
 "city.action.change_event" = "Changer d’événement…";
+"city.action.drop" = "Ne plus déposer";
+"city.action.show_recording" = "Afficher l’enregistrement";
 "city.withdraw.confirm_title" = "Retirer cette transcription des archives ?";
 "city.withdraw.confirm_message" = "Elle disparaît des pages des archives. Les enregistrements de transcription déjà déposés restent toutefois dans le journal de la ville et ne peuvent pas en être supprimés aujourd’hui.";
 "city.withdraw.button" = "Retirer";
+
+/* City: where one recording’s filing stands. One vocabulary, used by the recording’s page, the lists of recordings, the Share panel, Settings and the sidebar. */
+"city.status.not_filed" = "Non déposé";
+"city.status.chosen" = "Événement choisi, pas encore déposé";
+"city.status.sending" = "Dépôt en cours…";
+"city.status.waiting" = "En attente : nouvel essai automatique";
+"city.status.waiting_offline" = "En attente : dépôt automatique dès que ce Mac sera en ligne";
+"city.status.filed" = "Déposé aux archives";
+"city.status.changed_format" = "Déposé · %lld phrases modifiées";
+"city.status.event_gone" = "Événement supprimé dans la ville";
+"city.status.event_gone_detail" = "Cet événement a été supprimé ou annulé dans la ville ; les archives n’affichent donc pas cette transcription. Changer d’événement la retire de l’ancien puis la rattache au nouveau ; il vous reste ensuite à la déposer de nouveau.";
+"city.status.failed" = "Dépôt impossible";
+"city.status.withdrawn" = "Retiré";
+"city.status.last_problem_format" = "La dernière tentative n’a pas abouti : %@";
+"city.status.for_event_format" = "Archives : %1$@ · %2$@";
+"city.status.open_share_hint" = "Ouvre le panneau Partager ; la section Archives permet de s’en occuper";
+"city.tally.filed_format" = "%lld déposés";
+"city.tally.sending_format" = "%lld en cours de dépôt";
+"city.tally.waiting_format" = "%lld en attente";
+"city.tally.failed_format" = "%lld en échec";
+"city.tally.event_gone_format" = "%lld dont l’événement a été supprimé";
+"city.tally.chosen_format" = "%lld pas encore déposés";
+"city.sidebar.waiting_format" = "Archives : %lld en attente";
+"city.sidebar.failed_format" = "Archives : %lld en échec";
+"city.sidebar.sending_format" = "Archives : %lld en cours de dépôt…";
+"city.sidebar.event_gone_format" = "Archives : %lld à l’événement supprimé";
+"city.sidebar.hint" = "À voir dans Réglages › Ville";
 
 /* City: a topic’s channel. */
 "city.topic.title" = "Archives";
@@ -1583,7 +1606,7 @@
 "city.picker.tag_filed" = "Déposé";
 "city.picker.empty_day" = "Aucun événement ce jour-là.";
 "city.picker.empty_mine" = "Rien que vous organisez ce jour-là.";
-"city.picker.empty_never" = "La liste des événements n’a pas encore été chargée. Connectez-vous à Internet, puis cliquez sur Actualiser.";
+"city.picker.empty_never" = "La liste des événements n’a pas encore été chargée. Cliquez sur Actualiser pour réessayer.";
 "city.picker.refresh" = "Actualiser";
 "city.picker.updated_format" = "Liste mise à jour : %@";
 "city.picker.never_updated" = "Liste des événements pas encore chargée";
@@ -1601,7 +1624,6 @@
 
 /* City: the archive section of a recording’s Share panel. */
 "city.share.title" = "Archives";
-"city.share.filed" = "Déposé aux archives";
 "city.share.filed_format" = "Déposé aux archives · %@";
 "city.share.fact.event" = "Événement";
 "city.share.fact.channel" = "Canal";
@@ -1615,8 +1637,8 @@
 "city.share.open" = "Ouvrir dans le navigateur";
 "city.share.withdraw" = "Retirer des archives…";
 "city.share.public_note" = "Ce qui est aux archives est public et y reste, contrairement au lien ci-dessous, qui expire au bout de 24 heures.";
-"city.share.queued" = "En attente de dépôt aux archives…";
-"city.share.queued_offline" = "Pas de réseau. Le dépôt aux archives se fera automatiquement au retour de la connexion.";
+"city.share.queued" = "En attente : le serveur de la ville était injoignable. Le dépôt sera retenté automatiquement ; vous pouvez aussi réessayer maintenant.";
+"city.share.queued_offline" = "Ce Mac n’est pas en ligne pour l’instant. Le dépôt aux archives se fera automatiquement dès qu’il le sera.";
 "city.share.retry_now" = "Réessayer maintenant";
 "city.share.failed_format" = "Non déposé : %@";
 "city.share.failed_safe" = "La transcription est toujours sur ce Mac : rien n’a été perdu.";
@@ -1630,14 +1652,17 @@
 "city.notice.ask_format" = "Enregistrement rattaché à « %@ », pas encore déposé.";
 "city.toast.failed" = "Dépôt aux archives impossible";
 "city.toast.failed_format" = "Dépôt aux archives impossible · %@";
-"city.toast.queued" = "En file d’attente : dépôt aux archives sous peu.";
-"city.toast.queued_offline" = "Pas de réseau. La transcription sera déposée aux archives automatiquement au retour de la connexion.";
+"city.toast.queued" = "Le serveur de la ville est injoignable pour l’instant. Le dépôt est en file d’attente et sera retenté automatiquement.";
+"city.toast.queued_offline" = "Ce Mac n’est pas en ligne. Le dépôt est en file d’attente et se fera automatiquement dès qu’il le sera.";
 "city.toast.withdrawn" = "Retiré des archives";
+"city.toast.update_failed" = "Impossible de mettre à jour les archives";
+"city.toast.withdraw_failed" = "Impossible de retirer des archives";
+"city.toast.move_failed" = "Événement inchangé : le dépôt précédent n’a pas pu être retiré";
 "city.bind.failed" = "Impossible de rattacher l’événement";
 
 /* City: errors. The keys are the stable codes the core reports; each says what to do next. */
-"city.error.offline" = "Ce Mac n’est pas connecté à Internet. Connectez-le, puis réessayez.";
-"city.error.server" = "Le serveur de la ville est injoignable pour l’instant. Réessayez dans un moment.";
+"city.error.offline" = "Impossible de joindre le serveur de la ville. Réessayez dans un instant ; si cela persiste, vérifiez votre réseau.";
+"city.error.server" = "Le serveur de la ville a répondu par une erreur. Réessayez dans un moment.";
 "city.error.bad_address" = "Cela ne ressemble pas à l’adresse d’une ville. Saisissez-la telle que la ville vous l’a donnée : le nom de domaine seul.";
 "city.error.no_city" = "Aucune ville trouvée à cette adresse. Vérifiez qu’il n’y a pas de faute de frappe.";
 "city.error.bad_key" = "Cette clé de récupération n’est pas la bonne. Comparez-la à celle que vous avez conservée et saisissez-la de nouveau : chaque caractère compte.";
@@ -1646,6 +1671,7 @@
 "city.error.unbound" = "Cet enregistrement n’est rattaché à aucun événement. Choisissez d’abord un événement, puis déposez-le.";
 "city.error.not_allowed" = "Cet événement n’accepte que les documents de ses organisateurs et secrétaires. Demandez à un organisateur de vous ajouter aux « Secrétaires » de l’événement, puis réessayez.";
 "city.error.not_allowed_named_format" = "Cet événement n’accepte que les documents de ses organisateurs et secrétaires. Demandez à un organisateur de vous ajouter (%@) aux « Secrétaires » de l’événement, puis réessayez.";
+"city.error.event_gone" = "Cet événement a été supprimé ou annulé dans la ville. Choisissez-en un autre, puis déposez de nouveau.";
 "city.error.no_transcript" = "Cet enregistrement n’a pas encore de transcription. Une fois la transcription terminée, ouvrez « Partager… » pour cet enregistrement et réessayez.";
 "city.error.refused" = "La ville n’a pas accepté cette transcription. Réessayez une fois ; en cas de nouveau refus, indiquez l’événement à un coordinateur de la ville.";
 "city.error.busy" = "Cet enregistrement est déjà en cours de dépôt. Attendez la fin, puis réessayez.";
