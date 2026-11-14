@@ -1,96 +1,84 @@
-# ZuTalk 0.8.2
+# ZuTalk 0.8.3
 
-Recording is simpler to start, to follow and to finish: one button on Home,
-one sentence of status while you record, and a card that tells you the
-recording was saved and what you can do with it. The tools for hosting an
-event stay out of the way until you say you are hosting one.
+Every screen was gone through with one rule: a control says what it is in a
+word and shows its current value, and nothing asks to be read before it can
+be used. Filing to a city's archive changes too: marks are no longer filed,
+and a recording's audio can be.
 
 ZuTalk requires macOS 12.5 or later.
 
+## Filing to a city's archive
+
+- **Audio can be filed, and is by default.** When a recording is filed to a
+  city event, its audio now goes with the transcript, so the archive page
+  plays it. Turn it off for everything in Settings › Account › Archive, or
+  for one recording from the event control on Home, from the recording bar
+  while you record, or from the recording's Share sheet afterwards. A
+  recording filed before this version gets its audio only when you choose
+  Add audio.
+- **What that means.** Filed audio is public to anyone with the page, and
+  nothing in ZuTalk or on the city's page can delete it today: withdrawing a
+  recording takes it off the archive page, and the text and audio already
+  filed stay in the city's records. The city's hosts can also have it
+  transcribed again from that audio. Share links, sync between your Macs and
+  handing a transcript to a nearby Mac still never carry audio.
+- **Marks are no longer filed.** The option is gone. Marks filed by earlier
+  versions stay in the city's records.
+- **Audio has its own status.** A recording shows whether its audio is being
+  sent, was filed, is waiting, or was not accepted; text that was filed is
+  never reported as failed because its audio was not.
+- **Deleting a recording's audio says what it does.** If that audio was
+  already filed, the question now adds that the copy in the city stays.
+
 ## Starting a recording
 
-- **Home is where you record.** Start Recording is no longer a page of its
-  own. Home opens with one button and, under it, one sentence saying how the
-  recording will be made: the languages and where the sound comes from.
-  Change opens the options in place. Your recordings are listed below, by
-  date.
-- **Languages are two questions:** what is spoken, and what else to
-  translate into.
-- **"System audio" is now "Sound from this Mac".**
-- **Topics are optional.** A recording that is in no topic is simply a
-  recording. Topics appears in the sidebar once you have made one, and you
-  can make one while choosing where a recording goes.
-- **"I'm hosting an event."** A switch in the options. With it on, the
-  recording bar offers Show captions to the audience, and Home shows which
-  city event the transcript will be filed under. With it off, neither is in
-  your way; showing captions to the audience is still in the recording
-  bar's ⋯ menu. It starts on if you are signed in to a city.
-- **Nothing is filed to a city unless you saw where it was going.** The
-  event is confirmed only when its row is on screen as you press Start.
+- **The settings are on the card.** Under Start Recording, each language is
+  a pill you remove with × and add with +. A second row holds the sound
+  source, live text, the topic and hosting; a third row appears while you
+  host, with the event. There is nothing to expand, and no sentences to
+  read; what a control does is in its tooltip.
+- **Import** sits at the end of the first row.
 
-## While you record
+## The same treatment everywhere
 
-- **One sentence beside the clock.** "Recording" when all is well; when the
-  text needs a look it says so, starting with the fact that the recording
-  itself is fine: "Recording · text is a little behind", "Recording · some
-  text stopped", "Recording · offline, no text for now". The same sentence
-  is used in the menu bar and the caption window. Details are in its
-  tooltip.
-- **Four controls:** Mark, Pause, Stop and a ⋯ menu with the caption
-  window, the reading layout, Copy text and Show captions to the audience.
-- **The bar keeps its labels whenever they fit.** It used to switch to
-  icons below a fixed window width, which was too early in Chinese and too
-  late in German or French; it now measures itself.
-- **The page shows the transcript and nothing else.** The engine and model
-  names, the line about frozen settings and the second copy of the status
-  are gone from it. Engine names and connection facts are under
-  Settings › Advanced › Diagnostics. The marks rail appears once you have
-  marked something.
-- **The menu bar speaks your language.** A few labels were always in
-  English, and "Open topic" opened the recording; it now says so.
+- **Recordings list.** A row is a name, its languages and its topic, with at
+  most one status. Filters shorten long topic names and fold the rest into
+  one menu.
+- **After Stop.** The card is a title and one row: Copy, Export, Share,
+  Refine, and the archive status.
+- **A recording.** A pill shows which version you are reading. The ⋯ menu is
+  short words: Copy, Share, Export · Rename, Topic, Details · Delete audio,
+  Delete. Details are three groups of plain rows.
+- **Topics.** A topic's options are four rows: languages (the same pills as
+  on Home), sound, terms and background, audio. Topics, Trash, terms and
+  collaboration lost their paragraphs.
+- **A transcript's two versions** are called the live version and the
+  refined transcript everywhere; in Chinese the live one is now 现场稿.
+- **Showing captions and sharing.** The panels show the code, the link and
+  the actions, with three facts in a line — no audio, end-to-end encrypted,
+  how long it is kept — and the details behind an ⓘ.
+- **Caption window.** Hovering shows the status, the recording controls,
+  the layout switch and the text size; the rest is in one ⋯ menu.
+- **Settings and first launch.** Rows are a name and a control. Account is
+  four groups: Identity, Live text, Devices, Archive. Each first-launch step
+  is a title and its control.
+- **Explanations moved, none were dropped.** What used to sit under a
+  control is in its tooltip; anything you need to know before something
+  leaves this Mac or cannot be undone is behind an ⓘ beside the control or
+  in the confirmation.
 
-## After you stop
+## Fixes
 
-- **You land on the recording, with a card on top:** it was saved, how long
-  it is, and Copy all text, Export and Share link. If you were writing that
-  recording's notes you are left where you are, and a short message says it
-  was saved.
-- **Copy all text copies the version you are reading.** When a recording
-  had both a live and a refined transcript, it used to copy the live one.
-- **Refining has one name.** Transcribing the whole audio again was called
-  eight different things. It is Refine, and its result is the refined
-  transcript, which is what you see when a recording has one. A button at
-  the end of the tab bar shows the live version.
-- **The recording's ⋯ menu has what you look for there:** Rename, Add to
-  topic, Delete audio and keep the text, and Delete this recording.
-- **A recording's details show that recording only.** The settings for the
-  next recording are on Home and in each topic's options.
+- Sentences that said audio never leaves this Mac, or only stays on the Mac
+  that recorded it, now say exactly what they cover: links, sync and
+  nearby hand-off carry no audio. One status word in Chinese that read as
+  "confiscated" was replaced.
 
-## Settings and first launch
+- The topic page's Start Recording button no longer looks like a recording
+  in progress.
+- The caption window's layout switch no longer stretches its hover bar.
 
-- **Three sections: Account, General, Advanced.**
-- **Account** is where you sign in with your Zu identity (the city sign-in
-  introduced in 0.8.0), see what is powering live text, enter an invite
-  code, link your own Macs, and manage what you filed to a city's archive.
-  The sidebar shows who is signed in.
-- **Advanced** holds your own Soniox and DeepSeek keys, the links you are
-  sharing, backup and restore, and diagnostics.
-- **First launch asks for an invite code** instead of a Soniox key. Using
-  your own key, or skipping and recording audio only, are one click below.
-  "Open System Settings" now opens the Microphone privacy pane.
-
-## Words
-
-- One name for each thing, in all eight languages: transcript, refine,
-  live text, caption window, show captions to the audience, share (send to
-  someone) and collaborate (work on a topic together), trash.
-- **Korean was gone through from top to bottom.** About a third of its
-  strings were corrected: wrong senses (Resume read as a CV, Export as
-  export trade, Quit named the app wrongly), mixed levels of politeness,
-  and several words for one thing.
-- Language suggestions no longer show a two-letter code after the name.
-
-Signing in does not provide transcription yet: live text still needs an
-invite code or your own key. The caption window's own hover controls are
-unchanged. Wording in languages other than Chinese and English was written
-without review by native speakers; tell us where it reads wrong.
+Nothing in this version was clicked through in a running app before
+release; it was checked with tests and rendered screens. Wording in
+languages other than Chinese and English was written and reviewed by
+models, not by native speakers.
