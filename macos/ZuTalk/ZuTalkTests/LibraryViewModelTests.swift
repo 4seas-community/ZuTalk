@@ -224,7 +224,9 @@ final class LibraryViewModelTests: XCTestCase {
         XCTAssertFalse(record.contains("CaptureLanguageEditor("))
         XCTAssertFalse(record.contains("AudioInputPicker("))
         XCTAssertFalse(record.contains("Picker("))
-        XCTAssertTrue(record.contains("commands.setRealtimeCaptionsEnabled("))
+        // Live text is not chosen here: the card has no switch for it.
+        XCTAssertFalse(record.contains("setRealtimeCaptionsEnabled"))
+        XCTAssertFalse(record.contains("TogglePill(\n                        isOn: state"))
         XCTAssertTrue(record.contains("hostMode.set("))
         // Where the transcript will be filed is confirmed per recording: the
         // event pill sits in the strip, and nothing is confirmed when it is
@@ -2090,7 +2092,9 @@ final class HomeStartTests: XCTestCase {
             "home.options.live_text_needs_setup",
             "home.options.live_text_invite_format",
             "home.card.live_text_disclosure",
-            "network.offline.record_hint",
+            "home.card.offline_hint",
+            "network.offline.short",
+            "network.offline.audio_only_start",
             "home.options.topic",
             "home.options.topic_detail",
             "home.options.hosting_detail",
@@ -2215,7 +2219,7 @@ final class HomeStartTests: XCTestCase {
             ("permission.microphone.name", "麦克风", "Microphone"),
             ("home.card.sound_from_mac", "电脑里的声音", "This Mac’s sound"),
             ("onboarding.step.live_text", "出字", "Live text"),
-            ("captions_choice.off", "只录音", "Audio only"),
+            ("network.offline.short", "没有网络", "No network"),
             ("sidebar.notebook", "主题", "Topic"),
             ("home.options.topic.none", "不放", "None"),
             ("home.options.topic.new", "新建主题…", "New topic…"),
@@ -2249,39 +2253,50 @@ final class HomeStartTests: XCTestCase {
         }
     }
 
-    func testTheLiveTextPillSaysWhichWayItIsSet() {
-        // On: the word for live text, tinted.
-        let on = StartCardLiveText.resolve(enabled: true, available: true, offline: false)
-        XCTAssertEqual(on, .on)
-        XCTAssertEqual(on.labelKey, "onboarding.step.live_text")
-        XCTAssertEqual(on.systemImage, "captions.bubble.fill")
-        XCTAssertEqual(on.tone, .on)
+    /// Live text is not a control on the card. With a key or an invite and
+    /// a network there is nothing to say; only the two cases a person has to
+    /// know about before recording show anything.
+    func testLiveTextShowsOnlyWhenItCannotBeProduced() {
+        // It will just work: nothing in the slot.
+        let ready = StartCardLiveText.resolve(available: true, offline: false)
+        XCTAssertEqual(ready, .ready)
+        XCTAssertNil(ready.labelKey)
+        XCTAssertNil(ready.helpKey)
 
-        // Off: a different word, not "live text, off".
-        let off = StartCardLiveText.resolve(enabled: false, available: true, offline: false)
-        XCTAssertEqual(off, .off)
-        XCTAssertEqual(off.labelKey, "captions_choice.off")
-        XCTAssertEqual(off.tone, .normal)
-        // Not a microphone: the sound may be coming from the Mac itself.
-        XCTAssertFalse(off.systemImage.hasPrefix("mic"))
-
-        // On while offline: still on, with the sign that says why no text.
-        let offline = StartCardLiveText.resolve(enabled: true, available: true, offline: true)
-        XCTAssertEqual(offline, .onOffline)
-        XCTAssertEqual(offline.labelKey, on.labelKey)
+        // Able to, but offline: a status — the sign and one word — and the
+        // sentence behind it.
+        let offline = StartCardLiveText.resolve(available: true, offline: true)
+        XCTAssertEqual(offline, .offline)
+        XCTAssertEqual(offline.labelKey, "network.offline.short")
         XCTAssertEqual(offline.systemImage, "wifi.slash")
-        XCTAssertEqual(offline.tone, .on)
-        // Off is off whether or not there is a network.
-        XCTAssertEqual(StartCardLiveText.resolve(enabled: false, available: true, offline: true), .off)
+        XCTAssertEqual(offline.helpKey, "home.card.offline_hint")
 
-        // Nothing to produce text with: the same word, dimmed, whatever the
-        // saved choice — there is nothing to switch.
-        for enabled in [true, false] {
-            let missing = StartCardLiveText.resolve(enabled: enabled, available: false, offline: false)
+        // Nothing to produce text with: the word for live text, as a pill
+        // that leads to where it is set up — online or not.
+        for isOffline in [true, false] {
+            let missing = StartCardLiveText.resolve(available: false, offline: isOffline)
             XCTAssertEqual(missing, .needsSetup)
-            XCTAssertEqual(missing.labelKey, on.labelKey)
-            XCTAssertEqual(missing.tone, .dimmed)
+            XCTAssertEqual(missing.labelKey, "onboarding.step.live_text")
+            XCTAssertEqual(missing.helpKey, "home.options.live_text_needs_setup")
         }
+    }
+
+    func testTheNoticeIsAPillOnlyWhenSetupIsNeeded() throws {
+        let notice = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("ZuTalk/Pages/LiveTextNotice.swift"),
+            encoding: .utf8
+        )
+        XCTAssertTrue(notice.contains("case .ready:\n            EmptyView()"))
+        XCTAssertTrue(notice.contains("case .offline:\n            StatusWord("))
+        XCTAssertTrue(notice.contains("case .needsSetup:\n            ActionPill("))
+        XCTAssertTrue(notice.contains("mark: .warning"))
+        XCTAssertTrue(notice.contains("MainNavigationStore.shared.openSettings(section: .account)"))
+        // No switch and no ⓘ: there is nothing to choose here.
+        XCTAssertFalse(notice.contains("TogglePill("))
+        XCTAssertFalse(notice.contains("InfoButton("))
     }
 
     func testTheSoundPillNamesTheSourceInAWord() {
@@ -2597,7 +2612,7 @@ final class HomeStartTests: XCTestCase {
         }
 
         let card = try source("Pages/HomeStartCard.swift")
-        for used in ["TogglePill(", "MenuPill(", "ActionPill(", "InfoButton(", "PillStrip {"] {
+        for used in ["TogglePill(", "MenuPill(", "ActionPill(", "PillStrip {"] {
             XCTAssertTrue(card.contains(used), "the card should use \(used)")
         }
         // No pill of its own, and no measurements of its own.
@@ -2619,13 +2634,20 @@ final class HomeStartTests: XCTestCase {
 
         // The sentence about how this recording will be made is the Start
         // button's tooltip and hint, not text under it.
-        XCTAssertTrue(card.contains(".help(sentence + "))
-        XCTAssertTrue(card.contains(".accessibilityHint(Text(sentence))"))
+        XCTAssertTrue(card.contains(".help(explanation + "))
+        XCTAssertTrue(card.contains(".accessibilityHint(Text(explanation))"))
         XCTAssertFalse(card.contains("home.start.plan"))
-        // Where the audio goes is a disclosure: it names the service, and it
-        // is one click away in the ⓘ beside the pill, not only a tooltip.
-        XCTAssertTrue(card.contains("lines.append(String(localized: \"home.card.live_text_disclosure\"))"))
-        XCTAssertTrue(card.contains("InfoButton(explanation, accessibilityLabel: name)"))
+        // Where the audio goes is a disclosure: it names the service. With
+        // live text no longer a control, it is said with that sentence by
+        // the Start button, and behind the ⓘ where live text is set up.
+        XCTAssertTrue(card.contains("+ LiveTextStartHint.lines(liveText: liveText, invite: invite))"))
+        XCTAssertTrue(try source("Pages/LiveTextNotice.swift").contains(
+            "var lines = [String(localized: \"home.card.live_text_disclosure\")]"
+        ))
+        XCTAssertTrue(try source("Settings/AccountSettingsSection.swift").contains(
+            "info: String(localized: \"home.card.live_text_disclosure\")"
+        ))
+        XCTAssertFalse(card.contains("InfoButton("))
         for language in AppLanguage.allCases {
             let disclosure = try XCTUnwrap(try strings(language.rawValue)["home.card.live_text_disclosure"])
             XCTAssertTrue(disclosure.contains("Soniox"), "\(language.rawValue): \(disclosure)")
@@ -3094,17 +3116,18 @@ final class HomeCatalogTests: XCTestCase {
         let card = try source("Pages/HomeStartCard.swift")
         let languageRow = try XCTUnwrap(card.range(of: "private var languageStrip: some View"))
         let optionRow = try XCTUnwrap(card.range(of: "private var optionStrip: some View"))
-        let liveText = try XCTUnwrap(card.range(of: "private var liveTextPill: some View"))
+        let afterOptions = try XCTUnwrap(card.range(of: "private var topicPill: some View"))
         let first = card[languageRow.lowerBound..<optionRow.lowerBound]
-        let second = card[optionRow.lowerBound..<liveText.lowerBound]
+        let second = card[optionRow.lowerBound..<afterOptions.lowerBound]
 
         XCTAssertTrue(first.contains("CaptureLanguagePills(editor: editor)"))
         XCTAssertTrue(first.contains("importPill"))
         // The second row holds only pills whose words are ours, plus names
         // that give way — so it fits the narrowest window.
-        for pill in ["AudioInputPill(", "liveTextPill", "topicPill", "hostingPill"] {
+        for pill in ["AudioInputPill(", "LiveTextNotice(", "topicPill", "hostingPill"] {
             XCTAssertTrue(second.contains(pill), pill)
         }
+        XCTAssertFalse(card.contains("liveTextPill"), "live text is not a control on the card")
         XCTAssertFalse(second.contains("importPill"))
         XCTAssertFalse(second.contains("StartCardHostingPills("))
         XCTAssertFalse(second.contains("CityDestinationPill("))

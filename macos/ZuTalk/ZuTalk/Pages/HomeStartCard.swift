@@ -8,12 +8,19 @@
 // 现在这张卡不藏东西,也不写句子(docs/product/interface-layers.md「界面怎么
 // 写」)。按钮下面是几排胶囊(`DesignSystem/Primitives/Pills.swift`),每一颗就是
 // 一个控件,上面写着它此刻的值,一个词:第一排是语言,直接增删,末尾是「导入」;
-// 第二排是声音、出不出字、主题、主持活动;在主持的时候才有第三排,放这一场归到
-// 哪场活动(没登录就是「登录」)。主持的东西单占一排,第二排的宽度就不随它变,
-// 窗口最窄的时候每一颗也都在眼前,不用横着滚。原来那些句子一句没丢:邀请码还能
-// 录多久、主持活动多出什么、为什么是这场活动,在悬停提示和无障碍提示里;必须让
-// 人读得到的两处告知 —— 出字时音频会发到哪里、这场会交什么到档案馆 —— 在各自
-// 那颗胶囊旁边的 ⓘ 里。整场会怎么录的那一句,成了开始按钮的提示。
+// 第二排是声音、主题、主持活动;在主持的时候才有第三排,放这一场归到哪场活动
+// (没登录就是「登录」)。主持的东西单占一排,第二排的宽度就不随它变,窗口最窄的
+// 时候每一颗也都在眼前,不用横着滚。
+//
+// 出不出字不在这张卡上选(0.8.4,负责人的原话:「默认录音就是出字，不需要有
+// 这个可配置的。」):有邀请码或自己的密钥就出字。只有出不了字的时候,声音那一颗
+// 后面才多出一样 —— 还没设置,是一颗去设置的胶囊;没联网,是一个状态
+// (`LiveTextNotice`)。
+//
+// 原来那些句子一句没丢:整场会怎么录、出字时音频会发到哪里(这是告知,设置 ›
+// 账号「出字」旁的 ⓘ 里也有)、邀请码还能录多久,在开始按钮的提示里;主持活动
+// 多出什么、为什么是这场活动,在各自胶囊的提示里;这场会交什么到档案馆,在活动
+// 那颗胶囊旁边的 ⓘ 里。
 //
 // 菜单栏与 ⌃⌥R 是窗口外的两个快捷方式,用的是这里最后一次的选择(没放进主题的
 // 那一份语言设置)。录音进行中,这张卡换成「正在录音 → 回到这场录音」,不出现
@@ -94,7 +101,6 @@ struct HomeStartCard: View {
     @ObservedObject private var invite = CommunityInviteSession.shared
     @ObservedObject private var credentials = ProviderCredentialSession.shared
     @ObservedObject private var inputDevices = AudioInputDeviceStore.shared
-    @ObservedObject private var network = NetworkReachability.shared
     @ObservedObject private var hostMode: HostMode
     /// The topic this recording goes into; nil is none, and it can be put in
     /// one at any time afterwards.
@@ -106,19 +112,26 @@ struct HomeStartCard: View {
     @State private var editor: NotebookCaptureProfileEditorModel?
     @State private var isCreatingTopic = false
 
-    /// The two switches the card throws both save what the person chose. The
-    /// app passes neither and gets its own; a test passes ones that keep the
-    /// choice to themselves, so showing a state never changes a real setting.
+    /// A live-text state to draw instead of the real one.
+    private let shownLiveText: StartCardLiveText?
+
+    /// The hosting switch saves what the person chose, and whether there is
+    /// live text follows a key or an invite. The app passes none of these
+    /// and gets its own; a test passes a switch that keeps the choice to
+    /// itself and the state to draw, so showing a state never changes a real
+    /// setting.
     init(
         library: LibraryViewModel,
         startsOnReturn: Bool = true,
         hostMode: HostMode? = nil,
-        commands: CaptureCommandCenter? = nil
+        commands: CaptureCommandCenter? = nil,
+        shownLiveText: StartCardLiveText? = nil
     ) {
         _library = ObservedObject(wrappedValue: library)
         self.startsOnReturn = startsOnReturn
         _hostMode = ObservedObject(wrappedValue: hostMode ?? .shared)
         _commands = ObservedObject(wrappedValue: commands ?? .shared)
+        self.shownLiveText = shownLiveText
     }
 
     private var notebookId: String? { topicId ?? library.quickCaptureNotebookId }
@@ -201,11 +214,19 @@ struct HomeStartCard: View {
         .accessibilityIdentifier("home.start")
     }
 
+    /// Whether the next recording will have live text. Read through the
+    /// invite and the key store this card observes, so it is current.
+    private var liveText: Bool {
+        let _ = credentials.statusRevision
+        if let shownLiveText { return shownLiveText != .needsSetup }
+        return commands.nextRecordingUsesCaptions
+    }
+
     private func controls(draft: NotebookCaptureProfileDTO?) -> some View {
-        let liveText = commands.nextRecordingUsesCaptions
+        let liveText = self.liveText
         let languages = draft?.selectedLanguages ?? []
         return VStack(alignment: .leading, spacing: Spacing.xsm) {
-            startButton(sentence: planSentence(draft: draft))
+            startButton(explanation: startExplanation(draft: draft, liveText: liveText))
 
             languageStrip
 
@@ -227,7 +248,16 @@ struct HomeStartCard: View {
         }
     }
 
-    private func startButton(sentence: String) -> some View {
+    /// What the Start button says to whoever asks: how this recording will
+    /// be made, then — when it will have live text — where the audio goes
+    /// and how long the invite lasts.
+    private func startExplanation(draft: NotebookCaptureProfileDTO?, liveText: Bool) -> String {
+        ([planSentence(draft: draft, liveText: liveText)]
+            + LiveTextStartHint.lines(liveText: liveText, invite: invite))
+            .joined(separator: "\n")
+    }
+
+    private func startButton(explanation: String) -> some View {
         Button(action: start) {
             Label(
                 String(localized: commands.isStarting ? "home.record.starting" : "home.record.start"),
@@ -239,14 +269,15 @@ struct HomeStartCard: View {
         .buttonStyle(StartRecordingButtonStyle())
         .disabled(commands.isStarting || notebookId == nil)
         .keyboardShortcut(startsOnReturn ? .defaultAction : nil)
-        // How this recording will be made, in one sentence — said to whoever
-        // asks (hover, VoiceOver) instead of being printed under the button.
-        .help(sentence + "\n" + String(localized: "record.page.shortcut_hint"))
-        .accessibilityHint(Text(sentence))
+        // How this recording will be made, and that its audio is sent away
+        // to be written down — said to whoever asks (hover, VoiceOver)
+        // instead of being printed under the button.
+        .help(explanation + "\n" + String(localized: "record.page.shortcut_hint"))
+        .accessibilityHint(Text(explanation))
         .accessibilityIdentifier("record.page.start")
     }
 
-    private func planSentence(draft: NotebookCaptureProfileDTO?) -> String {
+    private func planSentence(draft: NotebookCaptureProfileDTO?, liveText: Bool) -> String {
         let languages = draft.map {
             RecordingPlanSentence.languages(
                 selected: $0.selectedLanguages,
@@ -258,13 +289,13 @@ struct HomeStartCard: View {
             spoken: languages?.spoken ?? [],
             translatedInto: languages?.translatedInto ?? [],
             source: planSource,
-            liveText: commands.nextRecordingUsesCaptions,
+            liveText: liveText,
             topic: topicTitle
         ))
     }
 
     /// Invite time is shared between the connections a recording opens, so
-    /// "about this long left" — in the live-text pill's tooltip and in the
+    /// "about this long left" — in the Start button's tooltip and in the
     /// sidebar — is only right for the languages chosen now. A topic's
     /// toolbar reports the same number.
     private func publishPlannedLaneCount(draft: NotebookCaptureProfileDTO?, liveText: Bool) {
@@ -309,11 +340,13 @@ struct HomeStartCard: View {
         }
     }
 
-    // MARK: 第二排:声音、出字、主题、主持活动
+    // MARK: 第二排:声音、主题、主持活动
 
-    /// How this recording is made. Four pills whose words are ours, so the
+    /// How this recording is made. Three pills whose words are ours, so the
     /// row fits the narrowest window in every language; a topic's or a
-    /// device's name gives way before it would scroll.
+    /// device's name gives way before it would scroll. Live text is not one
+    /// of them: after the sound pill there is something only when text
+    /// cannot be produced (`LiveTextNotice`).
     private var optionStrip: some View {
         PillStrip {
             // 会议录音还是麦克风录音,开始之前就定:线上会议里对方的声音
@@ -322,99 +355,10 @@ struct HomeStartCard: View {
                 AudioInputPill(notebookId: notebookId, source: planSource)
                     .accessibilityIdentifier("record.page.input")
             }
-            liveTextPill
+            LiveTextNotice(commands: commands, shown: shownLiveText)
             topicPill
             hostingPill
         }
-    }
-
-    /// Text while recording means the audio leaves this Mac. The pill shows
-    /// which way it is set, and the ⓘ beside it says where the audio goes —
-    /// a disclosure, so it stays one click away rather than in a tooltip
-    /// alone. With nothing to produce text there is nothing to switch, and
-    /// the pill leads to where an invite code or a key is added.
-    private var liveTextPill: some View {
-        let state = StartCardLiveText.resolve(
-            enabled: commands.realtimeCaptionsEnabled,
-            available: commands.realtimeCredentialAvailable,
-            offline: network.isOffline
-        )
-        let name = String(localized: "home.options.live_text")
-        let explanation = liveTextExplanation(state)
-        return HStack(spacing: 2) {
-            Group {
-                if state == .needsSetup {
-                    ActionPill(
-                        state.title,
-                        systemImage: state.systemImage,
-                        tone: state.tone,
-                        mark: .warning,
-                        help: explanation,
-                        accessibilityLabel: name,
-                        accessibilityValue: state.title
-                    ) {
-                        MainNavigationStore.shared.openSettings(section: .account)
-                    }
-                } else {
-                    TogglePill(
-                        isOn: state != .off,
-                        on: .init(
-                            StartCardLiveText.on.title,
-                            systemImage: state == .onOffline
-                                ? StartCardLiveText.onOffline.systemImage
-                                : StartCardLiveText.on.systemImage
-                        ),
-                        off: .init(
-                            StartCardLiveText.off.title,
-                            systemImage: StartCardLiveText.off.systemImage
-                        ),
-                        iconTint: state == .onOffline ? .signalAmber : nil,
-                        help: explanation,
-                        accessibilityLabel: name
-                    ) {
-                        commands.setRealtimeCaptionsEnabled(!commands.realtimeCaptionsEnabled)
-                    }
-                }
-            }
-            .accessibilityIdentifier("home.options.live-text")
-
-            if state != .needsSetup {
-                InfoButton(explanation, accessibilityLabel: name)
-                    .accessibilityIdentifier("home.options.live-text.info")
-            }
-        }
-    }
-
-    private func liveTextExplanation(_ state: StartCardLiveText) -> String {
-        guard state != .needsSetup else {
-            return String(localized: "home.options.live_text_needs_setup")
-        }
-        var lines: [String] = []
-        if state == .onOffline {
-            lines.append(String(localized: "network.offline.record_hint"))
-        }
-        // Where the audio goes, by name: this is the disclosure.
-        lines.append(String(localized: "home.card.live_text_disclosure"))
-        // An invite is spent by the hour: how long it lasts is said where
-        // the time is about to be used.
-        if state != .off, let inviteTime = inviteTimeLeft {
-            lines.append(String(
-                format: String(localized: "home.options.live_text_invite_format"),
-                inviteTime
-            ))
-        }
-        return lines.joined(separator: "\n")
-    }
-
-    private var inviteTimeLeft: String? {
-        guard invite.isEnabled, invite.isActive, let remaining = invite.remainingSeconds else {
-            return nil
-        }
-        let recordable = CommunityInviteSession.wallClockRecordableSeconds(
-            remainingSeconds: remaining,
-            laneCount: invite.plannedLaneCount
-        )
-        return RecordingPresentation.duration(ms: UInt64(max(recordable, 0)) * 1_000)
     }
 
     private var topicPill: some View {
@@ -612,52 +556,6 @@ private struct StartCardHostingPills: View {
 }
 
 // MARK: - 胶囊上写什么
-
-/// What the live-text pill shows. `labelKey` is a string key, so the rule can
-/// be checked without caring which language the test machine speaks.
-nonisolated enum StartCardLiveText: Equatable, Sendable {
-    /// Text will appear while recording.
-    case on
-    /// On, but this Mac is offline: nothing appears until it is back.
-    case onOffline
-    /// The person chose a recording of the sound alone.
-    case off
-    /// Nothing to produce text with yet: no invite code, no key.
-    case needsSetup
-
-    static func resolve(enabled: Bool, available: Bool, offline: Bool) -> StartCardLiveText {
-        guard available else { return .needsSetup }
-        guard enabled else { return .off }
-        return offline ? .onOffline : .on
-    }
-
-    var labelKey: String {
-        self == .off ? "captions_choice.off" : "onboarding.step.live_text"
-    }
-
-    var systemImage: String {
-        switch self {
-        case .on: return "captions.bubble.fill"
-        case .onOffline: return "wifi.slash"
-        // Not a microphone: the sound pill beside it may well say the sound
-        // comes from the Mac itself.
-        case .off: return "waveform"
-        case .needsSetup: return "captions.bubble"
-        }
-    }
-
-    var tone: PillTone {
-        switch self {
-        case .on, .onOffline: return .on
-        case .off: return .normal
-        case .needsSetup: return .dimmed
-        }
-    }
-
-    var title: String {
-        String(localized: String.LocalizationValue(labelKey))
-    }
-}
 
 /// What the sound pill shows for each source.
 nonisolated enum StartCardSound: Equatable, Sendable {

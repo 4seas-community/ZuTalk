@@ -1353,8 +1353,6 @@
 
 /* No network: said plainly instead of blaming a service. */
 "community_invite.offline" = "Este Mac no está conectado a internet y no puede llegar al servicio de invitaciones. Conéctate e inténtalo de nuevo.";
-"network.offline.captions_start" = "Este Mac no está conectado a internet, así que el texto en vivo no puede empezar. Conéctate primero o desactiva el texto en vivo para grabar sin él.";
-"network.offline.record_hint" = "Este Mac está sin conexión. El texto en vivo necesita internet; desactívalo para grabar sin él.";
 "network.offline.short" = "Sin red";
 "network.offline.recording_banner" = "Este Mac está sin conexión. La grabación continúa y el texto en vivo se reanudará solo cuando vuelva la conexión; el tramo sin conexión puede quedar sin texto.";
 
@@ -1802,10 +1800,6 @@
 "recording.details.files" = "Archivos";
 "recording.details.info" = "Información";
 "recording.details.setup" = "Configuración";
-"recording.city.waiting" = "En espera";
-"recording.city.filed" = "Enviado";
-"recording.city.changed" = "Desactualizado";
-"recording.city.event_gone" = "Evento eliminado";
 "recording.marks.empty_live" = "Pulsa ⌃⌥S cuando algo importe.";
 /* 0.8.3 city */
 "city.word.chosen" = "Elegido";
@@ -1870,3 +1864,10 @@
 
 /* 0.8.3 integration */
 "resources.audio.destroy.confirm_filed" = "La copia ya enviada al archivo de la ciudad sigue allí; no se puede eliminar desde aquí.";
+
+/* 0.8.4 */
+"city.filing.action" = "Enviar a un evento";
+"city.filing.open_hint" = "Abre el panel Archivo de esta grabación";
+"city.filing.public_note" = "Lo que está en el archivo es público y permanece allí.";
+"home.card.offline_hint" = "Este Mac está sin conexión. Puedes grabar igualmente; el texto necesita internet.";
+"network.offline.audio_only_start" = "Este Mac está sin conexión: esta grabación será solo audio.";

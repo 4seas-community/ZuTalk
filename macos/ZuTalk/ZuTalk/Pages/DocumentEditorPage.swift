@@ -267,6 +267,7 @@ struct DocumentEditorPage: View {
                     onCopyAll: copyWholeTranscript,
                     onExport: exportRecording,
                     onShare: shareRecordingAction,
+                    onFile: fileRecordingAction,
                     onRename: { isRenamingRecording = true },
                     onFileIntoTopic: {
                         topicsForFiling = LibraryCommands.topicsForFiling(
@@ -322,6 +323,7 @@ struct DocumentEditorPage: View {
                     onCopy: copyWholeTranscript,
                     onExport: exportRecording,
                     onShare: shareRecordingAction,
+                    onFile: fileRecordingAction,
                     onRefineStarted: refineDidStart,
                     onShowRefined: showRefinedTranscript
                 )
@@ -702,6 +704,17 @@ struct DocumentEditorPage: View {
         if capture.isCaptureActive, capture.sessionId == sessionId { return nil }
         let label = navigation.editorBreadcrumb?.recording?.label ?? ""
         return { ShareActivityStore.shared.presentRecordingShare(sessionId: sessionId, title: label) }
+    }
+
+    /// Filing a finished recording to a city event: the card's pill, the
+    /// tab bar's, and ⋯ all open the one archive sheet. Nil while the
+    /// recording is still being made.
+    private var fileRecordingAction: (() -> Void)? {
+        guard let sessionId = effectiveSessionId else { return nil }
+        let capture = ActiveBilingualTranscriptStore.shared
+        if capture.isCaptureActive, capture.sessionId == sessionId { return nil }
+        let label = navigation.editorBreadcrumb?.recording?.label ?? ""
+        return { ShareActivityStore.shared.presentCityFiling(sessionId: sessionId, title: label) }
     }
 
     private var effectiveSessionId: String? {
@@ -1180,10 +1193,13 @@ private struct RecordingResultCardHost: View {
     let onCopy: () -> Void
     let onExport: () -> Void
     let onShare: (() -> Void)?
+    /// Opens the archive sheet for this recording.
+    let onFile: (() -> Void)?
     let onRefineStarted: (_ hadText: Bool) -> Void
     let onShowRefined: () -> Void
 
     @ObservedObject private var commands = CaptureCommandCenter.shared
+    @ObservedObject private var hostMode = HostMode.shared
     // Observed for statusRevision, so the refine row follows a key saved or
     // removed in Settings.
     @ObservedObject private var providerCredentials = ProviderCredentialSession.shared
@@ -1209,6 +1225,7 @@ private struct RecordingResultCardHost: View {
                     onCopy: onCopy,
                     onExport: onExport,
                     onShare: { onShare?() },
+                    onFile: { onFile?() },
                     onRefine: { requestRefine(finished) },
                     onOpenSettings: {
                         MainNavigationStore.shared.openSettings(section: .account)
@@ -1251,7 +1268,15 @@ private struct RecordingResultCardHost: View {
                 offline: city.offline,
                 signer: city.account?.personName
             ),
-            cityEventTitle: city.filings[finished.sessionId]?.eventTitle
+            cityEventTitle: city.filings[finished.sessionId]?.eventTitle,
+            offersFiling: onFile != nil && CityFilingEntry.resolve(
+                place: .surface,
+                signedIn: city.account != nil,
+                hostingOn: hostMode.isOn,
+                hasFiling: city.filings[finished.sessionId] != nil
+                    || city.busySessions.contains(finished.sessionId),
+                isRecording: false
+            ) == .action
         )
     }
 
@@ -1342,6 +1367,10 @@ struct DocumentTabBar: View {
     /// Nil while the recording is still being recorded: that one is shared
     /// live from the recording bar instead.
     let onShare: (() -> Void)?
+    /// Opens the archive sheet; nil while the recording is being recorded.
+    let onFile: (() -> Void)?
+    /// A state of the filing entry to draw instead of the live one.
+    var shownFiling: CityFilingEntryPill.Shown?
     let onRename: () -> Void
     let onFileIntoTopic: () -> Void
     /// Nil when there is no audio on this Mac to delete.
@@ -1445,12 +1474,13 @@ struct DocumentTabBar: View {
                     )
                     .padding(.trailing, PillMetrics.spacing)
                 }
-                // Whether this recording reached the city's archive, beside
-                // the menu that holds Share…; it opens that same panel. Not
-                // for the recording in progress (no `onShare`): where that
-                // one will go is in the recording bar.
-                if let sessionId, let onShare {
-                    CityFilingChip(sessionId: sessionId, onOpen: onShare)
+                // Whether this recording reached the city's archive — or,
+                // for someone hosting, the way to file one that has not been
+                // given an event. Both open the archive sheet. Not for the
+                // recording in progress (no `onFile`): where that one will
+                // go is in the recording bar.
+                if let sessionId, let onFile {
+                    CityFilingEntryPill(sessionId: sessionId, onOpen: onFile, shown: shownFiling)
                 }
                 recordingMenu
             }
@@ -1524,6 +1554,10 @@ struct DocumentTabBar: View {
                 Button(action: onShare) {
                     Label(String(localized: "recording.word.share"), systemImage: Icon.export)
                 }
+            }
+            // For anyone signed in to a city, hosting or not.
+            if let sessionId, let onFile {
+                CityFilingMenuItem(sessionId: sessionId, onOpen: onFile)
             }
             Button(action: onExport) {
                 Label(String(localized: "common.export.action"), systemImage: "tray.and.arrow.up")

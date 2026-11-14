@@ -25,7 +25,8 @@ nonisolated struct RecordingPlan: Equatable, Sendable {
     /// Languages nobody speaks that everything is also translated into.
     var translatedInto: [String] = []
     var source: Source = .thisMac
-    /// Text appears while recording. Off is a recording of the sound alone.
+    /// Text appears while recording: true whenever something can provide
+    /// it. False — nothing can yet — is a recording of the sound alone.
     var liveText = true
     /// The topic the recording goes into; nil when it goes into none.
     var topic: String?

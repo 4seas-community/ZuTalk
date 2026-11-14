@@ -3,47 +3,45 @@ import XCTest
 
 @MainActor
 final class CaptureCommandCenterTests: XCTestCase {
-    private var defaults: UserDefaults!
-    private var suiteName: String!
-
-    override func setUp() {
-        super.setUp()
-        suiteName = "CaptureCommandCenterTests.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)
-    }
-
-    override func tearDown() {
-        defaults.removePersistentDomain(forName: suiteName)
-        super.tearDown()
-    }
-
     private func makeCenter() -> CaptureCommandCenter {
-        CaptureCommandCenter(defaults: defaults, coreProvider: { nil }, inviteReady: { false })
+        CaptureCommandCenter(coreProvider: { nil }, inviteReady: { false })
     }
 
-    /// Nobody has chosen yet and nothing is set up to provide captions, so a
-    /// recording stays on this Mac.
-    func testCaptionsStartOffWithoutAWayToGetThem() {
+    /// Nothing is set up to provide live text, so a recording is made of
+    /// the sound alone rather than failing to start.
+    func testWithoutAKeyOrAnInviteARecordingHasNoLiveText() {
         let center = makeCenter()
-        XCTAssertFalse(center.realtimeCaptionsEnabled)
-        XCTAssertFalse(center.nextRecordingUsesCaptions)
-    }
-
-    /// The choice beside the Record button is remembered for the next one.
-    func testTheCaptionsChoiceIsRemembered() {
-        makeCenter().setRealtimeCaptionsEnabled(true)
-        XCTAssertTrue(makeCenter().realtimeCaptionsEnabled)
-        makeCenter().setRealtimeCaptionsEnabled(false)
-        XCTAssertFalse(makeCenter().realtimeCaptionsEnabled)
-    }
-
-    /// Wanting captions is not enough: without a key or an invite the
-    /// recording records locally rather than failing to start.
-    func testCaptionsNeedACredentialToBeUsed() {
-        let center = makeCenter()
-        center.setRealtimeCaptionsEnabled(true)
         XCTAssertFalse(center.realtimeCredentialAvailable)
         XCTAssertFalse(center.nextRecordingUsesCaptions)
+    }
+
+    /// Live text is not a choice (0.8.4): it is on exactly when something
+    /// can provide it. The command center has no setter for it, keeps no
+    /// preference, and neither reads nor removes the one an earlier version
+    /// saved — whoever chose "audio only" then gets live text again.
+    func testLiveTextIsNotAChoiceAndNoPreferenceIsReadOrWritten() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("ZuTalk/Capture/CaptureCommandCenter.swift"),
+            encoding: .utf8
+        )
+        for gone in [
+            "setRealtimeCaptionsEnabled", "storedCaptionsChoice", "realtimeCaptionsEnabled",
+            "capture.realtime_captions.enabled", "UserDefaults",
+        ] {
+            XCTAssertFalse(source.contains(gone), "the command center still has \(gone)")
+        }
+        XCTAssertTrue(source.contains(
+            "var nextRecordingUsesCaptions: Bool {\n        realtimeCredentialAvailable\n    }"
+        ))
+        // An invite cannot be drawn on offline, and there is no switch left
+        // to turn live text off with: the recording starts anyway, of the
+        // sound alone, and says so.
+        XCTAssertTrue(source.contains("catch where wantsCaptions && CommunityInviteError.isOffline(error)"))
+        XCTAssertTrue(source.contains("preparation = try await prepare(false)"))
+        XCTAssertTrue(source.contains("\"network.offline.audio_only_start\""))
     }
 
     func testNothingToPauseOrStopWithoutARecording() {
@@ -120,26 +118,24 @@ final class CaptureCommandCenterTests: XCTestCase {
 
 @MainActor
 final class CaptureCaptionsDefaultTests: XCTestCase {
-    /// Keys are restored after launch. Before anyone chooses, the default
-    /// follows them as they appear instead of freezing at "off".
-    func testTheDefaultFollowsCredentialsUntilSomeoneChooses() {
-        let suiteName = "CaptureCaptionsDefaultTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
+    /// Keys and invites are restored after launch. Live text follows them
+    /// as they appear and as they go, instead of freezing at how things
+    /// stood when the app started.
+    func testLiveTextFollowsWhatCanProvideIt() {
         var inviteReady = false
         let center = CaptureCommandCenter(
-            defaults: defaults,
             coreProvider: { nil },
             inviteReady: { inviteReady }
         )
-        XCTAssertFalse(center.realtimeCaptionsEnabled)
+        XCTAssertFalse(center.nextRecordingUsesCaptions)
 
         inviteReady = true
-        XCTAssertTrue(center.realtimeCaptionsEnabled)
+        XCTAssertTrue(center.realtimeCredentialAvailable)
         XCTAssertTrue(center.nextRecordingUsesCaptions)
 
-        center.setRealtimeCaptionsEnabled(false)
-        XCTAssertFalse(center.realtimeCaptionsEnabled, "an explicit choice wins")
+        // Switching the invite off in Settings is how a recording of the
+        // sound alone is made now.
+        inviteReady = false
         XCTAssertFalse(center.nextRecordingUsesCaptions)
     }
 }
@@ -151,28 +147,18 @@ final class CaptureCaptionsDefaultTests: XCTestCase {
 /// to show it.
 @MainActor
 final class JustFinishedRecordingTests: XCTestCase {
-    private var defaults: UserDefaults!
-    private var suiteName: String!
     private var opened: [String] = []
     private var windowIsShowing = true
 
     override func setUp() {
         super.setUp()
-        suiteName = "JustFinishedRecordingTests.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)
         opened = []
         windowIsShowing = true
-    }
-
-    override func tearDown() {
-        defaults.removePersistentDomain(forName: suiteName)
-        super.tearDown()
     }
 
     private func makeCenter(navigation: MainNavigationStore) -> CaptureCommandCenter {
         CaptureCommandCenter(
             navigation: navigation,
-            defaults: defaults,
             coreProvider: { nil },
             inviteReady: { false },
             mainWindowIsShowing: { [unowned self] in self.windowIsShowing },
@@ -630,8 +616,6 @@ final class RecordingAreaWordingTests: XCTestCase {
             ("recording.details.files", "文件", "Files"),
             ("recording.details.info", "信息", "Info"),
             ("recording.details.setup", "配置", "Setup"),
-            ("recording.city.filed", "已交", "Filed"),
-            ("recording.city.waiting", "排队", "Queued"),
         ]
         let zh = try strings("zh-Hans")
         let en = try strings("en")
@@ -639,11 +623,7 @@ final class RecordingAreaWordingTests: XCTestCase {
             XCTAssertEqual(zh[word.key], word.zh, word.key)
             XCTAssertEqual(en[word.key], word.en, word.key)
         }
-        // The archive's word for every state it can be in, too.
-        let kinds: [CityFilingStatus.Kind] = [
-            .notFiled, .chosen, .sending, .waiting, .filed, .changed, .eventGone, .failed, .withdrawn,
-        ]
-        let keys = words.map(\.key) + kinds.map(ResultCardCityWord.key)
+        let keys = words.map(\.key)
         for language in AppLanguage.allCases {
             let table = try strings(language.rawValue)
             for key in keys {
@@ -712,14 +692,22 @@ final class RecordingAreaWordingTests: XCTestCase {
             ] {
                 XCTAssertNil(table[gone], "\(language.rawValue) still has \(gone)")
             }
-            // Where the audio goes when live text is on stays a disclosure,
-            // by name, in the ⓘ beside the pill.
+            // Where the audio goes when there is live text stays a
+            // disclosure, by name.
             let disclosure = try XCTUnwrap(table["home.card.live_text_disclosure"])
             XCTAssertTrue(disclosure.contains("Soniox"), "\(language.rawValue): \(disclosure)")
         }
-        let bar = try source("UIScenes/Main/RecordingBar.swift")
-        XCTAssertTrue(bar.contains("InfoButton(explanation, accessibilityLabel: name)"))
-        XCTAssertTrue(bar.contains("lines.append(String(localized: \"home.card.live_text_disclosure\"))"))
+        // It is read where a recording starts — every Start button says it
+        // on hover and to VoiceOver — and, one click away, where live text
+        // is set up. The choice it used to sit beside is gone.
+        let notice = try source("Pages/LiveTextNotice.swift")
+        XCTAssertTrue(notice.contains("[String(localized: \"home.card.live_text_disclosure\")]"))
+        XCTAssertTrue(try source("Pages/NotebookCaptureToolbar.swift").contains("LiveTextStartHint.lines("))
+        XCTAssertTrue(try source("Pages/HomeStartCard.swift").contains("LiveTextStartHint.lines("))
+        XCTAssertTrue(try source("Settings/AccountSettingsSection.swift").contains(
+            "info: String(localized: \"home.card.live_text_disclosure\")"
+        ))
+        XCTAssertFalse(try source("UIScenes/Main/RecordingBar.swift").contains("CaptionsChoiceChip"))
     }
 
     /// The recording bar, the tab bar and the sheets draw no capsule of
@@ -740,6 +728,163 @@ final class RecordingAreaWordingTests: XCTestCase {
             XCTAssertTrue(sheet.contains("SheetButtons("), file)
             XCTAssertFalse(sheet.contains("GroupBox("), file)
             XCTAssertFalse(sheet.contains("library.file.message\"))\n                    .font"), file)
+        }
+    }
+}
+
+// MARK: - 0.8.4: a finished recording is filed to an event from where it is
+
+/// 「交到活动」: where it shows and as what. Three entries — the card after
+/// Stop, the recording's tab bar, its ⋯ menu — and one sheet.
+final class CityFilingEntryTests: XCTestCase {
+    private func entry(
+        _ place: CityFilingEntry.Place,
+        signedIn: Bool = true,
+        hosting: Bool = true,
+        filing: Bool = false,
+        recording: Bool = false
+    ) -> CityFilingEntry {
+        CityFilingEntry.resolve(
+            place: place,
+            signedIn: signedIn,
+            hostingOn: hosting,
+            hasFiling: filing,
+            isRecording: recording
+        )
+    }
+
+    private func source(_ file: String) throws -> String {
+        try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("ZuTalk/\(file)"),
+            encoding: .utf8
+        )
+    }
+
+    private func strings(_ language: String) throws -> [String: String] {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("ZuTalk/Resources/\(language).lproj/Localizable.strings")
+        return try XCTUnwrap(NSDictionary(contentsOf: url) as? [String: String])
+    }
+
+    /// Signing in is offered on Home's hosting row; nothing here stands in
+    /// for it.
+    func testNotSignedInNothingIsOfferedAnywhere() {
+        for place in [CityFilingEntry.Place.surface, .menu] {
+            for hosting in [true, false] {
+                for filing in [true, false] {
+                    XCTAssertEqual(
+                        entry(place, signedIn: false, hosting: hosting, filing: filing),
+                        .none
+                    )
+                }
+            }
+        }
+    }
+
+    /// Where the recording in progress will go is the recording bar's to
+    /// say; it can be filed once it has stopped.
+    func testTheRecordingInProgressOffersNothing() {
+        XCTAssertEqual(entry(.surface, recording: true), .none)
+        XCTAssertEqual(entry(.surface, filing: true, recording: true), .none)
+        XCTAssertEqual(entry(.menu, recording: true), .none)
+    }
+
+    /// The page is the first layer: the way in is there for someone hosting.
+    /// A filing that exists shows its status whatever the switch says.
+    func testOnThePageTheWayInIsForSomeoneHostingAndAFilingAlwaysShows() {
+        XCTAssertEqual(entry(.surface, hosting: true, filing: false), .action)
+        XCTAssertEqual(entry(.surface, hosting: false, filing: false), .none)
+        XCTAssertEqual(entry(.surface, hosting: true, filing: true), .status)
+        XCTAssertEqual(entry(.surface, hosting: false, filing: true), .status)
+    }
+
+    /// A menu is the second layer: anyone signed in finds it there.
+    func testInAMenuItIsOfferedToAnyoneSignedIn() {
+        for hosting in [true, false] {
+            for filing in [true, false] {
+                XCTAssertEqual(entry(.menu, hosting: hosting, filing: filing), .action)
+            }
+        }
+    }
+
+    /// On the card the pill and the status are the same place in two
+    /// states: never both.
+    func testTheCardOffersThePillOrShowsTheStatusNeverBoth() {
+        let offered = RecordingResultCardModel.make(
+            seconds: 754, liveTextOff: false, hasText: true, hasAudio: true,
+            refine: nil, offersFiling: true
+        )
+        XCTAssertTrue(offered.offersFiling)
+        XCTAssertNil(offered.city)
+
+        let filing = RecordingResultCardModel.make(
+            seconds: 754, liveTextOff: false, hasText: true, hasAudio: true,
+            refine: nil,
+            city: CityFilingStatus.resolve(nil, busy: true, offline: false),
+            offersFiling: true
+        )
+        XCTAssertFalse(filing.offersFiling)
+        XCTAssertNotNil(filing.city)
+
+        XCTAssertFalse(RecordingResultCardModel.make(
+            seconds: 754, liveTextOff: false, hasText: true, hasAudio: true, refine: nil
+        ).offersFiling)
+    }
+
+    func testAllThreeEntriesOpenOneSheetAndTheSheetIsTheArchiveBlock() throws {
+        // One presenter, one sheet.
+        let store = try source("App/ShareActivityStore.swift")
+        XCTAssertTrue(store.contains("func presentCityFiling(sessionId: String, title: String)"))
+        let shell = try source("UIScenes/Main/MainShellView.swift")
+        XCTAssertTrue(shell.contains(
+            ".sheet(item: $shareActivity.cityFilingRequest) { request in\n            CityFilingSheet(request: request)"
+        ))
+        // The sheet is the share panel's own archive block and nothing else:
+        // no second set of actions, no second copy of its disclosures.
+        let sheet = try source("Pages/CityFilingSheet.swift")
+        XCTAssertTrue(sheet.contains("CityShareSection(request: request, standsAlone: true)"))
+        for own in ["InfoButton(", "city.share.public_note", "city.audio.public", "city.action.file"] {
+            XCTAssertFalse(sheet.contains(own), "the sheet should not have its own \(own)")
+        }
+        XCTAssertTrue(try source("Pages/ShareHostPanel.swift").contains("CityShareSection(request: request)"))
+
+        // The card, the tab bar, and the three menus.
+        let card = try source("Pages/RecordingResultCard.swift")
+        XCTAssertTrue(card.contains("if model.offersFiling {"))
+        XCTAssertTrue(card.contains("action: onFile"))
+        let page = try source("Pages/DocumentEditorPage.swift")
+        XCTAssertTrue(page.contains("CityFilingEntryPill(sessionId: sessionId, onOpen: onFile"))
+        XCTAssertTrue(page.contains("CityFilingMenuItem(sessionId: sessionId, onOpen: onFile)"))
+        XCTAssertTrue(page.contains("ShareActivityStore.shared.presentCityFiling(sessionId: sessionId, title: label)"))
+        for list in ["Pages/HomeView.swift", "Pages/NotebookResourcesView.swift"] {
+            let text = try source(list)
+            XCTAssertTrue(text.contains("CityFilingMenuItem(sessionId:"), list)
+            XCTAssertTrue(text.contains("ShareActivityStore.shared.presentCityFiling("), list)
+        }
+    }
+
+    /// The entry is a word or two in every language; and what the archive
+    /// block says about being public, standing alone, is what it says in the
+    /// share panel without the comparison to the link below it.
+    func testTheEntryIsShortAndThePublicNoteKeepsItsSubstance() throws {
+        XCTAssertEqual(try strings("zh-Hans")["city.filing.action"], "交到活动")
+        XCTAssertEqual(try strings("en")["city.filing.action"], "File to event")
+        for language in AppLanguage.allCases {
+            let table = try strings(language.rawValue)
+            let action = try XCTUnwrap(table["city.filing.action"], language.rawValue)
+            XCTAssertLessThanOrEqual(action.count, 26, "\(language.rawValue): \(action)")
+            for stop in ["。", ". ", "，", ", ", "：", ": "] {
+                XCTAssertFalse(action.contains(stop), "\(language.rawValue): \(action)")
+            }
+            let alone = try XCTUnwrap(table["city.filing.public_note"], language.rawValue)
+            let inPanel = try XCTUnwrap(table["city.share.public_note"], language.rawValue)
+            let core = alone.trimmingCharacters(in: CharacterSet(charactersIn: ".。"))
+            XCTAssertTrue(inPanel.hasPrefix(core), "\(language.rawValue): \(alone)")
         }
     }
 }

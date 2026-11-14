@@ -1353,8 +1353,6 @@
 
 /* No network: said plainly instead of blaming a service. */
 "community_invite.offline" = "この Mac はインターネットに接続されていないため、招待サービスに接続できません。接続してからもう一度お試しください。";
-"network.offline.captions_start" = "この Mac はインターネットに接続されていないため、リアルタイム文字起こしを開始できません。先に接続するか、リアルタイム文字起こしをオフにして録音だけ行ってください。";
-"network.offline.record_hint" = "この Mac は現在オフラインです。リアルタイム文字起こしにはインターネットが必要です。オフにすれば録音だけできます。";
 "network.offline.short" = "ネットワークなし";
 "network.offline.recording_banner" = "この Mac はオフラインです。録音は続いています。オンラインに戻るとリアルタイム文字起こしは自動で再開しますが、オフラインだった部分は文字にならないことがあります。";
 
@@ -1802,10 +1800,6 @@
 "recording.details.files" = "ファイル";
 "recording.details.info" = "情報";
 "recording.details.setup" = "録音条件";
-"recording.city.waiting" = "待機中";
-"recording.city.filed" = "提出済み";
-"recording.city.changed" = "要更新";
-"recording.city.event_gone" = "イベント削除済み";
 "recording.marks.empty_live" = "大事だと思ったら ⌃⌥S を押します。";
 /* 0.8.3 city */
 "city.word.chosen" = "選択済み";
@@ -1870,3 +1864,10 @@
 
 /* 0.8.3 integration */
 "resources.audio.destroy.confirm_filed" = "すでにシティのアーカイブに提出した音声はシティに残り、ここからは削除できません。";
+
+/* 0.8.4 */
+"city.filing.action" = "イベントに提出";
+"city.filing.open_hint" = "この録音のアーカイブパネルを開きます";
+"city.filing.public_note" = "アーカイブの内容は公開され、ずっと残ります。";
+"home.card.offline_hint" = "この Mac は現在オフラインです。録音はできますが、文字にはインターネットが必要です。";
+"network.offline.audio_only_start" = "この Mac はオフラインのため、今回は録音のみです。";

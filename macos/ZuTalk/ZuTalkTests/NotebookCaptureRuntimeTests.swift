@@ -224,12 +224,8 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
             client: client,
             audioSource: FakeNotebookCaptureAudioSource()
         )
-        let suite = "sleep-stop-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defer { defaults.removePersistentDomain(forName: suite) }
         let center = CaptureCommandCenter(
             capture: store,
-            defaults: defaults,
             coreProvider: { nil },
             inviteReady: { false },
             mainWindowIsShowing: { false }

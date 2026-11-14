@@ -9,8 +9,9 @@
 //
 // 现在卡上只有两样(docs/product/interface-layers.md「界面怎么写」):标题一行
 // (✓ 录好了 · 时长),和一排胶囊 —— 复制(唯一填了底色的那一颗)、导出、分享、
-// 精修;归了活动的录音,这一排的末尾是档案馆的状态,一个图标加一个词。没有
-// 句子。精修停在哪一步,写在那颗胶囊的词、图标和颜色上,原来那句解释进了它的
+// 精修;在主持的人,「分享」后面多一颗「交到活动」(0.8.4:录完的素材得有地方
+// 交给活动);归了活动的录音没有那一颗,这一排的末尾是档案馆的状态,一个图标加
+// 一个词,点它打开的是同一张表。没有句子。精修停在哪一步,写在那颗胶囊的词、图标和颜色上,原来那句解释进了它的
 // 悬停提示;要先开通的那种,点下去仍然是去设置。
 //
 // 卡只认一个 `RecordingResultCardModel`:说什么、摆哪些胶囊都由它定,它又只由
@@ -60,6 +61,9 @@ struct RecordingResultCardModel: Equatable {
     /// never given an event.
     let city: CityFilingStatus?
     let cityEventTitle: String?
+    /// 「交到活动」 is offered: signed in, hosting, and not given an event yet
+    /// (`CityFilingEntry`).
+    var offersFiling = false
 
     /// Copying and sharing are about the text; with none yet they would do
     /// nothing, so they are not offered.
@@ -74,14 +78,17 @@ extension RecordingResultCardModel {
         hasAudio: Bool,
         refine: Refine?,
         city: CityFilingStatus? = nil,
-        cityEventTitle: String? = nil
+        cityEventTitle: String? = nil,
+        offersFiling: Bool = false
     ) -> RecordingResultCardModel {
         RecordingResultCardModel(
             duration: RecordingPresentation.duration(ms: UInt64(max(seconds, 0)) * 1_000),
             summary: summary(liveTextOff: liveTextOff, hasText: hasText, hasAudio: hasAudio),
             refine: refine,
             city: city,
-            cityEventTitle: cityEventTitle
+            cityEventTitle: cityEventTitle,
+            // Never both: a recording with a filing shows its status.
+            offersFiling: offersFiling && city == nil
         )
     }
 
@@ -241,36 +248,15 @@ struct RefinePillFace: Equatable {
     }
 }
 
-/// The one word the card shows for where a recording stands with a city's
-/// archive. `CityFilingStatus.label` is the sentence ("排队中,稍后自动再试");
-/// here it is the tooltip, and the word stands beside the icon.
-enum ResultCardCityWord {
-    static func key(_ kind: CityFilingStatus.Kind) -> String {
-        switch kind {
-        case .notFiled: return "city.status.not_filed"
-        case .chosen: return "city.status.not_filed"
-        case .sending: return "city.status.sending"
-        case .waiting: return "recording.city.waiting"
-        case .filed: return "recording.city.filed"
-        case .changed: return "recording.city.changed"
-        case .eventGone: return "recording.city.event_gone"
-        case .failed: return "city.status.failed"
-        case .withdrawn: return "city.status.withdrawn"
-        }
-    }
-
-    static func word(_ kind: CityFilingStatus.Kind) -> String {
-        String(localized: String.LocalizationValue(key(kind)))
-    }
-}
-
 /// The card itself: a plain view of one model. Every action is handed in.
 struct RecordingResultCard: View {
     let model: RecordingResultCardModel
     let onCopy: () -> Void
     let onExport: () -> Void
-    /// The share panel; the archive status opens the same one.
     let onShare: () -> Void
+    /// The archive sheet: 「交到活动」, and the archive status once there is
+    /// a filing.
+    var onFile: () -> Void = {}
     let onRefine: () -> Void
     let onOpenSettings: () -> Void
     let onShowRefined: () -> Void
@@ -355,6 +341,14 @@ struct RecordingResultCard: View {
             )
             .accessibilityIdentifier("recording.result.share")
         }
+        if model.offersFiling {
+            ActionPill(
+                String(localized: "city.filing.action"),
+                systemImage: "archivebox",
+                action: onFile
+            )
+            .accessibilityIdentifier("recording.result.file")
+        }
         if let refine = model.refine {
             refinePill(RefinePillFace.resolve(refine, hasText: model.hasText))
                 .accessibilityIdentifier("recording.result.refine")
@@ -393,21 +387,21 @@ struct RecordingResultCard: View {
     }
 
     /// Where this recording stands with the city's archive: an icon and a
-    /// word at the far end of the strip. The sentence, the event and the
-    /// reason are the tooltip; a click opens the share panel, where filing
-    /// is done.
+    /// word at the far end of the strip — the same word the tab bar's chip,
+    /// the lists and Settings use (`CityFilingStatus.label`). The sentence,
+    /// the event and the reason are the tooltip; a click opens the archive
+    /// sheet, where filing is done.
     private func cityStatus(_ status: CityFilingStatus) -> some View {
-        let described = status.described(event: model.cityEventTitle)
-        return ActionPill(
-            ResultCardCityWord.word(status.kind),
+        ActionPill(
+            status.label,
             systemImage: status.symbol,
             style: .quiet,
             iconTint: status.tone.color,
-            help: [described, status.reason].compactMap { $0 }.joined(separator: "\n"),
-            accessibilityLabel: described,
-            action: onShare
+            help: status.tooltip(event: model.cityEventTitle),
+            accessibilityLabel: status.described(event: model.cityEventTitle),
+            action: onFile
         )
-        .accessibilityHint(Text(String(localized: "city.status.open_share_hint")))
+        .accessibilityHint(Text(String(localized: "city.filing.open_hint")))
         .accessibilityIdentifier("recording.result.city")
     }
 

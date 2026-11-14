@@ -2,6 +2,7 @@
 // 设置 › 账号:和「我是谁」有关的四件事,从上到下,每一件一个词的小标题:
 //   1. 身份 —— 没登录是登录,登录了是这是谁、退出登录(城那一块自己画);
 //   2. 出字 —— 现在靠什么出字(邀请码、自己的密钥、还没有),邀请码在这里填;
+//      出字时音频会发给谁,在小标题旁的 ⓘ 里;
 //   3. 设备 —— 自己的几台 Mac 之间同步;
 //   4. 档案馆 —— 登录以后才有:交什么、交出去的录音(城那一块自己画)。
 //
@@ -20,7 +21,12 @@ struct AccountSettingsSection: View {
 
             CityIdentitySection()
 
-            SettingsGroup(title: String(localized: "onboarding.step.live_text")) {
+            // Where live text is set up, so where it says — one click away —
+            // that the audio is sent off to be written down and translated.
+            SettingsGroup(
+                title: String(localized: "onboarding.step.live_text"),
+                info: String(localized: "home.card.live_text_disclosure")
+            ) {
                 CommunityInviteSettingsCard()
             }
 

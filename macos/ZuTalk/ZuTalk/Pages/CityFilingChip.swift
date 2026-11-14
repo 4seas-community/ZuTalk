@@ -73,39 +73,45 @@ struct CityStatusWord: View {
 /// 录音页顶栏上的那一枚。
 struct CityFilingChip: View {
     let sessionId: String
-    /// 打开这场录音的共享面板。
+    /// 打开这场录音的档案馆那张表(`CityFilingSheet`)。
     let onOpen: () -> Void
+    /// 不读 `CityStore`,就画这一种状态:单独拿出来看用。
+    var shownStatus: CityFilingStatus?
 
     @ObservedObject private var city = CityStore.shared
 
     var body: some View {
-        if city.account != nil,
-           city.filings[sessionId] != nil || city.busySessions.contains(sessionId) {
-            let status = city.status(sessionId: sessionId)
-            let title = city.filings[sessionId]?.eventTitle
-            Button(action: onOpen) {
-                HStack(spacing: Spacing.sm) {
-                    CityStatusWord(symbol: status.symbol, label: status.label, tone: status.tone)
-                    if let audio = status.audioBeside {
-                        CityStatusWord(symbol: audio.symbol, label: audio.label, tone: audio.tone)
-                    }
-                }
-                .padding(.horizontal, Spacing.sm + 2)
-                .frame(minHeight: 24)
-                .overlay(Capsule().strokeBorder(Color.borderSubtle, lineWidth: Stroke.thin))
-                .contentShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            .fixedSize()
-            .help(status.tooltip(event: title))
-            .accessibilityLabel(Text(status.described(event: title)))
-            .accessibilityHint(Text(String(localized: "city.status.open_share_hint")))
-            .accessibilityIdentifier(AccessibilityID.cityRecordingStatus)
-            .task(id: sessionId) { await refresh() }
-            // 和右边「⋯」之间的空当跟着这一枚一起出现、一起消失:没归过活动的
-            // 录音,顶栏一个点都不挪。
-            .padding(.trailing, Spacing.sm)
+        if let shownStatus {
+            chip(shownStatus, title: nil)
+        } else if city.account != nil,
+                  city.filings[sessionId] != nil || city.busySessions.contains(sessionId) {
+            chip(city.status(sessionId: sessionId), title: city.filings[sessionId]?.eventTitle)
+                .task(id: sessionId) { await refresh() }
         }
+    }
+
+    private func chip(_ status: CityFilingStatus, title: String?) -> some View {
+        Button(action: onOpen) {
+            HStack(spacing: Spacing.sm) {
+                CityStatusWord(symbol: status.symbol, label: status.label, tone: status.tone)
+                if let audio = status.audioBeside {
+                    CityStatusWord(symbol: audio.symbol, label: audio.label, tone: audio.tone)
+                }
+            }
+            .padding(.horizontal, Spacing.sm + 2)
+            .frame(minHeight: 24)
+            .overlay(Capsule().strokeBorder(Color.borderSubtle, lineWidth: Stroke.thin))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+        .help(status.tooltip(event: title))
+        .accessibilityLabel(Text(status.described(event: title)))
+        .accessibilityHint(Text(String(localized: "city.filing.open_hint")))
+        .accessibilityIdentifier(AccessibilityID.cityRecordingStatus)
+        // 和右边「⋯」之间的空当跟着这一枚一起出现、一起消失:没归过活动的
+        // 录音,顶栏一个点都不挪。
+        .padding(.trailing, Spacing.sm)
     }
 
     /// 人正看着这场录音:把只有逐场才读得到的补上。

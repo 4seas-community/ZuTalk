@@ -42,22 +42,10 @@ final class CaptureCommandCenter: ObservableObject {
     /// or another recording is opened. Pressing Stop in the main window used
     /// to leave no sign that anything had been kept.
     @Published private(set) var justFinished: FinishedRecording?
-    /// The person's own choice, once they have made one.
-    @Published private var storedCaptionsChoice: Bool?
-
-    /// Whether new recordings ask for live captions. Shown and switched next
-    /// to every Record button, so the choice is made where it takes effect.
-    /// Until someone chooses, it follows whether they set up a way to get
-    /// captions — saving a key or redeeming an invite is that intent — and
-    /// follows it live, since keys are restored after launch.
-    var realtimeCaptionsEnabled: Bool {
-        storedCaptionsChoice ?? realtimeCredentialAvailable
-    }
 
     private let capture: ActiveBilingualTranscriptStore
     private let navigation: MainNavigationStore
     private let invite: CommunityInviteSession
-    private let defaults: UserDefaults
     private let coreProvider: @MainActor () -> (any ZuTalkCoreProtocol)?
     private let inviteReady: @MainActor () -> Bool
     private let mainWindowIsShowing: @MainActor () -> Bool
@@ -65,13 +53,10 @@ final class CaptureCommandCenter: ObservableObject {
     private var settlementObservers: Set<AnyCancellable> = []
     private var openedRecordingObserver: AnyCancellable?
 
-    static let realtimeCaptionsDefaultsKey = "capture.realtime_captions.enabled"
-
     init(
         capture: ActiveBilingualTranscriptStore? = nil,
         navigation: MainNavigationStore? = nil,
         invite: CommunityInviteSession? = nil,
-        defaults: UserDefaults = .standard,
         coreProvider: @escaping @MainActor () -> (any ZuTalkCoreProtocol)? = {
             CoreClient.shared.core
         },
@@ -84,15 +69,11 @@ final class CaptureCommandCenter: ObservableObject {
         self.capture = capture ?? .shared
         self.navigation = navigation
         self.invite = invite
-        self.defaults = defaults
         self.coreProvider = coreProvider
         self.inviteReady = inviteReady ?? { invite.isEnabled && invite.isActive }
         self.mainWindowIsShowing = mainWindowIsShowing
             ?? { WindowCoordinator.shared.isMainWindowVisible() }
         self.openRecording = openRecording ?? { navigation.openSession($0) }
-        storedCaptionsChoice = defaults.object(forKey: Self.realtimeCaptionsDefaultsKey) != nil
-            ? defaults.bool(forKey: Self.realtimeCaptionsDefaultsKey)
-            : nil
         observeRecordingForInviteSettlement()
         observeOpenedRecordings()
     }
@@ -139,7 +120,7 @@ final class CaptureCommandCenter: ObservableObject {
             .store(in: &settlementObservers)
     }
 
-    // MARK: - Captions choice
+    // MARK: - Live text
 
     /// A Soniox key of one's own, or an invite that is switched on.
     var realtimeCredentialAvailable: Bool {
@@ -147,14 +128,14 @@ final class CaptureCommandCenter: ObservableObject {
             || inviteReady()
     }
 
-    /// What the next recording will do, as the Record button should say it.
+    /// Whether the next recording gets live text: whenever something can
+    /// provide it. It was a choice beside every Record button until 0.8.4 —
+    /// 「默认录音就是出字，不需要有这个可配置的。」 A recording of the sound
+    /// alone is what happens with no invite and no key, which is set up in
+    /// Settings, not chosen per recording. (The choice an earlier version
+    /// saved is neither read nor removed.)
     var nextRecordingUsesCaptions: Bool {
-        realtimeCaptionsEnabled && realtimeCredentialAvailable
-    }
-
-    func setRealtimeCaptionsEnabled(_ enabled: Bool) {
-        storedCaptionsChoice = enabled
-        defaults.set(enabled, forKey: Self.realtimeCaptionsDefaultsKey)
+        realtimeCredentialAvailable
     }
 
     // MARK: - Start
@@ -205,17 +186,33 @@ final class CaptureCommandCenter: ObservableObject {
             isStarting = false
         }
         let wantsCaptions = nextRecordingUsesCaptions
-        do {
-            let preparation = try await NotebookCaptureStartPreparationWorkflow.prepare(
-                enableRealtimeIfNeeded: wantsCaptions,
+        // Saves the languages for this start and, when it will have live
+        // text, gets what the text runs on.
+        let prepare: @MainActor (Bool) async throws -> CommunityInvitePreparation = { [invite] liveText in
+            try await NotebookCaptureStartPreparationWorkflow.prepare(
+                enableRealtimeIfNeeded: liveText,
                 prepareProfile: { realtime in
                     try await profileEditor.prepareForCaptureStart(realtime: realtime)
                     return profileEditor.draft
                 },
-                prepareRealtimeCredential: { [invite] laneCount in
+                prepareRealtimeCredential: { laneCount in
                     try await invite.prepareRealtimeCredential(laneCount: laneCount)
                 }
             )
+        }
+        do {
+            let preparation: CommunityInvitePreparation
+            do {
+                preparation = try await prepare(wantsCaptions)
+            } catch where wantsCaptions && CommunityInviteError.isOffline(error) {
+                // An invite cannot be drawn on without a network, and there
+                // is no longer a switch to turn live text off with. Recording
+                // itself needs no network: this one is made of the sound
+                // alone, and the person is told so.
+                await invite.settleRealtimeSession(usedSeconds: 0)
+                preparation = try await prepare(false)
+                ToastCenter.shared.info(String(localized: "network.offline.audio_only_start"))
+            }
             if preparation == .personalKeyFallback {
                 ToastCenter.shared.info(String(localized: "community_invite.fallback_personal_key"))
             }
@@ -230,13 +227,9 @@ final class CaptureCommandCenter: ObservableObject {
         } catch {
             // Return any invite reservation made above; a no-op when none exists.
             await invite.settleRealtimeSession(usedSeconds: 0)
-            // Offline gets the way out too: recording itself needs no
-            // network, only the captions do.
             ToastCenter.shared.error(
                 String(localized: "capture.toast.start_failed"),
-                detail: CommunityInviteError.isOffline(error)
-                    ? String(localized: "network.offline.captions_start")
-                    : error.localizedDescription
+                detail: error.localizedDescription
             )
             return false
         }

@@ -521,8 +521,10 @@ final class RecordingBarStatusLineTests: XCTestCase {
         }
 
         let bannerStart = try XCTUnwrap(bar.range(of: "struct RecordingProblemBanner: View"))
-        let bannerEnd = try XCTUnwrap(bar.range(of: "struct CaptionsChoiceChip: View"))
-        let banner = String(bar[bannerStart.lowerBound..<bannerEnd.lowerBound])
+        // The banner is the last thing in the file: the live-text choice
+        // that used to follow it is gone.
+        let banner = String(bar[bannerStart.lowerBound...])
+        XCTAssertFalse(banner.contains("struct CaptionsChoiceChip"))
         XCTAssertTrue(banner.contains("commands.restartTranscription()"))
         XCTAssertTrue(banner.contains("capture.toolbar.restart_transcription"))
     }

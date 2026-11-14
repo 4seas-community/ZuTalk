@@ -1353,8 +1353,6 @@
 
 /* No network: said plainly instead of blaming a service. */
 "community_invite.offline" = "Mac เครื่องนี้ไม่ได้เชื่อมต่ออินเทอร์เน็ต จึงติดต่อบริการคำเชิญไม่ได้ โปรดเชื่อมต่อแล้วลองใหม่";
-"network.offline.captions_start" = "Mac เครื่องนี้ไม่ได้เชื่อมต่ออินเทอร์เน็ต จึงเริ่มข้อความสดไม่ได้ โปรดเชื่อมต่อก่อน หรือปิดข้อความสดเพื่อบันทึกเสียงอย่างเดียว";
-"network.offline.record_hint" = "Mac เครื่องนี้ออฟไลน์อยู่ ข้อความสดต้องใช้อินเทอร์เน็ต ปิดข้อความสดเพื่อบันทึกเสียงอย่างเดียวได้";
 "network.offline.short" = "ไม่มีเครือข่าย";
 "network.offline.recording_banner" = "Mac เครื่องนี้ออฟไลน์อยู่ การบันทึกยังดำเนินต่อไป และข้อความสดจะกลับมาเองเมื่อออนไลน์อีกครั้ง ช่วงที่ออฟไลน์อาจไม่มีข้อความ";
 
@@ -1802,10 +1800,6 @@
 "recording.details.files" = "ไฟล์";
 "recording.details.info" = "ข้อมูล";
 "recording.details.setup" = "การกำหนดค่า";
-"recording.city.waiting" = "รอส่ง";
-"recording.city.filed" = "ส่งแล้ว";
-"recording.city.changed" = "ต้องอัปเดต";
-"recording.city.event_gone" = "กิจกรรมถูกลบ";
 "recording.marks.empty_live" = "กด ⌃⌥S เมื่อเจอสิ่งสำคัญ";
 /* 0.8.3 city */
 "city.word.chosen" = "เลือกแล้ว";
@@ -1870,3 +1864,10 @@
 
 /* 0.8.3 integration */
 "resources.audio.destroy.confirm_filed" = "สำเนาเสียงที่ส่งเข้าคลังเอกสารไปแล้วยังอยู่ในเมือง ลบจากที่นี่ไม่ได้";
+
+/* 0.8.4 */
+"city.filing.action" = "ส่งเข้ากิจกรรม";
+"city.filing.open_hint" = "เปิดแผงคลังเอกสารของการบันทึกนี้";
+"city.filing.public_note" = "สิ่งที่อยู่ในคลังเอกสารเป็นสาธารณะและจะอยู่ตลอดไป";
+"home.card.offline_hint" = "Mac เครื่องนี้ออฟไลน์อยู่ ยังบันทึกเสียงได้ตามปกติ ส่วนข้อความต้องใช้อินเทอร์เน็ต";
+"network.offline.audio_only_start" = "Mac เครื่องนี้ออฟไลน์อยู่ ครั้งนี้จึงบันทึกเสียงอย่างเดียว";

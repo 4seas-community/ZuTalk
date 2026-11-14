@@ -1531,6 +1531,12 @@ private struct NotebookResourceBlock: View {
                         Label(String(localized: "recording.word.share"), systemImage: Icon.export)
                     }
                     .disabled(item.isRecording)
+                    CityFilingMenuItem(sessionId: item.id, isRecording: item.isRecording) {
+                        ShareActivityStore.shared.presentCityFiling(
+                            sessionId: item.id,
+                            title: item.title.isEmpty ? item.preview : item.title
+                        )
+                    }
                     Divider()
                     Button {
                         isRenaming = true

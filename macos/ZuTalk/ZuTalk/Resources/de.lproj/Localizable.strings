@@ -1353,8 +1353,6 @@
 
 /* No network: said plainly instead of blaming a service. */
 "community_invite.offline" = "Dieser Mac ist nicht mit dem Internet verbunden und erreicht den Einladungsdienst nicht. Verbinde dich und versuche es erneut.";
-"network.offline.captions_start" = "Dieser Mac ist nicht mit dem Internet verbunden, deshalb kann der Live-Text nicht starten. Verbinde dich zuerst oder schalte den Live-Text aus, um ohne ihn aufzunehmen.";
-"network.offline.record_hint" = "Dieser Mac ist offline. Live-Text braucht das Internet; schalte ihn aus, um ohne ihn aufzunehmen.";
 "network.offline.short" = "Kein Netzwerk";
 "network.offline.recording_banner" = "Dieser Mac ist offline. Die Aufnahme läuft weiter, und der Live-Text setzt von selbst wieder ein, sobald der Mac wieder online ist; für die Offline-Strecke fehlt er womöglich.";
 
@@ -1802,10 +1800,6 @@
 "recording.details.files" = "Dateien";
 "recording.details.info" = "Infos";
 "recording.details.setup" = "Konfiguration";
-"recording.city.waiting" = "Wartet";
-"recording.city.filed" = "Abgelegt";
-"recording.city.changed" = "Veraltet";
-"recording.city.event_gone" = "Veranstaltung gelöscht";
 "recording.marks.empty_live" = "Drücke ⌃⌥S, wenn etwas zählt.";
 /* 0.8.3 city */
 "city.word.chosen" = "Gewählt";
@@ -1870,3 +1864,10 @@
 
 /* 0.8.3 integration */
 "resources.audio.destroy.confirm_filed" = "Die bereits im Archiv der Stadt abgelegte Kopie bleibt dort; von hier aus lässt sie sich nicht löschen.";
+
+/* 0.8.4 */
+"city.filing.action" = "Zu Veranstaltung ablegen";
+"city.filing.open_hint" = "Öffnet das Archiv-Fenster dieser Aufnahme";
+"city.filing.public_note" = "Was im Archiv liegt, ist öffentlich und bleibt dort.";
+"home.card.offline_hint" = "Dieser Mac ist offline. Aufnehmen kannst du trotzdem; für den Text braucht es das Internet.";
+"network.offline.audio_only_start" = "Dieser Mac ist offline – diese Aufnahme ist nur Audio.";

@@ -486,6 +486,9 @@ struct MainShellView: View {
         .sheet(item: $shareActivity.recordingShareRequest) { request in
             RecordingShareSheet(request: request)
         }
+        .sheet(item: $shareActivity.cityFilingRequest) { request in
+            CityFilingSheet(request: request)
+        }
         .sheet(item: $renamingRecording) { recording in
             RenameSheet(
                 title: String(localized: "library.rename.recording"),

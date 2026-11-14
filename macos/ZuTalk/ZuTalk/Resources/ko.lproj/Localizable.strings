@@ -1353,8 +1353,6 @@
 
 /* No network: said plainly instead of blaming a service. */
 "community_invite.offline" = "이 Mac이 인터넷에 연결되어 있지 않아 초대 서비스에 연결할 수 없어요. 연결한 뒤 다시 시도하세요.";
-"network.offline.captions_start" = "이 Mac이 인터넷에 연결되어 있지 않아 실시간 텍스트를 시작할 수 없어요. 먼저 연결하거나, 실시간 텍스트를 끄고 녹음만 하세요.";
-"network.offline.record_hint" = "이 Mac은 지금 오프라인이에요. 실시간 텍스트에는 인터넷이 필요해요. 끄면 녹음만 할 수 있어요.";
 "network.offline.short" = "네트워크 없음";
 "network.offline.recording_banner" = "이 Mac은 오프라인이에요. 녹음은 계속되고, 다시 연결되면 실시간 텍스트가 자동으로 이어져요. 오프라인이었던 구간에는 텍스트가 없을 수 있어요.";
 
@@ -1802,10 +1800,6 @@
 "recording.details.files" = "파일";
 "recording.details.info" = "정보";
 "recording.details.setup" = "구성";
-"recording.city.waiting" = "대기 중";
-"recording.city.filed" = "제출됨";
-"recording.city.changed" = "업데이트 필요";
-"recording.city.event_gone" = "이벤트 삭제됨";
 "recording.marks.empty_live" = "중요한 대목이 들리면 ⌃⌥S를 누르세요.";
 /* 0.8.3 city */
 "city.word.chosen" = "선택됨";
@@ -1870,3 +1864,10 @@
 
 /* 0.8.3 integration */
 "resources.audio.destroy.confirm_filed" = "이미 도시의 아카이브에 제출한 오디오는 도시에 남아 있고, 여기서는 지울 수 없어요.";
+
+/* 0.8.4 */
+"city.filing.action" = "이벤트에 제출";
+"city.filing.open_hint" = "이 녹음의 아카이브 패널을 열어요";
+"city.filing.public_note" = "아카이브의 내용은 공개되며 계속 남아요.";
+"home.card.offline_hint" = "이 Mac은 지금 오프라인이에요. 녹음은 그대로 할 수 있고, 텍스트에는 인터넷이 필요해요.";
+"network.offline.audio_only_start" = "이 Mac이 오프라인이라 이번에는 녹음만 해요.";

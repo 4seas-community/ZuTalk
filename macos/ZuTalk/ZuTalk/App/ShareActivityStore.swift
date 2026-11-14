@@ -28,6 +28,9 @@ final class ShareActivityStore: ObservableObject {
     /// 要共享哪一段录好的录音。主窗口据此弹出共享面板;入口在录音行的
     /// 菜单与录音页顶栏。
     @Published var recordingShareRequest: RecordingShareRequest?
+    /// 要把哪一段录好的录音交到活动。主窗口据此弹出只有「档案馆」一段的那张
+    /// 表(`CityFilingSheet`);入口在停止后的那张卡、录音页标签栏和录音的菜单。
+    @Published var cityFilingRequest: RecordingShareRequest?
 
     private var core: (any ZuTalkCoreProtocol)? { CoreClient.shared.core }
     private var timer: Timer?
@@ -46,6 +49,10 @@ final class ShareActivityStore: ObservableObject {
 
     func presentRecordingShare(sessionId: String, title: String) {
         recordingShareRequest = RecordingShareRequest(sessionId: sessionId, title: title)
+    }
+
+    func presentCityFiling(sessionId: String, title: String) {
+        cityFilingRequest = RecordingShareRequest(sessionId: sessionId, title: title)
     }
 
     // MARK: - 直播

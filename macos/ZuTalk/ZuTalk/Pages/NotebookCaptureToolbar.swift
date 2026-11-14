@@ -2,7 +2,8 @@ import AppKit
 import Combine
 import SwiftUI
 
-/// Where a topic's recording starts: the live-captions choice and Record.
+/// Where a topic's recording starts: Record, and before it a notice only
+/// when live text cannot be produced (`LiveTextNotice`).
 ///
 /// While a recording runs — this topic's or any other — its controls are in
 /// the recording bar above every page (`RecordingBar`), so this stays out of
@@ -18,7 +19,7 @@ struct NotebookCaptureToolbar: View {
             if capture.isCaptureActive {
                 EmptyView()
             } else {
-                CaptionsChoiceChip()
+                LiveTextNotice()
                 startButton
             }
         }
@@ -61,6 +62,11 @@ struct NotebookCaptureToolbar: View {
 
     private var startButton: some View {
         let disabledReason = profileEditor.captureStartDisabledReason
+        // What starting does, then — when there will be live text — where
+        // the audio goes: the disclosure, readable before pressing.
+        let explanation = disabledReason ?? ([String(localized: "capture.toolbar.start_hint")]
+            + LiveTextStartHint.lines(liveText: commands.nextRecordingUsesCaptions))
+            .joined(separator: "\n")
         // The same filled pill as every other screen's one main action; red is
         // kept for a recording in progress.
         return PrimaryPill(
@@ -74,8 +80,8 @@ struct NotebookCaptureToolbar: View {
         }
         .disabled(commands.isStarting || disabledReason != nil)
         .accessibilityLabel(Text(String(localized: "capture.toolbar.start")))
-        .accessibilityHint(Text(disabledReason ?? String(localized: "capture.toolbar.start_hint")))
-        .help(disabledReason ?? String(localized: "capture.toolbar.start_hint"))
+        .accessibilityHint(Text(explanation))
+        .help(explanation)
         .accessibilityIdentifier("capture.start")
     }
 }

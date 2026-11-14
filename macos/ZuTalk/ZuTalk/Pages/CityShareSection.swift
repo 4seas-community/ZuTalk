@@ -23,6 +23,9 @@ import SwiftUI
 
 struct CityShareSection: View {
     let request: RecordingShareRequest
+    /// The block is a sheet of its own (`CityFilingSheet`), not one of the
+    /// share panel's three: its header is then the sheet's title.
+    var standsAlone = false
 
     @ObservedObject private var city = CityStore.shared
     @State private var loaded = false
@@ -46,6 +49,7 @@ struct CityShareSection: View {
                 languages: languages,
                 loaded: loaded,
                 busy: city.busySessions.contains(request.sessionId),
+                standsAlone: standsAlone,
                 perform: perform
             )
             .task(id: request.sessionId) { await load() }
@@ -142,6 +146,8 @@ struct CityShareContent: View {
     let languages: [String]
     var loaded = true
     var busy = false
+    /// See `CityShareSection.standsAlone`.
+    var standsAlone = false
     let perform: (Action) -> Void
 
     var body: some View {
@@ -172,12 +178,17 @@ struct CityShareContent: View {
     private var header: some View {
         HStack(spacing: Spacing.xs) {
             Label(String(localized: "city.share.title"), systemImage: "archivebox")
-                .font(.bodyMedium)
+                .font(standsAlone ? .titleMD : .bodyMedium)
                 .foregroundColor(.textPrimary)
-            // 和链接的区别:公开、一直留着;音频也是。
+                .accessibilityAddTraits(standsAlone ? .isHeader : [])
+            // 和链接的区别:公开、一直留着;音频也是。单独成一张表的时候下面
+            // 没有链接可比,那半句不说,「公开、一直留着」照说。
             InfoButton(
-                [String(localized: "city.share.public_note"), String(localized: "city.audio.public")]
-                    .joined(separator: "\n"),
+                [
+                    String(localized: standsAlone ? "city.filing.public_note" : "city.share.public_note"),
+                    String(localized: "city.audio.public"),
+                ]
+                .joined(separator: "\n"),
                 accessibilityLabel: String(localized: "city.share.title")
             )
             Spacer(minLength: Spacing.sm)

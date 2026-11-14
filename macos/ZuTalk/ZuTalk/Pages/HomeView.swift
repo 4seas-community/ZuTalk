@@ -932,6 +932,12 @@ private struct HomeSessionRow: View {
                     Label(String(localized: "recording.word.share"), systemImage: "square.and.arrow.up")
                 }
                 .disabled(session.isRecording)
+                CityFilingMenuItem(sessionId: session.id, isRecording: session.isRecording) {
+                    ShareActivityStore.shared.presentCityFiling(
+                        sessionId: session.id,
+                        title: titleForDisplay
+                    )
+                }
                 Divider()
                 Button {
                     isRenaming = true
