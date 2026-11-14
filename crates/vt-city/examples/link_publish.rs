@@ -1,6 +1,7 @@
 //! The whole path against a city server on this machine: sign in by the
 //! device-link exchange, find the city and an event, publish the sample
-//! recording, then correct one sentence.
+//! recording, correct one sentence, then add the recording's audio a part at
+//! a time.
 //!
 //! Driven by `tools/city-interop/e2e.mjs`, which starts the server, plays the
 //! already-signed-in device, and checks afterwards what the server holds.
@@ -9,6 +10,9 @@
 //!   CITY_BASE     the server, e.g. http://city.localhost:8765
 //!   CITY_RESOLVE  optional `host=ip:port`, for a name only this test knows
 //!   CITY_EVENT    the title of the event to publish to
+//!   CITY_AUDIO    optional JSON list of parts to upload, each
+//!                 `{ "path", "t0", "dur", "lv" }` — an encoded file and where
+//!                 it sits on the recording's timeline
 //!
 //! It refuses to run against anything but this machine.
 
@@ -18,9 +22,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde_json::{json, Value};
 use vt_city::calendar::{recording_tags, reduce_events, CITY_KINDS, KINDS};
 use vt_city::channels::{may_put, reduce_channels};
-use vt_city::hub::{city_tag, event_tag, Hub, POST_MAX_BYTES, ROLE_COORDINATOR, ROLE_RESIDENT};
+use vt_city::hub::{
+    city_tag, event_tag, file_name, Hub, POST_MAX_BYTES, ROLE_COORDINATOR, ROLE_RESIDENT,
+};
 use vt_city::link::{LinkSession, LinkStep};
-use vt_city::publish::{batches, build_take, build_update, for_tag};
+use vt_city::publish::{
+    batches, build_part, build_take, build_update, for_tag, PartInput, MIME_M4A,
+};
 
 #[path = "common/sample.rs"]
 mod sample;
@@ -145,5 +153,48 @@ async fn main() -> Fallible<()> {
     )?);
     let corrected = post(&hub, &tags[0], &card, &update).await?;
     say(json!({ "step": "corrected", "posted": corrected, "expected": sample::expected() }));
+
+    // The audio. For each part: the record that claims the file goes to the
+    // event's tag — the take with it, as the server looks the claim up among
+    // the records it holds — and only then the file.
+    if let Ok(list) = std::env::var("CITY_AUDIO") {
+        let parts: Vec<Value> = serde_json::from_str(&list)?;
+        // Bytes no record claims are turned away.
+        let stray = b"bytes nobody claimed".to_vec();
+        let unclaimed = hub.file_put(&file_name(&stray), stray).await;
+        let take = built.records[0].clone();
+        let mut sent = Vec::new();
+        for (n, part) in parts.iter().enumerate() {
+            let bytes = std::fs::read(part["path"].as_str().ok_or("a part needs a path")?)?;
+            let file = file_name(&bytes);
+            let signed = build_part(
+                &who,
+                &PartInput {
+                    take_id: built.take_id.clone(),
+                    n: u32::try_from(n)?,
+                    file: file.clone(),
+                    size: bytes.len() as u64,
+                    t0_ms: part["t0"].as_i64().ok_or("a part needs a start")?,
+                    dur_ms: part["dur"].as_i64().ok_or("a part needs a length")?,
+                    mime: MIME_M4A.to_string(),
+                    levels: part["lv"].as_str().unwrap_or("").to_string(),
+                },
+                now_ms + 10_000 + i64::try_from(n)?,
+            )?;
+            let before = hub.file_exists(&file).await?;
+            // The file before its record: refused, and nothing is stored.
+            let early = hub.file_put(&file, bytes.clone()).await;
+            let posted = post(&hub, &tags[0], &card, &[take.clone(), signed.rec]).await?;
+            hub.file_put(&file, bytes.clone()).await?;
+            let after = hub.file_exists(&file).await?;
+            // The same bytes again: accepted, nothing changes.
+            let again = hub.file_put(&file, bytes).await;
+            sent.push(json!({
+                "n": n, "file": file, "before": before, "early": format!("{early:?}"),
+                "posted": posted, "after": after, "again": format!("{again:?}"),
+            }));
+        }
+        say(json!({ "step": "audio", "unclaimed": format!("{unclaimed:?}"), "parts": sent }));
+    }
     Ok(())
 }

@@ -4,8 +4,9 @@
    Every expected value in them is computed by the city's own code, loaded
    from a checkout (CITY_SRC): canonical JSON and fingerprints, keys and
    inceptions, signed records and the verdicts on damaged ones, the device
-   link exchange, sentence marks, and the city's reduction of a set of event
-   and channel records. The Rust tests then run offline against the files.
+   link exchange, sentence marks, what becomes of a part of a recording's
+   audio, and the city's reduction of a set of event and channel records.
+   The Rust tests then run offline against the files.
 
      CITY_SRC=<city checkout> node tools/city-interop/gen-fixtures.mjs
 
@@ -205,6 +206,66 @@ const EVENT = "ab".repeat(32);
 {
   const texts = ["", "a", "Good morning.", "สวัสดีตอนเช้า", "早上好，大家。", "😀", "a\u0301 vs \u00e1", " leading and trailing ", "x".repeat(2000), "Line one\nLine two\ttabbed"];
   write("marks.json", { marks: texts.map((text) => ({ text, mark: tape.textMark(text) })) });
+}
+
+/* ---------- the parts of a recording's audio ---------- */
+/* One candidate `tape/part` at a time, signed with the city's library and put
+   through the city's reader: `read` is the part as the reader hands it on
+   (null when it drops the record), `served` whether the server serves that
+   media type as itself, `stored` whether it stores a file of that size. */
+{
+  const rules = city.fileRules;
+  const take = await record.make(ada.signer, ada.id, "tape/take", { mime: "", started: T0 }, { deps: [ada.id], links: [EVENT], at: T0 });
+  const good = { n: 0, file: "5a".repeat(32), size: 2_400_000, t0: 0, dur: 300_000, mime: "audio/mp4", lv: "0123456789" };
+  const bodies = [
+    good,
+    { ...good, n: 7, t0: 2_100_000, dur: 12_345 },
+    { ...good, lv: "" },
+    { ...good, lv: "9".repeat(rules.levelsMax) },
+    { ...good, lv: "9".repeat(rules.levelsMax + 1) },
+    { ...good, lv: "12a4" },
+    { ...good, lv: "1 2" },
+    { ...good, lv: "１２" },
+    { ...good, mime: "audio/webm;codecs=opus" },
+    { ...good, mime: "audio/ogg; codecs=opus" },
+    { ...good, mime: "audio/x-m4a" },
+    { ...good, mime: "audio/mp4;" },
+    { ...good, mime: "audio/wav" },
+    { ...good, mime: "audio/mp4a" },
+    { ...good, mime: "Audio/MP4" },
+    { ...good, mime: "video/mp4" },
+    { ...good, mime: "audio/mp4;codecs=\"mp4a.40.2\"" },
+    { ...good, mime: "audio/mp4;a=1;b=2" },
+    { ...good, mime: "audio/mp4;" + "a".repeat(rules.mimeMax - "audio/mp4;".length) },
+    { ...good, mime: "audio/mp4;" + "a".repeat(rules.mimeMax) },
+    { ...good, mime: "" },
+    { ...good, file: "5A".repeat(32) },
+    { ...good, file: "5a".repeat(31) },
+    { ...good, file: "5a".repeat(32) + "0" },
+    { ...good, file: "5g".repeat(32) },
+    { ...good, t0: -1 },
+    { ...good, dur: -1 },
+    { ...good, dur: 0 },
+    { ...good, dur: 1 },
+    { ...good, size: 0 },
+    { ...good, size: 1 },
+    { ...good, size: rules.fileMax },
+    { ...good, size: rules.fileMax + 1 },
+  ];
+  const cases = [];
+  for (const body of bodies) {
+    const part = await record.make(ada.signer, ada.id, "tape/part", body, { deps: [take.id], links: [take.id], at: T0 + 1000 });
+    const w = await city.world([ada.inception, take.rec, part.rec]);
+    const read = tape.tape(w.query, take.id).parts[0];
+    cases.push({
+      body,
+      read: read ? { n: read.n, file: read.file, size: read.size, t0: read.t0, dur: read.dur, mime: read.mime, lv: read.lv } : null,
+      served: rules.mime.test(body.mime),
+      stored: body.size > 0 && body.size <= rules.fileMax,
+    });
+  }
+  if (!cases[0].read || !cases[0].served || !cases[0].stored) throw new Error("the city does not keep a plain part");
+  write("parts.json", { file_max: rules.fileMax, levels_max: rules.levelsMax, mime_max: rules.mimeMax, part_ms: tape.PART_MS, cases });
 }
 
 /* ---------- events ---------- */

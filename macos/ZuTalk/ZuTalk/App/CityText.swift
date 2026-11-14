@@ -3,6 +3,10 @@
 //
 // 这些话在设置、「开始录音」页、录音条、共享面板四处出现,说法必须一样,
 // 所以收在一处。都是纯函数,可以单独测。
+//
+// 0.8.3 起交到档案馆的录音默认带音频(docs/architecture/city-archive.md
+// 第 0 节)。所以这里没有一句话说音频留在这台 Mac:要交音频的时候明说,并且
+// 说它是公开的、删不掉;不交的时候不替以后许诺。
 
 import Foundation
 
@@ -25,12 +29,28 @@ enum CityText {
         "city.error.no_transcript",
         "city.error.refused",
         "city.error.busy",
+        "city.error.audio_not_filed",
+        "city.error.audio_off",
+        "city.error.audio_withheld",
+        "city.error.audio_bad_part",
+        "city.error.audio_refused",
+        "city.error.audio_too_big",
+        "city.error.audio_daily_cap",
+        "city.error.audio_server_full",
     ]
 
     /// 活动在城里被删掉或取消了。交的时候发现,是「没交上」的原因;交上去
     /// 以后才发现,核心把它写在一份「已交」的记录上 —— 两处都要认它,所以
     /// 起个名字。
     static let eventGoneCode = "city.error.event_gone"
+
+    /// 音频这一路上,人要做的事各不一样的那几种(`FfiCityFiling.audioErrorCode`)。
+    /// 城没收下:不再自己试。
+    static let audioRefusedCode = "city.error.audio_refused"
+    /// 一段太大:不再自己试。
+    static let audioTooBigCode = "city.error.audio_too_big"
+    /// 今天往城里放得太多:到城说的时候自己接着交。
+    static let audioDailyCapCode = "city.error.audio_daily_cap"
 
     /// 从核心抛出的错误里取出稳定代码;不是城的错误就没有。
     static func errorCode(_ error: Error) -> String? {
@@ -68,6 +88,14 @@ enum CityText {
         case "city.error.no_transcript": return String(localized: "city.error.no_transcript")
         case "city.error.refused": return String(localized: "city.error.refused")
         case "city.error.busy": return String(localized: "city.error.busy")
+        case "city.error.audio_not_filed": return String(localized: "city.error.audio_not_filed")
+        case "city.error.audio_off": return String(localized: "city.error.audio_off")
+        case "city.error.audio_withheld": return String(localized: "city.error.audio_withheld")
+        case "city.error.audio_bad_part": return String(localized: "city.error.audio_bad_part")
+        case "city.error.audio_refused": return String(localized: "city.error.audio_refused")
+        case "city.error.audio_too_big": return String(localized: "city.error.audio_too_big")
+        case "city.error.audio_daily_cap": return String(localized: "city.error.audio_daily_cap")
+        case "city.error.audio_server_full": return String(localized: "city.error.audio_server_full")
         default: return String(localized: "city.error.generic")
         }
     }
@@ -115,7 +143,8 @@ enum CityText {
             .filter { $0.isEmpty == false && seen.insert($0).inserted }
     }
 
-    /// 「以 Lin 的名义交 English、ไทย和中文的文字稿。带说话人的名字和标记。」
+    /// 「以 Lin 的名义交 English、ไทย和中文的文字稿。带说话人的名字。」
+    /// 标记从 0.8.3 起不交,所以这里不提它。
     static func whatIsFiled(
         signer: String,
         languages: [String],
@@ -129,30 +158,51 @@ enum CityText {
                 signer,
                 ListFormatter.localizedString(byJoining: names)
             )
-        let extras: String
-        switch (options.speakerNames, options.marks) {
-        case (true, true): extras = String(localized: "city.summary.extras.names_marks")
-        case (true, false): extras = String(localized: "city.summary.extras.names_only")
-        case (false, true): extras = String(localized: "city.summary.extras.marks_only")
-        case (false, false): extras = String(localized: "city.summary.extras.neither")
-        }
-        return joinSentences([lead, extras])
+        let speakers = String(localized: options.speakerNames
+            ? "city.summary.names"
+            : "city.summary.no_names")
+        return joinSentences([lead, speakers])
     }
 
-    /// 按下开始之前摆在眼前的那一整句:以谁的名义、哪几种语言、带不带说话人
-    /// 和标记、放不放进频道、音频不交。
+    /// 交之前要让人读得到的那一整句:以谁的名义、哪几种语言、带不带说话人、
+    /// 放不放进频道;要交音频的话,最后明说连音频一起交、交上去是公开的、
+    /// 删不掉。
+    ///
+    /// `audio` 是这一场会不会带音频;不给就照设置。不带的时候什么都不说:
+    /// 设置和这一场的开关在交之前都还能改,「音频不交」是一句替以后许的诺。
     static func summary(
         signer: String,
         languages: [String],
         options: FfiCityFilingOptions,
-        channel: String?
+        channel: String?,
+        audio: Bool? = nil
     ) -> String {
         var parts = [whatIsFiled(signer: signer, languages: languages, options: options)]
         if let channel, channel.isEmpty == false {
             parts.append(String(format: String(localized: "city.summary.channel_format"), channel))
         }
-        parts.append(String(localized: "city.summary.audio_stays"))
+        if audio ?? options.audio {
+            parts.append(String(localized: "city.summary.audio_included"))
+        }
         return joinSentences(parts)
+    }
+
+    /// 登录的地方要让人读得到的:这台 Mac 能以你的名义做事;交到活动的录音
+    /// 默认带音频;交上去的是公开的,删不掉。
+    static var signInDisclosure: String {
+        String(localized: "city.signin.disclosure")
+    }
+
+    /// 「音频」那个开关旁边的:连音频一起交;公开、删不掉;城的主办能拿它
+    /// 再转写。
+    static var audioDisclosure: String {
+        String(localized: "city.audio.disclosure")
+    }
+
+    /// 撤下之前的那一句:档案馆的页面不再显示它;已经交上去的文字和音频留在
+    /// 城的记录里。
+    static var withdrawConfirmation: String {
+        String(localized: "city.withdraw.confirm_one")
     }
 
     /// 几句话接成一段。中文、日文的句号后面不空格,别的语言空一格。

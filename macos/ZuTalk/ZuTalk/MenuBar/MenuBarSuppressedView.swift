@@ -2,7 +2,10 @@ import AppKit
 import SwiftUI
 
 /// Popover content shown when `MenuBarRuntimeStore.suppressionReason` is set.
-/// Each reason names the underlying problem and may offer one remediation action.
+/// Each reason is one sentence — what is wrong — and the one action that
+/// fixes it. What the action leads to used to be printed underneath as a
+/// second sentence; it is now the action's tooltip and what VoiceOver says
+/// after its name.
 @MainActor
 struct MenuBarSuppressedView: View {
     let reason: MenuBarSuppressionReason
@@ -16,13 +19,12 @@ struct MenuBarSuppressedView: View {
                 Text(descriptor.title)
                     .font(Font.sans13Medium)
                     .foregroundColor(Color.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
             }
-            Text(descriptor.body)
-                .font(Font.sans11)
-                .foregroundColor(Color.textSecondary)
-                .multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: true)
+            .help(descriptor.body)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("menu-bar.suppressed.status")
 
             if let actionTitle = descriptor.actionTitle {
                 Button(action: dispatchAction) {
@@ -50,6 +52,10 @@ struct MenuBarSuppressedView: View {
                     )
                 }
                 .buttonStyle(.plain)
+                .help(descriptor.body)
+                .accessibilityLabel(Text(actionTitle))
+                .accessibilityHint(Text(descriptor.body))
+                .accessibilityIdentifier("menu-bar.suppressed.action")
             }
         }
     }

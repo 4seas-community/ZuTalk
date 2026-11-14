@@ -15,8 +15,12 @@
 //   - 各场录音交到哪一步了,这里存一份、按录音查得到:录音页、列表、共享
 //     面板、设置、侧栏都读这一份,不各自去问核心;
 //   - 走网络的调用(出码、等确认、读活动列表、交、更新、撤下)一律不在
-//     主线程上等。
-// 这条路只碰文字,音频从不经过这里。
+//     主线程上等;
+//   - 文字先交,音频跟在后面一段段交(0.8.3 起,默认带音频)。音频一次只交
+//     一场,在后台;一场录音在第一个音频错误上停下,原因写在它的状态上;启动
+//     时、切回 App 时、网络回来时接着交。导出和上传在 `CityAudioExportRun`
+//     里,这里只管排队、让路和记结果 —— 这个文件自己不碰音频的采样;
+//   - 窗口不跟着每一拍重画:音频的进度只在交完一段、开始和结束时各发一次。
 
 import AppKit
 import Combine
@@ -29,6 +33,20 @@ enum CityNextChoice: Equatable {
     case event(FfiCityEvent)
     /// 人明确说了这场不交。
     case notFiling
+}
+
+/// 正在交音频的那一场。一共几段要等量过音频才知道,在那之前是 0。
+struct CityAudioUpload: Equatable {
+    let sessionId: String
+    var total: UInt32
+}
+
+/// 这台 Mac 上的音频交不了的两种情形。都不在核心的账上,只在这一次运行里记着。
+enum CityAudioLocalProblem: Equatable {
+    /// 音频已经不在这台 Mac 上(保留期到了、人删了、录音进了回收站)。
+    case missing
+    /// 音频还在,没能导出来。
+    case unreadable
 }
 
 /// 窗口底部那一条带按钮的提示:「已交到档案馆 · <活动>」加「打开」。
@@ -85,11 +103,14 @@ final class CityStore: ObservableObject {
     @Published private(set) var channels: [FfiCityChannel] = []
     /// 各主题选的频道;没选的主题不在里面。
     @Published private(set) var topicChannels: [String: FfiCityChannel] = [:]
-    @Published private(set) var options = FfiCityFilingOptions(speakerNames: true, marks: true, automatic: true)
+    @Published private(set) var options = FfiCityFilingOptions(speakerNames: true, audio: true, automatic: true)
 
     // MARK: 录音
 
     @Published private(set) var nextChoice: CityNextChoice = .automatic
+    /// 下一场录音不交音频。和选好的活动一样只管紧接着的那一场:绑上以后用
+    /// `citySetSessionAudio` 记到那场录音上,这里清掉。
+    @Published private(set) var nextWithholdsAudio = false
     /// 正在录的这一场。
     @Published private(set) var activeSessionId: String?
     @Published private(set) var activeFiling: FfiCityFiling?
@@ -103,6 +124,10 @@ final class CityStore: ObservableObject {
     @Published private(set) var filingList: [FfiCityFiling] = []
     /// 正在交、更新或撤下的录音。
     @Published private(set) var busySessions: Set<String> = []
+    /// 正在交音频的那一场;一次只交一场。
+    @Published private(set) var audioUpload: CityAudioUpload?
+    /// 音频在这台 Mac 上交不了的录音:没有了,或者没导出来。
+    @Published private(set) var audioProblems: [String: CityAudioLocalProblem] = [:]
     /// 系统确认这台 Mac 没有网络。只有这时才说「没有联网」;核心报的
     /// 「没连上城的服务器」说明不了这一点。
     @Published private(set) var offline = false
@@ -134,6 +159,11 @@ final class CityStore: ObservableObject {
     private var filingsRevision = 0
     private var started = false
     private var observers: Set<AnyCancellable> = []
+    private var audioQueue = CityAudioExportQueue()
+    private var audioTask: Task<CityAudioExportOutcome, Never>?
+    /// 人按了「补交音频」「重试」的那几场:结果要说一声。自己接着交的不说,
+    /// 状态上看得到。
+    private var audioAsked: Set<String> = []
     private var noticeTimer: Timer?
 
     private init() {
@@ -160,6 +190,9 @@ final class CityStore: ObservableObject {
         NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
             .sink { [weak self] _ in self?.appBecameActive() }
             .store(in: &observers)
+        // 上一回没来得及删的临时文件:编好的音频不留在盘上。此刻还没有哪
+        // 一场在导出。
+        CityAudioExport.sweep()
         retryPending()
         scheduleRetries()
     }
@@ -340,12 +373,19 @@ final class CityStore: ObservableObject {
         channels = []
         topicChannels = [:]
         nextChoice = .automatic
+        nextWithholdsAudio = false
         cancelConfirmedDestination()
         activeFiling = nil
         activeDestinationCleared = false
         filings = [:]
         filingList = []
         filingsRevision += 1
+        // 正在交的那一场交完手上这一段就停;排着的不再交。
+        audioTask?.cancel()
+        audioQueue.removeAll()
+        audioAsked = []
+        audioUpload = nil
+        audioProblems = [:]
         scheduleRetries()
         dismissNotice()
     }
@@ -366,7 +406,13 @@ final class CityStore: ObservableObject {
         guard let core, next != options else { return }
         do {
             try core.setCityFilingOptions(options: next)
+            let turnedAudioOn = next.audio && options.audio == false
             options = next
+            // 「带不带音频」写在每一份记录上:读回来,各处的状态才跟得上。
+            reloadFilings()
+            // 关着的时候停下的那几场,开了接着交;关掉不用管,正在交的那一场
+            // 在下一段之前自己会问。
+            if turnedAudioOn { resumeAudio() }
         } catch {
             ToastCenter.shared.error(
                 String(localized: "city.options.save_failed"),
@@ -446,6 +492,14 @@ final class CityStore: ObservableObject {
         nextChoice = choice
     }
 
+    /// 下一场录音交不交音频。只能往少里选:设置里关着的时候,这里说「交」
+    /// 也不交。
+    func setNextWithholdsAudio(_ withhold: Bool) {
+        if nextWithholdsAudio != withhold {
+            nextWithholdsAudio = withhold
+        }
+    }
+
     /// 「开始录音」页出现时调用。上次选了没录的那场活动要是早就散了,回到
     /// 自动:人看到的应该是此刻的情况,不是几小时前的选择。
     func prepareNextRecording(now: Date = Date()) {
@@ -503,8 +557,16 @@ final class CityStore: ObservableObject {
         }
         cancelConfirmedDestination()
         nextChoice = .automatic
+        // 「不交音频」也只管这一场。
+        let withholdsAudio = nextWithholdsAudio
+        nextWithholdsAudio = false
         guard account != nil, let event else { return }
-        Task { await bind(sessionId: sessionId, event: event) }
+        Task {
+            let filing = await bind(sessionId: sessionId, event: event)
+            if withholdsAudio, filing != nil {
+                await setSessionAudio(sessionId: sessionId, enabled: false)
+            }
+        }
     }
 
     /// 录音结束了,不管是怎么结束的。归了活动的那一场:设了自动交就在后台交,
@@ -541,11 +603,27 @@ final class CityStore: ObservableObject {
 
     /// 一场录音此刻交到哪一步了,全 App 同一套说法(`CityFilingStatus`)。
     func status(sessionId: String) -> CityFilingStatus {
-        CityFilingStatus.resolve(
+        let uploading = audioUpload?.sessionId == sessionId
+        return CityFilingStatus.resolve(
             filings[sessionId],
             busy: busySessions.contains(sessionId),
             offline: offline,
-            signer: account?.personName
+            signer: account?.personName,
+            audioUploading: uploading,
+            audioPlanned: uploading ? audioUpload?.total : nil,
+            audioMissing: audioProblems[sessionId] == .missing,
+            audioUnreadable: audioProblems[sessionId] == .unreadable
+        )
+    }
+
+    /// 各种状态各有几场,连同音频这一路。设置里的表、侧栏底部那一行用。
+    var tally: CityFilingTally {
+        CityFilingTally.count(
+            filingList,
+            busy: busySessions,
+            audioUploading: audioUpload?.sessionId,
+            audioMissing: Set(audioProblems.filter { $0.value == .missing }.keys),
+            audioUnreadable: Set(audioProblems.filter { $0.value == .unreadable }.keys)
         )
     }
 
@@ -682,6 +760,9 @@ final class CityStore: ObservableObject {
     ) async -> FfiCityFiling? {
         guard account != nil, let core, busySessions.contains(sessionId) == false else { return nil }
         busySessions.insert(sessionId)
+        // 这一场的音频正在交:让它交完手上这一段就停,文字这件事先办。核心
+        // 一场录音同时只办一件事,不让路的话这一下会被当成「正在交」挡回来。
+        await yieldAudio(sessionId: sessionId)
         let result = await Task.detached { Result { try call(core) } }.value
         busySessions.remove(sessionId)
         guard account != nil else { return nil }
@@ -690,6 +771,9 @@ final class CityStore: ObservableObject {
             remember(filing, sessionId: sessionId)
             reloadFilings()
             if announce { self.announce(filing) }
+            // 文字交上去了、音频该交:接着交。更新完的那一场也从这里接回去。
+            followWithAudio(filing)
+            pumpAudio()
             return filing
         case .failure(let error):
             // 同一场已经在交了:那一趟会给结果,这里不再多说一遍。
@@ -840,13 +924,16 @@ final class CityStore: ObservableObject {
                 }
             }
             retryingPending = false
+            // 文字都试过了,再把该交音频的接着交。
+            resumeAudio()
         }
     }
 
     /// 还有排着队的就定时再试,没有了就停表。去城的那条路常有一阵连不上而
     /// 机器一直在线,「网络回来」那一下等不到;以前这样的一场要等到下次启动。
     private func scheduleRetries() {
-        let waiting = started && account != nil && filingList.contains { $0.state == .queued }
+        let waiting = started && account != nil
+            && filingList.contains { $0.state == .queued || audioWillRetry($0) }
         guard waiting else {
             retryTimer?.invalidate()
             retryTimer = nil
@@ -866,7 +953,7 @@ final class CityStore: ObservableObject {
     private func appBecameActive() {
         guard account != nil else { return }
         reloadFilings()
-        let queued = filingList.contains { $0.state == .queued }
+        let queued = filingList.contains { $0.state == .queued || audioWillRetry($0) }
         if Self.retriesOnActivation(queued: queued, lastRetryAt: lastRetryAt, now: Date()) {
             retryPending()
         }
@@ -876,6 +963,209 @@ final class CityStore: ObservableObject {
         guard queued else { return false }
         guard let lastRetryAt else { return true }
         return now.timeIntervalSince(lastRetryAt) >= activationRetryGap
+    }
+
+    // MARK: - 音频
+
+    /// 这一场的音频是不是会自己接着交:该交,又不是「城没收」「一段太大」
+    /// 那两种再试也一样的。排着这样的录音时,定时再试的那块表不停。
+    static func audioRetriesItself(_ filing: FfiCityFiling) -> Bool {
+        guard filing.audioDue else { return false }
+        return filing.audioErrorCode != CityText.audioRefusedCode
+            && filing.audioErrorCode != CityText.audioTooBigCode
+    }
+
+    /// 同上,再除掉这台 Mac 上已经没有音频、或者没导出来的:那几场这一次
+    /// 运行里不会自己再试,不为它们让表一直走。
+    private func audioWillRetry(_ filing: FfiCityFiling) -> Bool {
+        Self.audioRetriesItself(filing) && audioProblems[filing.sessionId] == nil
+    }
+
+    /// 这一场交不交音频。关掉:设置里开着,这一场也不交;打开:只是不再单独
+    /// 关着,设置里关着时仍然不交。已经交上去的音频撤不回来 —— 正在传的那
+    /// 一段会传完,之后不再交。
+    @discardableResult
+    func setSessionAudio(sessionId: String, enabled: Bool) async -> FfiCityFiling? {
+        guard account != nil, let core else { return nil }
+        let result = await Task.detached {
+            Result { try core.citySetSessionAudio(sessionId: sessionId, enabled: enabled) }
+        }.value
+        guard account != nil else { return nil }
+        switch result {
+        case .success(let filing):
+            remember(filing, sessionId: sessionId)
+            if enabled {
+                followWithAudio(filing)
+                pumpAudio()
+            }
+            return filing
+        case .failure(let error):
+            ToastCenter.shared.error(
+                String(localized: "city.options.save_failed"),
+                detail: CityText.describe(error, signer: account?.personName)
+            )
+            noteFailure(error)
+            return nil
+        }
+    }
+
+    /// 人按了「补交音频」或音频的「重试」。文字交上去而音频没交的录音(这
+    /// 一版以前交的、当时关着的、城没收下的)只从这里开始:不替人开口。
+    func fileAudio(sessionId: String) {
+        guard account != nil else { return }
+        audioAsked.insert(sessionId)
+        // 上一回说没有、没导出来的,人要再试就再试一次。
+        if audioProblems[sessionId] != nil {
+            audioProblems[sessionId] = nil
+        }
+        audioQueue.add(sessionId, first: true)
+        pumpAudio()
+    }
+
+    /// 把该交音频、现在去交有用的录音接着交。启动时、切回 App 时、网络回来
+    /// 时调用,还有排着的期间每两分钟一次。哪几场由核心说了算。
+    func resumeAudio() {
+        guard account != nil, let core, NetworkReachability.shared.isOffline == false else { return }
+        Task {
+            let pending = await Task.detached { core.cityPendingAudioSessions() }.value
+            guard account != nil else { return }
+            for sessionId in pending where audioProblems[sessionId] == nil {
+                audioQueue.add(sessionId)
+            }
+            pumpAudio()
+        }
+    }
+
+    /// 文字刚交上去(或刚更新完)的这一场,音频该交就排上。
+    private func followWithAudio(_ filing: FfiCityFiling) {
+        guard filing.state == .filed, filing.audioDue,
+              audioProblems[filing.sessionId] == nil
+        else { return }
+        audioQueue.add(filing.sessionId)
+    }
+
+    /// 手上没有在交的,就取下一场开始交。
+    private func pumpAudio() {
+        guard account != nil, audioTask == nil, let core,
+              let sessionId = audioQueue.next(skipping: busySessions)
+        else { return }
+        audioUpload = CityAudioUpload(sessionId: sessionId, total: 0)
+        let source = CityAudioExportCore(core: core)
+        let run = CityAudioExportRun(filing: source, audio: source)
+        let task = Task.detached(priority: .utility) { () -> CityAudioExportOutcome in
+            run.run(
+                sessionId: sessionId,
+                shouldStop: { Task.isCancelled },
+                began: { total in
+                    Task { @MainActor in
+                        CityStore.shared.audioBegan(sessionId: sessionId, total: total)
+                    }
+                },
+                progress: { filing in
+                    Task { @MainActor in
+                        CityStore.shared.audioProgressed(filing)
+                    }
+                }
+            )
+        }
+        audioTask = task
+        Task {
+            let outcome = await task.value
+            audioFinished(sessionId: sessionId, outcome: outcome)
+        }
+    }
+
+    private func audioBegan(sessionId: String, total: UInt32) {
+        guard audioUpload?.sessionId == sessionId, audioUpload?.total != total else { return }
+        audioUpload?.total = total
+    }
+
+    /// 交完一段:记下最新的那一份。一段五分钟的录音才来一次,不是每一拍。
+    private func audioProgressed(_ filing: FfiCityFiling) {
+        // 这一趟已经收尾了的,结果里带着更新的一份,晚到的这一份不要。
+        guard account != nil, audioUpload?.sessionId == filing.sessionId else { return }
+        remember(filing, sessionId: filing.sessionId)
+    }
+
+    private func audioFinished(sessionId: String, outcome: CityAudioExportOutcome) {
+        audioTask = nil
+        audioQueue.finish(sessionId)
+        if audioUpload?.sessionId == sessionId { audioUpload = nil }
+        let asked = audioAsked.remove(sessionId) != nil
+        guard account != nil else { return }
+        switch outcome {
+        case .finished(let filing):
+            if let filing {
+                remember(filing, sessionId: sessionId)
+            } else {
+                Task { await loadFiling(sessionId: sessionId) }
+            }
+            if asked {
+                ToastCenter.shared.success(String(localized: "city.toast.audio_filed"))
+            }
+        case .stopped(let filing):
+            remember(filing, sessionId: sessionId)
+            // 城没收、太大:不会再自己试,要让人知道。别的几种会自己接着交,
+            // 状态上看得到;人开口要的那一回才说。
+            let final = filing.audioErrorCode == CityText.audioRefusedCode
+                || filing.audioErrorCode == CityText.audioTooBigCode
+            if final || asked {
+                ToastCenter.shared.error(
+                    String(format: String(localized: "city.toast.audio_stopped_format"), filing.eventTitle),
+                    detail: CityText.message(forCode: filing.audioErrorCode, signer: account?.personName)
+                )
+            }
+        case .held(let code):
+            // 设置关了、这一场关了、撤下了、今天到上限了:账上都有,读回来
+            // 照实显示。
+            Task { await loadFiling(sessionId: sessionId) }
+            if asked {
+                ToastCenter.shared.error(
+                    String(localized: "city.toast.audio_failed"),
+                    detail: CityText.message(forCode: code, signer: account?.personName)
+                )
+            }
+        case .noAudio:
+            // 没有可交的:是状态,不是出错。
+            audioProblems[sessionId] = .missing
+            if asked {
+                ToastCenter.shared.info(String(localized: "city.audio.reason.missing"))
+            }
+        case .interrupted:
+            // 给这一场的别的事(更新、撤下)让路。那件事还在办的话,办完会把
+            // 它再排上;已经办完了,就照办完以后的样子现在排上 —— 撤下了的
+            // 不会再排。
+            if let filing = filings[sessionId] { followWithAudio(filing) }
+        case .failed(let code):
+            if code == "city.error.signed_out", core?.cityAccount() == nil {
+                forgetAccount()
+                return
+            }
+            // 核心说这一场正忙:不是出了错,下一轮再来。
+            if code == "city.error.busy" { break }
+            // 没导出来:这一次运行里不再自己试,人按「重试」才再试。状态上
+            // 写着,侧栏底部那一行也算它一场。
+            if code == nil { audioProblems[sessionId] = .unreadable }
+            Task { await loadFiling(sessionId: sessionId) }
+            if asked {
+                ToastCenter.shared.error(
+                    String(localized: "city.toast.audio_failed"),
+                    detail: CityText.message(
+                        forCode: code ?? "city.error.audio_bad_part",
+                        signer: account?.personName
+                    )
+                )
+            }
+        }
+        pumpAudio()
+        scheduleRetries()
+    }
+
+    /// 这一场的音频正在交:叫它交完手上这一段就停,等它停下。
+    private func yieldAudio(sessionId: String) async {
+        guard audioUpload?.sessionId == sessionId, let task = audioTask else { return }
+        task.cancel()
+        _ = await task.value
     }
 
     // MARK: - 提示

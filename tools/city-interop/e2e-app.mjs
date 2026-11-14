@@ -8,8 +8,14 @@
    signs in through the device-link relay (this script plays the device that
    is already signed in), reads the calendar, is turned away from an event it
    may not file to, files a recording under an imported event whose recorder a
-   coordinator named, files again, withdraws, and signs out. After each step
-   the hub is read back and judged with the city's own reducers.
+   coordinator named, files again, is held back from sending audio while the
+   recording is set to go without, then files the audio a part at a time,
+   withdraws, and signs out. After each step the hub is read back and judged
+   with the city's own reducers, and the audio is fetched from the server's
+   file store.
+
+   The recording carries a mark; nothing about it may reach the city. The
+   audio is a tone made on the spot (audio.mjs; needs macOS's afconvert).
 
    The imported event is the case that matters most in practice: most of a
    real city's calendar is brought in from an outside calendar, and there the
@@ -20,12 +26,14 @@
    No deployed city is contacted: every address used is on this machine. */
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
+import { createHash } from "node:crypto";
 import { createInterface } from "node:readline";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import * as city from "./city.mjs";
+import * as audio from "./audio.mjs";
 
 const { record, tape, ev, arc, polis, link, box, did, seed } = city;
 const here = dirname(fileURLToPath(import.meta.url)), repo = join(here, "..", "..");
@@ -50,6 +58,7 @@ const keep = join(scratch, `app-${Date.now()}-${port}`);
 mkdirSync(keep, { recursive: true });
 const NOW = Date.now(), DAY = 864e5, HOUR = 3600e3;
 const founder = await city.person(seed(0x41)), recorder = await city.person(seed(0x42)), owner = await city.person(seed(0x43));
+const sound = audio.parts(join(keep, "audio"));
 writeFileSync(join(keep, "founders.txt"), founder.id.slice(0, 16) + "\n");
 writeFileSync(join(keep, "base.txt"), name + "\n");
 
@@ -125,7 +134,7 @@ await post(cityTag, [founder.inception, mistake.rec, deleted.rec], "an event and
 const proceed = join(keep, "proceed");
 const rust = spawn("cargo", ["test", "--quiet", "--manifest-path", join(repo, "Cargo.toml"), "-p", "vt-ffi", "--lib",
   "city_api::tests::files_a_recording_into_a_city_on_this_machine", "--", "--ignored", "--exact", "--nocapture"],
-  { env: { ...process.env, ZUTALK_CITY_E2E_BASE: `http://${name}`, ZUTALK_CITY_RESOLVE: `city.localhost=127.0.0.1:${port}`, ZUTALK_CITY_E2E_PROCEED: proceed }, stdio: ["ignore", "pipe", "pipe"] });
+  { env: { ...process.env, ZUTALK_CITY_E2E_BASE: `http://${name}`, ZUTALK_CITY_RESOLVE: `city.localhost=127.0.0.1:${port}`, ZUTALK_CITY_E2E_PROCEED: proceed, ZUTALK_CITY_E2E_AUDIO: audio.asEnv(sound) }, stdio: ["ignore", "pipe", "pipe"] });
 children.push(rust);
 let rustErr = "";
 rust.stderr.on("data", (d) => { rustErr += d; });
@@ -173,11 +182,13 @@ for await (const line of createInterface({ input: rust.stdout })) {
     same(s.value.url, `http://${name}/archive/c/${imported.id}/b/${s.value.block}`, "the link opens the item in the archive");
     const { onEvent, onCity, w, cities, events, archive } = await judged();
     ok(onEvent.some((r) => r.e.type === "tape/take" && r.e.by === recorder.id) && !onCity.some((r) => r.e.type.startsWith("tape/")), "the transcript is on the event tag only");
-    ok(!onEvent.some((r) => r.e.type === "tape/part") && !onCity.some((r) => r.e.type === "tape/part"), "no audio part was filed");
+    ok(!onEvent.some((r) => r.e.type === "tape/part") && !onCity.some((r) => r.e.type === "tape/part"), "filing the text files no audio part by itself");
+    ok(!onEvent.some((r) => r.e.type === "tape/mark") && !onCity.some((r) => r.e.type === "tape/mark"), "the recording's mark was not filed");
     same(onCity.filter((r) => r.e.type.startsWith("arc/") && r.e.by === recorder.id).map((r) => r.e.type).sort(), ["arc/block", "arc/connect", "arc/connect"], "the city tag has the item and its two placements");
     const tp = tape.tape(w.query, s.value.take, { event: (id) => events.get(id), cities });
     ok(!!tp && tp.segs.length > 0, "the city finds the take and its sentences");
     ok(tp.segs.every((x) => x.text.trim().length > 0), "every sentence has text");
+    same(tp.marks, [], "the city has no highlight for the take");
     const filedLanguages = Object.fromEntries(s.value.languages);
     for (const lang of [...tp.langs.keys()]) {
       const lines = tape.trLines(tp, lang);
@@ -193,16 +204,60 @@ for await (const line of createInterface({ input: rust.stdout })) {
     ok(arc.visible(archive, block, owner.id), "another resident sees it");
     steps.counts = { event: onEvent.length, city: onCity.length };
     writeFileSync(proceed, "go\n");
+  } else if (s.step === "audio-withheld") {
+    same(s.value, { wanted: false, error: "city.error.audio_withheld", upload: false, hold: "city.error.audio_withheld", pending: [] },
+      "a recording set to go without audio: the core refuses to send any, and does not list it as pending");
+    const { onEvent, onCity } = await judged();
+    ok(![...onEvent, ...onCity].some((r) => r.e.type === "tape/part"), "and no part record reached the city");
+    for (const p of sound) same((await audio.fetched(origin, p.file)).status, 404, `nor part ${p.n}'s file`);
+    writeFileSync(proceed + ".withheld", "go\n");
+  } else if (s.step === "audio-plan") {
+    same(s.value, { upload: true, due: true, part_ms: tape.PART_MS, max: city.fileRules.fileMax, mime: "audio/mp4", filed: [] },
+      "allowed again, the plan is the city's own: its part length, its size limit, a type it serves");
+    ok(city.fileRules.mime.test(s.value.mime), "the server serves that type as itself");
+  } else if (s.step === "audio") {
+    same(s.value.parts, sound.map((_, n) => ({ state: "Filed", planned: sound.length, filed: n + 1, error: null })), "each part is filed in turn; the filing stays filed throughout");
+    same([s.value.again, s.value.filed, s.value.pending], [sound.length, sound.map((p) => p.n), []], "filing a part again changes nothing; nothing is left pending");
+    const { onEvent, onCity, w, cities, events } = await judged();
+    const partRecs = onEvent.filter((r) => r.e.type === "tape/part");
+    same(partRecs.length, sound.length, "one record per part on the event tag");
+    ok(partRecs.every((r) => r.e.by === recorder.id && isDeepStrictEqual(r.e.links, [steps.filed.take])) && !onCity.some((r) => r.e.type === "tape/part"), "signed by the take's author, about the take, and not on the city tag");
+    const tp = tape.tape(w.query, steps.filed.take, { event: (id) => events.get(id), cities });
+    same(audio.read(tp), audio.signed(sound), "the city reads both parts as signed, in order");
+    same(tp.dur, sound.reduce((n, p) => n + p.dur, 0), "and they add up to the audio's length");
+    same([0, 2_999, 3_000, 4_200].map((ms) => { const at = tape.locate(tp, ms); return [at.part.file, at.at]; }),
+      [[sound[0].file, 0], [sound[0].file, 2_999], [sound[1].file, 0], [sound[1].file, 1_200]], "a player finds any moment in its part");
+    for (const p of sound) {
+      const got = await audio.fetched(origin, p.file);
+      same([got.status, got.type], [200, "audio/mp4"], `part ${p.n}: served as AAC in MPEG-4`);
+      ok(got.bytes.equals(p.bytes), `part ${p.n}: the bytes served are the bytes the app exported`);
+    }
+    ok(tp.segs.length > 0 && tp.ended > 0 && tape.onAir(w.query, events.get(imported.id), Date.now()).length === 0, "the transcript is as it was and nobody is on air");
+    same(onEvent.filter((r) => r.e.type === "tape/take" && r.e.by === recorder.id).length, 1, "posting the take again with each part added no second take");
+    ok(!onEvent.some((r) => r.e.type === "tape/mark"), "still no mark");
+    /* Bytes nobody claimed are refused, whoever sends them. */
+    const stray = Buffer.from("bytes nobody claimed");
+    const put = await fetch(`${origin}/files/${createHash("sha256").update(stray).digest("hex")}`, { method: "PUT", body: stray });
+    same([put.status, String((await put.json().catch(() => ({}))).type || "").split("#")[1]], [403, "unclaimed"], "a PUT without a claim is refused as unclaimed");
+    writeFileSync(proceed + ".audio", "go\n");
   } else if (s.step === "withdrawn") {
     same(s.value, { state: "Withdrawn", error: null }, "withdrawn");
-    const { archive } = await judged();
+    const { archive, onEvent } = await judged();
     const block = archive.blocks.get(steps.filed.block);
     ok(!block || block.state === "drop", "the item is gone from the archive");
+    /* Withdrawing hides the item. What was filed stays: the transcript and
+       the part records in the event's log, the audio in the file store. */
+    same(onEvent.filter((r) => r.e.type === "tape/part").length, sound.length, "the part records are still in the event's log");
+    ok(onEvent.some((r) => r.e.type === "tape/text" && r.e.by === recorder.id), "and so is the transcript");
+    for (const p of sound) {
+      const got = await audio.fetched(origin, p.file);
+      ok(got.status === 200 && got.bytes.equals(p.bytes), `part ${p.n}'s audio is still served after the withdrawal`);
+    }
   }
 }
 const code = await new Promise((done) => rust.exitCode !== null ? done(rust.exitCode) : rust.on("exit", done));
 ok(code === 0, "the app's test ran to the end", rustErr.trim().split("\n").slice(-30).join("\n"));
-for (const step of ["code", "check", "signed-in", "calendar", "channels", "not-allowed", "filed", "withdrawn", "signed-out"]) ok(step in steps, `reached: ${step}`);
+for (const step of ["code", "check", "signed-in", "calendar", "channels", "not-allowed", "filed", "audio-withheld", "audio-plan", "audio", "withdrawn", "signed-out"]) ok(step in steps, `reached: ${step}`);
 
 stop();
 console.log(`\n✓ ${checks} checks: ZuTalk's core against a city server on this machine`);

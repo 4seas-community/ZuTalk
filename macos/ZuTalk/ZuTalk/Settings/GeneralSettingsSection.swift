@@ -1,5 +1,5 @@
 // GeneralSettingsSection.swift
-// 常规设置:应用语言 + 外观
+// 通用设置:应用语言、外观、新手引导、更新
 // 语言集合的一致性由 scripts/check_locale_parity.sh 强制。
 //
 // 语言策略:
@@ -8,7 +8,7 @@
 //   - 设置里不再提供"跟随系统",用户选定即固化
 //
 // 切换路径:
-//   用户在 Picker 里选 → @AppStorage("ui.language") 持久化
+//   用户在语言那颗胶囊的菜单里选 → @AppStorage("ui.language") 持久化
 //   → UserDefaults 写 AppleLanguages(macOS 下次启动时 SwiftUI bundle 按这个装)
 //   → CoreClient.shared.core?.setLocale(...) 立即把 Rust 端同步到同一 locale
 //   → 弹重启提示(SwiftUI bundle 只在进程启动时读一次 AppleLanguages)
@@ -102,114 +102,150 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     }
 }
 
+/// 「设置 › 通用」:语言、外观、新手引导,然后是更新。每一行是名字加一颗胶囊,
+/// 胶囊上写着现在的值;原来名字下面的那句说明在悬停提示里。
 struct GeneralSettingsSection: View {
     @AppStorage("ui.language") private var language: String = AppLanguage.en.rawValue
     @AppStorage("appearance") private var appearance: String = AppearanceMode.system.rawValue
+    @Environment(\.settingsFixture) private var fixture
 
     @State private var showRestartHint: Bool = false
     @State private var automaticallyChecksForUpdates = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.lg) {
-            SettingsPageHeader(
-                title: String(localized: "settings.section.general_name"),
-                subtitle: String(localized: "settings.general.subtitle_plain")
-            )
+            SettingsPageHeader(title: String(localized: "settings.section.general_name"))
 
             SettingsCard {
                 SettingsRow(
                     String(localized: "settings.language.title"),
-                    description: String(localized: showRestartHint
-                        ? "settings.language.restart_hint"
-                        : "settings.language.hint")
+                    description: String(localized: "settings.language.hint")
                 ) {
-                    Picker("", selection: $language) {
-                        ForEach(AppLanguage.allCases) { lang in
-                            Text(String(localized: lang.displayNameKey)).tag(lang.rawValue)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                    .fixedSize()
-                    .montereyOnChange(of: language) { _, newValue in
-                        applyLanguage(newValue)
+                    languagePill
+                }
+                if showRestartHint {
+                    // 换了语言以后的状态:不重启,窗口里还是原来的语言。
+                    SettingsRowDivider()
+                    SettingsFullRow {
+                        SettingsStatus(
+                            String(localized: "settings.language.restart_hint"),
+                            systemImage: "arrow.clockwise",
+                            tint: .signalAmber
+                        )
+                        .accessibilityIdentifier("settings.language.restart")
                     }
                 }
                 SettingsRowDivider()
-                SettingsRow(String(localized: "settings.appearance.title")) {
-                    Picker("", selection: $appearance) {
-                        ForEach(AppearanceMode.allCases, id: \.rawValue) { mode in
-                            Text(mode.displayName).tag(mode.rawValue)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                    .fixedSize()
-                    .montereyOnChange(of: appearance) { _, newValue in
-                        if let mode = AppearanceMode(rawValue: newValue) {
-                            applyAppearance(mode)
-                        }
-                    }
-                }
-            }
-
-            SettingsCard(
-                title: String(localized: "settings.updates.title"),
-                subtitle: String(localized: "settings.updates.subtitle")
-            ) {
-                SettingsRow(
-                    String(localized: "settings.updates.automatic"),
-                    description: String(localized: "settings.updates.automatic_hint")
-                ) {
-                    Toggle("", isOn: $automaticallyChecksForUpdates)
-                        .labelsHidden()
-                        .disabled(!SoftwareUpdateController.shared.isAvailable)
-                        .montereyOnChange(of: automaticallyChecksForUpdates) { _, enabled in
-                            SoftwareUpdateController.shared.setAutomaticallyChecksForUpdates(enabled)
-                        }
-                }
-                SettingsRowDivider()
-                // 当前版本要看得见。一个"检查更新"面板不说自己是哪一版,
-                // 用户既判断不了刚装上的是不是新的,报问题时也报不出版本。
-                SettingsRow(
-                    String(localized: "settings.updates.current_version"),
-                    description: String(localized: "settings.updates.version_hint")
-                ) {
-                    Text(Self.versionDisplay)
-                        .font(Font.mono11)
-                        .foregroundColor(Color.textSecondary)
-                        .textSelection(.enabled)
-                        .accessibilityIdentifier("settings.updates.version")
+                SettingsRow(String(localized: "settings.general.appearance")) {
+                    appearancePill
                 }
                 SettingsRowDivider()
                 SettingsRow(
                     String(localized: "settings.general.welcome_again"),
                     description: String(localized: "settings.general.welcome_again_hint_plain")
                 ) {
-                    Button(String(localized: "settings.general.welcome_again_button")) {
+                    ActionPill(
+                        String(localized: "settings.general.welcome_again_button"),
+                        systemImage: "arrow.counterclockwise",
+                        help: String(localized: "settings.general.welcome_again_hint_plain")
+                    ) {
                         MainNavigationStore.shared.presentOnboarding()
                     }
+                    .accessibilityIdentifier("settings.general.welcome-again")
                 }
-                SettingsRowDivider()
-                SettingsRow(
-                    String(localized: "settings.updates.check_now"),
-                    description: String(localized: "settings.updates.check_now_hint")
-                ) {
-                    Button(String(localized: "updates.check")) {
-                        SoftwareUpdateController.shared.checkForUpdates()
+            }
+
+            SettingsGroup(
+                title: String(localized: "settings.group.updates"),
+                subtitle: String(localized: "settings.updates.subtitle")
+            ) {
+                SettingsCard {
+                    SettingsRow(
+                        String(localized: "settings.updates.automatic"),
+                        description: String(localized: "settings.updates.automatic_hint")
+                    ) {
+                        SettingsSwitch(
+                            isOn: automaticallyChecksForUpdates,
+                            label: String(localized: "settings.updates.automatic"),
+                            help: String(localized: "settings.updates.automatic_hint")
+                        ) { enabled in
+                            automaticallyChecksForUpdates = enabled
+                            SoftwareUpdateController.shared.setAutomaticallyChecksForUpdates(enabled)
+                        }
+                        .disabled(!SoftwareUpdateController.shared.isAvailable)
+                        .accessibilityIdentifier("settings.updates.automatic")
+                    }
+                    SettingsRowDivider()
+                    // 当前版本要看得见。一个"检查更新"面板不说自己是哪一版,
+                    // 用户既判断不了刚装上的是不是新的,报问题时也报不出版本。
+                    SettingsRow(
+                        String(localized: "settings.updates.current_version"),
+                        description: String(localized: "settings.updates.version_hint")
+                    ) {
+                        SettingsValue(Self.versionDisplay)
+                            .accessibilityIdentifier("settings.updates.version")
+                        ActionPill(
+                            String(localized: "settings.updates.check"),
+                            systemImage: "arrow.triangle.2.circlepath",
+                            help: String(localized: "settings.updates.check_now_hint"),
+                            accessibilityLabel: String(localized: "settings.updates.check_now")
+                        ) {
+                            SoftwareUpdateController.shared.checkForUpdates()
+                        }
+                        .accessibilityIdentifier("settings.updates.check")
                     }
                 }
             }
         }
         .onAppear {
+            automaticallyChecksForUpdates =
+                SoftwareUpdateController.shared.automaticallyChecksForUpdates
+            // 画给测试看的时候不碰偏好。
+            guard fixture == nil else { return }
             // 进面板时,清洗遗留值(用户历史上可能是 "system")到显式语言
             let effective = AppLanguage.seedIfNeeded()
             if effective.rawValue != language {
                 language = effective.rawValue
             }
-            automaticallyChecksForUpdates =
-                SoftwareUpdateController.shared.automaticallyChecksForUpdates
         }
+    }
+
+    /// 写着现在的语言;点开是八种,当前那一种打着勾。
+    private var languagePill: some View {
+        let current = AppLanguage(rawValue: language) ?? .en
+        return MenuPill(
+            String(localized: current.displayNameKey),
+            systemImage: "globe",
+            help: String(localized: "settings.language.hint"),
+            accessibilityLabel: String(localized: "settings.language.title")
+        ) {
+            AppLanguage.allCases.map { lang in
+                PillMenuItem(String(localized: lang.displayNameKey), isOn: lang == current) {
+                    guard lang.rawValue != language else { return }
+                    language = lang.rawValue
+                    applyLanguage(lang.rawValue)
+                }
+            }
+        }
+        .accessibilityIdentifier("settings.language")
+    }
+
+    private var appearancePill: some View {
+        let current = AppearanceMode(rawValue: appearance) ?? .system
+        return MenuPill(
+            current.displayName,
+            systemImage: "circle.lefthalf.filled",
+            accessibilityLabel: String(localized: "settings.general.appearance")
+        ) {
+            AppearanceMode.allCases.map { mode in
+                PillMenuItem(mode.displayName, isOn: mode == current) {
+                    guard mode.rawValue != appearance else { return }
+                    appearance = mode.rawValue
+                    applyAppearance(mode)
+                }
+            }
+        }
+        .accessibilityIdentifier("settings.appearance")
     }
 
     /// 「0.5.7 (39)」。两个数都要:版本号是用户说的那个,构建号是发布

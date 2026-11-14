@@ -6,35 +6,21 @@
 "common.delete" = "Delete";
 
 /* Onboarding — Welcome */
-"onboarding.welcome.button" = "Continue →";
 "onboarding.welcome.bullet1" = "Pick the languages and press Record — or press ⌃⌥R from any app.";
 "onboarding.welcome.bullet2" = "Text appears as people speak. Press ⌃⌥S to mark what matters.";
 "onboarding.welcome.bullet3" = "Afterwards, read the transcript, marks and notes in one place, and add recordings to topics when you like.";
 "onboarding.welcome.privacy" = "Recordings stay on this Mac. Whether a recording gets live text — which sends its audio to Soniox — is your choice each time.";
-"onboarding.visual.live" = "LIVE TEXT";
-"onboarding.visual.speaker.host" = "Host";
-"onboarding.visual.speaker.guest" = "Participant";
-"onboarding.visual.language.zh" = "中文";
-"onboarding.visual.language.en" = "English";
-"onboarding.visual.language.ja" = "日本語";
-"onboarding.visual.microphone.title" = "Microphone ready";
-"onboarding.visual.microphone.detail" = "Capture the room · Get live text";
 
 /* Onboarding — Permissions */
-"onboarding.permissions.title" = "Get ready for your first conversation";
 "onboarding.permissions.subtitle" = "Allow microphone access to capture the room and get live text.";
 "onboarding.permissions.hint" = "You can also enter the app now and grant access when you first record.";
-"onboarding.permissions.mic.name" = "Microphone";
 "onboarding.permissions.mic.usage" = "Captures the conversation and powers live text.";
-"onboarding.permissions.action.grant" = "GRANT ACCESS";
 "onboarding.permissions.action.open_settings" = "OPEN SETTINGS";
-"onboarding.permissions.continue" = "ENTER ZUTALK →";
 
 /* Onboarding — API Keys */
 "onboarding.keys.title" = "Turn on live text";
 "onboarding.keys.subtitle" = "Enter your own Soniox API key to turn on live text.";
 "community_invite.placeholder" = "Enter invitation code";
-"community_invite.action" = "Activate invitation";
 "community_invite.active" = "Community invitation active";
 "community_invite.thirty_hours" = "5 Give · about 30 hours";
 "community_invite.shared_detail" = "Live text and translation both draw on this time. Refining uses your own Soniox key.";
@@ -62,11 +48,8 @@
 "community_invite.fallback_personal_key" = "Invite time is unavailable right now — this recording uses your own Soniox key instead.";
 "community_invite.async.needs_personal_key" = "Refining needs your own Soniox key. Add it in Settings.";
 "community_invite.async.wait_for_recording" = "A recording is using invite time right now. Stop it first, then refine.";
-"editor.transcript.async.start" = "Refine";
 "editor.transcript.async.start_failed" = "Could not start refining";
-"editor.transcript.async.invite_add_key" = "Use my own Soniox key…";
 "editor.transcript.async.invite_add_key_hint" = "Invite time covers live transcription only. Audio-file transcription uploads this recording to the speech provider under your own key — add one in Settings to turn it on.";
-"onboarding.keys.voice_label" = "LIVE TEXT SERVICE";
 "onboarding.keys.guide.create" = "Sign up";
 "onboarding.keys.guide.copy" = "Copy key";
 "onboarding.keys.guide.paste" = "Paste below";
@@ -74,18 +57,15 @@
 "onboarding.keys.soniox.help" = "Verify & Save only checks that the key works. It does not upload a recording.";
 "onboarding.keys.paste" = "Soniox API key";
 "onboarding.keys.verify_and_save" = "Verify & Save";
-"onboarding.keys.verify_saved" = "Verify Connection";
 "onboarding.keys.skip" = "Skip for now";
 "onboarding.keys.continue" = "Continue";
 "onboarding.keys.private_status" = "Verified before local save";
 
 /* Onboarding — Step Indicator */
-"onboarding.step.signup" = "Meet ZuTalk";
 "onboarding.step.setup" = "Ready to record";
 "onboarding.step.tryout" = "Live text";
 
 /* Onboarding — Common */
-"onboarding.common.back" = "← BACK";
 
 "sidebar.help" = "How to use ZuTalk";
 "updates.install_and_relaunch" = "Update and Relaunch";
@@ -154,15 +134,12 @@
 "settings.language.title" = "App language";
 "settings.language.hint" = "The language of ZuTalk’s windows, menus and messages.";
 "settings.language.restart_hint" = "Restart ZuTalk for the change to take full effect.";
-"settings.appearance.title" = "APPEARANCE";
 
 /* Permissions */
 "permission.microphone.name" = "Microphone";
 "permission.microphone.usage" = "Record your voice and send it to Soniox for transcription";
 
 /* Library — export sheet */
-"export.dialog.title" = "Export options";
-"export.dialog.text_format" = "Text formats";
 "export.dialog.audio_group" = "Audio";
 "export.dialog.audio_include" = "Include audio file (.wav)";
 "export.dialog.markdown" = "Markdown (.md)";
@@ -182,7 +159,6 @@
 "doc.scratchpad" = "Personal notes";
 
 /* Onboarding brand line */
-"onboarding.brand.subtitle" = "MULTILINGUAL COMMUNICATION · LIVE MEETINGS";
 
 /* Settings sidebar section rawValues (localized names) */
 "settings.section.general_name" = "General";
@@ -190,11 +166,9 @@
 /* Settings sidebar groups */
 
 /* Settings — API panels (Voice / AI) */
-"settings.credentials.enter_key" = "Enter API key";
 "settings.credentials.local_storage_hint" = "Saved unencrypted in an app-private file readable by this macOS login and loaded automatically at launch.";
 "settings.credentials.trust_boundary_notice" = "Credentials saved here are not encrypted. ZuTalk relies on this trusted macOS login and an app-private local file, then loads them automatically at launch.";
 "settings.credentials.verify" = "Verify";
-"settings.credentials.verify_and_save" = "VERIFY & SAVE";
 "settings.credentials.verifying" = "Verifying…";
 "settings.credentials.verifying_hint_format" = "Connecting to %@ to verify this key.";
 "settings.credentials.verified_hint_capture" = "This Soniox key is ready for live text and refining.";
@@ -271,7 +245,7 @@
 "settings.services.model.title" = "Language model";
 "settings.services.model.subtitle_format" = "Optional. Cleans up marked passages and writes from them. Uses %@.";
 "settings.services.model.egress_notice" = "Only the passages you mark are sent. Your full transcript stays on this Mac.";
-"settings.services.model.audio_notice" = "Audio is never sent, with a DeepSeek key configured or without one.";
+"settings.services.model.audio_notice" = "Audio is never sent to DeepSeek, with a key configured or without one.";
 "settings.services.model.invite_included" = "Your invitation includes cleanup";
 "settings.services.model.invite_included_detail_format" = "No DeepSeek key needed. With the switch above on, marked passages go through the ZuTalk invite service to %1$@ and come back readable; the service keeps nothing. Left today: %2$lld.";
 "settings.services.model.invite_superseded_format" = "Your own %@ key is saved, so passages go only to %@ and never through the invite service.";
@@ -304,7 +278,6 @@
 /* Settings — Privacy section */
 
 /* Settings — Shortcuts */
-"settings.shortcuts.title" = "Keyboard shortcuts";
 "settings.shortcuts.subtitle" = "The first three work from any app, even when ZuTalk is in the background.";
 "settings.shortcuts.toggle_recording" = "Start or stop recording";
 "settings.shortcuts.cycle_display" = "Cycle display mode";
@@ -355,7 +328,6 @@
 "editor.transcript.async.pending_desc" = "The refining you asked for is still in progress.";
 "editor.transcript.async.metadata_missing_notice" = "This refined transcript does not include speaker or language information.";
 "editor.transcript.async.failed_title" = "Refining failed";
-"editor.transcript.async.failed_desc" = "Refining failed. The recording remains stored locally.";
 "editor.transcript.async.empty_title" = "No refined transcript";
 "editor.transcript.async.empty_desc" = "Refining is off by default and was not requested for this recording.";
 "editor.transcript.async.no_session_title" = "No recording selected";
@@ -381,7 +353,6 @@
 
 /* Home page */
 "home.workspace.load_failed" = "Topic data could not be loaded.";
-"home.workspace.membership_unavailable" = "Couldn’t load which topics recordings are in. They are still on this Mac; until you retry, topics are not shown and cannot be changed.";
 "home.workspace.select_failed" = "This topic could not be opened.";
 "home.workspace.resolve_failed" = "The recording's topic could not be resolved.";
 "home.workspace.refresh_failed" = "Topic data could not be refreshed.";
@@ -390,15 +361,11 @@
 "home.workspace.retry" = "Try again";
 "home.notebook.new" = "New Topic";
 "home.notebook.new.help" = "Create and name a topic";
-"home.notebook.local_first" = "Saved on this Mac";
-"home.library.title" = "Topics";
-"home.library.subtitle" = "Each topic has its own workspace for recordings, transcripts, and topic notes.";
 "home.library.open_hint" = "Open topic workspace";
 "home.topic.workspace_contents" = "Recordings, transcripts, and shared notes";
 "home.library.session_count_format" = "%lld recordings";
 "topics.search.placeholder" = "Search topics";
 "topics.search.empty.title" = "No topics found";
-"topics.search.empty.description" = "Try another search term, or create a new topic.";
 "home.no_notebook.title" = "No topics yet";
 "home.no_notebook.description" = "You can record from above first, and create a topic later to connect related interviews.";
 "home.first_use.step1.title" = "Create a topic";
@@ -407,7 +374,6 @@
 "home.first_use.step2.detail" = "Open the topic. The red recording button is at the top.";
 "home.first_use.step3.title" = "Review the result";
 "home.first_use.step3.detail" = "After you stop, the captions, audio, and notes stay together.";
-"home.first_use.action" = "New topic";
 "home.import.action" = "Import audio";
 "home.import.in_progress" = "Importing…";
 "home.import.completed" = "Audio imported";
@@ -449,11 +415,7 @@
 "home.recording.delete_while_recording" = "You can delete this recording once it stops.";
 "home.recording.bulk_delete_failed" = "The recordings could not be moved to Trash.";
 "home.create.title" = "New Topic";
-"home.create.description" = "Name the topic you want to follow.";
 "home.create.name_label" = "Topic name";
-"home.create.name_placeholder" = "For example, AI and long-term futures";
-"home.create.local_first" = "The topic workspace and its notes stay on this Mac.";
-"home.create.action" = "Create Topic";
 "home.create.completed" = "Topic created";
 "home.create.failed" = "The topic could not be created.";
 "home.create.invalid_title" = "Topic name required";
@@ -474,7 +436,6 @@
 "resources.status.pending" = "Processing";
 "resources.status.ready" = "Available";
 "resources.status.failed" = "Failed";
-"resources.move" = "Move recording to another topic…";
 "resources.move.title" = "Move recording";
 "resources.move.message" = "The audio and available transcripts for “%@” move together. Topic notes stay in the current topic.";
 "resources.move.action" = "Move";
@@ -491,7 +452,7 @@
 "resources.audio.destroy" = "Delete audio";
 "resources.audio.destroy.confirm_title" = "Permanently delete the audio for \"%@\"?";
 "resources.audio.destroy.confirm_button" = "Delete audio";
-"resources.audio.destroy.confirm_message" = "The audio file is securely destroyed and can’t be recovered. Transcripts, notes, and the recording itself are kept.";
+"resources.audio.destroy.confirm_message" = "The audio on this Mac is securely destroyed and can’t be recovered. Transcripts and notes are kept.";
 "resources.audio.destroy.failed" = "Could not delete the audio";
 "resources.audio.destroy.done" = "Audio deleted";
 "resources.audio.destroy.while_recording" = "Stop the recording before deleting its audio.";
@@ -545,7 +506,6 @@
 "editor.failed.subtitle"      = "Likely a network blip or API rate limit. Tap retry.";
 
 /* Trash page */
-"trash.empty.title" = "Trash is empty";
 "trash.empty.desc" = "Deleted recordings stay here until you delete them permanently or restore them.";
 "trash.action.restore" = "Restore";
 "trash.action.purge" = "Delete forever";
@@ -558,8 +518,6 @@
 /* Onboarding — residuals */
 "onboarding.brand.name" = "ZuTalk";
 "onboarding.brand.tagline" = "Keep every multilingual conversation in one place, from understanding it live to organizing it afterward.";
-"onboarding.keys.testing_status" = "TESTING…";
-"onboarding.keys.connected_status" = "CONNECTED";
 
 /* Trust bar */
 "trust.version_format" = "ZuTalk · v%@";
@@ -570,7 +528,6 @@
 "updates.unavailable.title" = "Updates are not configured";
 "updates.unavailable.message" = "This development build does not contain the public update-signing key.";
 "updates.unavailable.dismiss" = "OK";
-"settings.updates.title" = "Software updates";
 "settings.updates.subtitle" = "New versions are signed and checked before they install.";
 "settings.updates.automatic" = "Automatically check for updates";
 "settings.updates.automatic_hint" = "ZuTalk checks the signed update feed periodically and notifies you when a new version is available.";
@@ -660,7 +617,6 @@
 "subtitle.overlay.font_auto.enable" = "Size captions to the window";
 "subtitle.overlay.font_auto.disable" = "Set caption size manually";
 "subtitle.overlay.font_auto.on" = "Caption size follows the window";
-"subtitle.overlay.font_auto.off" = "Caption size set manually";
 "subtitle.overlay.move_resize_hint" = "Drag the window to move it. Drag any edge or corner to resize it.";
 "subtitle.overlay.maximize" = "Fill the current screen";
 "subtitle.overlay.banner" = "Pin a caption strip across the top of the screen";
@@ -723,7 +679,6 @@
 "capture.toast.context_update_failed" = "Could not update reference material";
 "capture.toast.edit_failed" = "Could not update transcript lane";
 "capture.toast.projection_retry_failed" = "Could not save the transcript again";
-"capture.settings.title" = "Recording options";
 "capture.settings.subtitle" = "Changes save automatically and become the defaults for the next recording.";
 "capture.settings.subtitle.topic" = "Changes save automatically as defaults for the next recording in this topic. The sound source applies across this Mac.";
 "capture.settings.subtitle.quick_capture" = "Changes save automatically as defaults for the next recording started from Home. The sound source applies across this Mac.";
@@ -747,8 +702,6 @@
 "capture.settings.languages.no_results" = "No unselected language matches your search.";
 "capture.settings.languages.maximum_reached" = "You can select up to three languages for one recording.";
 "capture.settings.languages.add_format" = "Add %@";
-"capture.settings.languages.move_earlier" = "Move language earlier";
-"capture.settings.languages.move_later" = "Move language later";
 "capture.settings.languages.remove" = "Remove language";
 "capture.settings.languages.roles.all_spoken" = "Any of these may be spoken, so all count as spoken languages and each gets its own translation connection (%d). For a language nobody will speak, tap its waveform to change it to “also translate into” and use fewer.";
 "capture.settings.languages.roles.some_subtitle_only" = "Spoken languages: %1$@. Also translate into: %2$@ · %3$d connections.";
@@ -766,13 +719,7 @@
 "capture.settings.context.current_topic" = "Current Topic";
 "capture.settings.context.current_quick_capture" = "Recordings outside topics";
 "capture.settings.context.current_notebook_detail" = "Used in the current recording scope";
-"capture.settings.context.selected" = "Editing";
-"capture.settings.context.not_selected" = "Not selected";
 "capture.settings.context.create_library" = "Create";
-"capture.settings.after_stop.title" = "Refining";
-"capture.settings.after_stop.engine" = "Processing method";
-"capture.settings.after_stop.detail" = "After recording stops, the current engine can refine the recording.";
-"capture.settings.after_stop.unavailable_detail" = "Refining is not available in this version.";
 "capture.state.recording" = "Recording";
 "capture.state.paused" = "Paused";
 "capture.state.draining" = "Finishing";
@@ -868,9 +815,7 @@
 "knowledge.create" = "Create";
 "knowledge.untitled" = "Untitled set";
 "knowledge.name" = "Name";
-"knowledge.empty.title" = "Create your first set";
 "knowledge.empty.description" = "Keep a topic's background, people, organizations, and terms in one profile.";
-"knowledge.card.no_summary" = "No description yet";
 "knowledge.card.counts" = "%lld terms · %lld preferred translations";
 "knowledge.back" = "Terms and background";
 "knowledge.summary.placeholder" = "In one sentence, what should this set help recognize?";
@@ -897,16 +842,14 @@
 "knowledge.translation.source" = "Source";
 "knowledge.translation.target" = "Preferred translation";
 "knowledge.translation.add" = "Add preferred translation";
-"capture.settings.context.current" = "In use";
 "capture.settings.context.no_selection" = "None selected";
-"capture.settings.context.choose" = "Change";
 "knowledge.import_json" = "Import JSON";
 "knowledge.import_json.message" = "Choose a ZuTalk terms-and-background JSON file (.zutalk-pack.json).";
 "knowledge.import_json.done" = "Imported";
 "knowledge.import_json.failed" = "Couldn’t import this file";
 
 /* 分享:点对点字幕与文档协同 */
-"share.audio_never" = "Audio never leaves this Mac — people only see text.";
+"share.audio_never" = "Only text is shared. The audio is not included.";
 
 /* 设置:分享(点对点)传输 */
 
@@ -1017,16 +960,11 @@
 "session.notes.context" = "Only for this recording";
 "session.settings.title" = "Recording settings";
 "session.settings.workspace.configuration" = "Recording setup";
-"session.settings.workspace.snapshot" = "This recording";
 "session.settings.workspace.scope" = "Recording setup is editable. See This recording for the settings this one actually used.";
 "session.settings.workspace.scope.topic" = "Recording setup is editable for the next recording in this topic. The setup this one actually used is in the snapshot at the bottom.";
 "session.settings.workspace.scope.quick_capture" = "Recording setup is editable for the next recording started from Home. The setup this one actually used is in the snapshot at the bottom.";
-"session.settings.resources.title" = "What this recording has";
 "session.settings.resources.subtitle" = "See what is available for this recording. Deleting audio keeps its transcripts and notes.";
-"session.settings.resources.note.detail" = "Editable";
 "session.settings.subtitle" = "The setup actually used for this recording. Topic defaults are unchanged.";
-"session.settings.section.session" = "Recording information";
-"session.settings.section.capture" = "Recording snapshot";
 "session.settings.field.created" = "Created";
 "session.settings.field.duration" = "Duration";
 "session.settings.field.type" = "Type";
@@ -1068,11 +1006,7 @@
 "recording_bar.stop_hint" = "End the recording and save it (⌃⌥R, from any app)";
 "recording_bar.retry_stop" = "Retry stop";
 "recording_bar.captions.off" = "Audio only";
-"captions_choice.on" = "Live text";
 "captions_choice.off" = "Audio only";
-"captions_choice.on_hint" = "Recordings get live text and translation: audio is sent to Soniox while recording. Click to record on this Mac only.";
-"captions_choice.off_hint" = "Recordings stay on this Mac, without live text. Click to turn live text on.";
-"captions_choice.unavailable_hint" = "Live text needs a Soniox key or an invite code. Click to add one in Settings.";
 "capture.toast.stopped_saved" = "Recording saved (%@)";
 "capture.toast.stopped_by_sleep" = "The Mac went to sleep, so the recording ended and was saved (%@)";
 "menubar.action.start_recording" = "Start recording";
@@ -1091,7 +1025,6 @@
 "common.save" = "Save";
 "library.rename.recording" = "Rename recording…";
 "library.rename.recording_placeholder" = "Leave empty to show its first words";
-"library.rename.topic" = "Rename topic…";
 "library.rename.failed" = "Could not rename";
 "topic.actions" = "Topic actions";
 "topic.delete" = "Delete topic…";
@@ -1103,7 +1036,6 @@
 "topic.delete.confirm_message_format" = "Its %lld recordings are kept, with their transcripts and notes — they just won’t be in a topic anymore. The topic’s own notes are deleted.";
 "topic.delete.confirm_message_empty" = "The topic has no recordings. Its notes are deleted.";
 
-"captions_choice.on_invite_format" = "Live text · about %@ left";
 
 "topics.card.last_recorded_format" = "Last recorded %@";
 
@@ -1203,7 +1135,6 @@
 "record.page.input_detail_microphone_or_meeting" = "Records what the microphone hears: a meeting in the room, a class, yourself. To capture the other side of an online meeting, choose Sound from this Mac.";
 "record.page.input_detail_microphone" = "Records what the microphone hears: a meeting in the room, a class, yourself.";
 "record.page.captions" = "Live text";
-"record.page.captions_detail" = "When on, audio goes to Soniox to become live text and translations. When off, it only records on this Mac.";
 "record.page.captions_needs_key" = "Live text needs a Soniox key or an invite code in Settings. For now it records only.";
 "record.page.shortcut_hint" = "⌃⌥R starts or stops a recording from any app.";
 "record.page.import" = "Import audio";
@@ -1221,7 +1152,6 @@
 "session.transcript.refined_version" = "Refined transcript";
 "session.menu.hint" = "Share, export and recording details";
 "session.menu.settings" = "Files and details…";
-"editor.export.menu" = "Export…";
 
 "trash.subtitle" = "Deleted recordings wait here. Restore puts one back where it was; deleting permanently also erases its encrypted audio and can’t be undone.";
 "trash.empty_all" = "Empty Trash…";
@@ -1250,10 +1180,9 @@
 "settings.devices.subtitle" = "Keep recordings, transcripts and notes in step across your own Macs. They travel directly between them — no server, no account.";
 "settings.devices.sync_title" = "Sync";
 "settings.devices.enable" = "Sync between my Macs";
-"settings.devices.enable_hint" = "Audio stays on the Mac that recorded it; your other Macs get the text.";
+"settings.devices.enable_hint" = "Only text is synced; audio is not sent to your other Macs.";
 "settings.devices.this_mac" = "This Mac’s name";
 "settings.devices.this_mac_hint" = "Your other Macs use it to say where a recording was made.";
-"settings.devices.my_macs" = "My Macs";
 "settings.devices.only_this" = "Only this Mac so far. Turn on sync on another Mac and enter a pairing code there, and it will show up here.";
 "settings.devices.unnamed" = "Unnamed Mac";
 "settings.devices.online_direct" = "Online · direct";
@@ -1263,7 +1192,6 @@
 "settings.devices.remove" = "Remove";
 "settings.devices.remove_confirm_title" = "Remove “%@”?";
 "settings.devices.remove_confirm_message" = "It keeps what it has already received, but will never sync with your Macs again. To add it back, pair it again from that Mac after resetting its sync.";
-"settings.devices.add_title" = "Add a Mac";
 "settings.devices.add_subtitle" = "Create a pairing code here and enter it under Settings › My devices on the other Mac — or the other way round.";
 "settings.devices.create_code" = "Create pairing code";
 "settings.devices.create_code_hint" = "Works once, for ten minutes.";
@@ -1273,9 +1201,8 @@
 "settings.devices.join_placeholder" = "Paste a pairing code from your other Mac";
 "settings.devices.join" = "Join";
 "settings.devices.joined_format" = "Connected with “%@”. Your recordings will come across over the next minutes.";
-"settings.devices.how" = "How it works";
 "settings.devices.how_direct" = "On the same network your Macs talk directly. Elsewhere, ZuTalk’s relay passes along encrypted data it cannot read.";
-"settings.devices.how_audio" = "Audio never leaves the Mac that recorded it.";
+"settings.devices.how_audio" = "Audio is never synced between your Macs.";
 "settings.devices.how_recording" = "A recording in progress shows up on your other Macs once it ends.";
 "settings.devices.how_code" = "A pairing code is a key to your library: it works once, for ten minutes. Don’t post it anywhere public.";
 "sync.invite.copied" = "Pairing code copied";
@@ -1306,7 +1233,7 @@
 
 "topic.collab.menu" = "Collaborate…";
 "topic.collab.title_format" = "Collaborate on “%@”";
-"topic.collab.explain" = "Invite someone to work on this topic with you. You both see and edit its recordings’ transcripts, notes and marks, and changes merge automatically. It travels directly between your Macs, with no account and no server keeping a copy. Audio stays on the Mac that recorded it.";
+"topic.collab.explain" = "Invite someone to work on this topic with you. You both see and edit its recordings’ transcripts, notes and marks, and changes merge automatically. It travels directly between your Macs, with no account and no server keeping a copy. Audio is not sent to them.";
 "topic.collab.removed" = "You were removed from this topic. What you already have stays on this Mac, but it no longer syncs.";
 "topic.collab.members" = "People";
 "topic.collab.this_mac_format" = "%@ (this Mac)";
@@ -1321,7 +1248,7 @@
 "topic.collab.remove_confirm_format" = "Remove %@ from this topic?";
 "topic.collab.remove_confirm_message" = "They keep what they already have, but can’t sync this topic anymore.";
 "topic.collab.join_title" = "Join a topic collaboration";
-"topic.collab.join_explain" = "Paste the invite code someone sent you. The topic, with its recordings’ transcripts and notes, comes to this Mac; the audio stays with them.";
+"topic.collab.join_explain" = "Paste the invite code someone sent you. The topic, with its recordings’ transcripts and notes, comes to this Mac; the audio is not sent to this Mac.";
 "topic.collab.join_placeholder" = "Invite code";
 "topic.collab.join_button" = "Join collaboration";
 "topic.collab.joined_format" = "Joined “%@”. Its recordings will arrive over the next few minutes.";
@@ -1394,8 +1321,6 @@
 "backup.made" = "Backed up";
 "backup.unchanged" = "Nothing has changed since the last backup";
 "backup.failed" = "Backup didn’t succeed";
-"backup.add" = "Back up to another Mac";
-"backup.add_another" = "Also back up to another Mac";
 "backup.add_hint" = "Create a backup code and paste it in Settings › My devices on the Mac that will keep the backups. After that it backs up every day, skipping days with no changes.";
 "backup.create_code" = "Create Backup Code";
 "backup.code_hint" = "On the Mac that will keep the backups, open Settings › My devices and paste this code. It works once, for 10 minutes.";
@@ -1439,7 +1364,6 @@
 
 /* City: signing in. */
 "city.signin.title" = "Sign in";
-"city.signin.title_format" = "Sign in to %@";
 "city.signin.address_hint" = "Start with the city’s web address.";
 "city.signin.address_placeholder" = "City address";
 "city.signin.address_label" = "City web address";
@@ -1463,47 +1387,29 @@
 "city.signin.recovery_placeholder" = "Recovery key";
 "city.signin.sign_in" = "Sign In";
 "city.signin.recovery_hint" = "The recovery key is your identity in the city itself. Don’t enter it on a shared computer.";
-"city.signin.trust" = "Signing in hands this Mac your identity in the city: it can do anything there that you can, in your name. ZuTalk uses it only to file the transcripts you assign to an event. On a venue’s shared computer, sign out when you’re done.";
 
 /* City: signed in. */
-"city.settings.signed_in" = "Signed in";
 "city.settings.unnamed" = "Unnamed resident";
-"city.settings.stored_title" = "Where the sign-in is kept";
 "city.settings.stored_detail" = "Only on this Mac. Signing out deletes it from this Mac; your identity in the city isn’t affected.";
 "city.role.resident_format" = "Resident of %@";
 "city.role.founder_format" = "Founder of %@";
 "city.role.coordinator_format" = "Coordinator of %@";
 "city.role.curator_format" = "Curator of %@";
 "city.role.inviter_format" = "Inviter in %@";
-"city.signout.action" = "Sign Out…";
 "city.signout.button" = "Sign Out";
 "city.signout.confirm_title" = "Sign out on this Mac?";
-"city.signout.confirm_message" = "The sign-in is removed from this Mac only. Your identity in the city and everything already filed in the archive stay as they are. After signing out, this Mac can no longer act as you, and transcripts still waiting to be filed won’t be sent.";
 "city.signout.failed" = "Couldn’t sign out";
 
 /* City: what is filed, and when. */
-"city.what.title" = "What’s filed";
-"city.what.subtitle" = "Listed again before each recording starts.";
-"city.what.text" = "Original and translations";
 "city.what.text_detail" = "One per language, aligned by time.";
 "city.what.always" = "Always";
-"city.what.speakers" = "Speaker names";
 "city.what.speakers_detail" = "When off, they appear only as “Speaker 1”, “Speaker 2”.";
-"city.what.marks" = "Marks";
-"city.what.marks_detail" = "Only where you marked — never the notes you wrote.";
 "city.what.audio" = "Audio";
-"city.what.never" = "Never";
-"city.when.title" = "After recording";
-"city.when.row" = "When to file";
-"city.when.automatic" = "Automatically";
-"city.when.ask" = "Ask me first";
 "city.when.automatic_detail" = "Filed in the background once you stop — no waiting. If the city can’t be reached, it waits in a queue and is retried automatically.";
 "city.when.ask_detail" = "Stopping only keeps the recording with its event; nothing is sent until you choose File in Archive.";
 "city.options.save_failed" = "Couldn’t save this setting";
 
 /* City: the list in Settings of every recording assigned to an event from this Mac. */
-"city.filings.title" = "Recordings for the archive";
-"city.filings.subtitle" = "Every recording you’ve assigned to an event on this Mac — filed, waiting, or not filed. Each one can be handled here.";
 "city.filings.empty" = "No recording has been assigned to an event yet.";
 "city.filings.more_format" = "More actions for “%@”";
 
@@ -1518,8 +1424,6 @@
 "city.action.change_event" = "Change event…";
 "city.action.drop" = "Don’t File";
 "city.action.show_recording" = "Show Recording";
-"city.withdraw.confirm_title" = "Withdraw this transcript from the archive?";
-"city.withdraw.confirm_message" = "It disappears from the archive’s pages. The transcript records already filed stay in the city’s log, though, and can’t be deleted from there today.";
 "city.withdraw.button" = "Withdraw";
 
 /* City: where one recording’s filing stands. One vocabulary, used by the recording’s page, the lists of recordings, the Share panel, Settings and the sidebar. */
@@ -1568,12 +1472,7 @@
 "city.event.today_format" = "Today %@";
 "city.summary.as_languages_format" = "Filed as %1$@: transcripts in %2$@.";
 "city.summary.as_format" = "Filed as %@.";
-"city.summary.extras.names_marks" = "With speaker names and marks.";
-"city.summary.extras.names_only" = "With speaker names, without marks.";
-"city.summary.extras.marks_only" = "With marks, without speaker names.";
-"city.summary.extras.neither" = "Without speaker names or marks.";
 "city.summary.channel_format" = "Also added to the channel “%@”.";
-"city.summary.audio_stays" = "Audio stays on this Mac.";
 "city.content.language_format" = "%1$@ %2$lld sentences";
 "city.content.speakers_format" = "%lld speakers";
 "city.content.marks_format" = "%lld marks";
@@ -1624,27 +1523,15 @@
 
 /* City: the archive section of a recording’s Share panel. */
 "city.share.title" = "Archive";
-"city.share.filed_format" = "Filed in the archive · %@";
 "city.share.fact.event" = "Event";
 "city.share.fact.channel" = "Channel";
 "city.share.fact.signer" = "Signed by";
 "city.share.fact.content" = "Contents";
-"city.share.fact.last" = "Last filed";
-"city.share.last_format" = "%1$@, by %2$@";
-"city.share.changed_format" = "You changed %lld sentences; the archive still has the old ones.";
 "city.share.changed_detail" = "Updating sends only the sentences you changed.";
-"city.share.update" = "Update Archive";
-"city.share.open" = "Open in Browser";
-"city.share.withdraw" = "Withdraw from Archive…";
 "city.share.public_note" = "What’s in the archive is public and stays there — unlike the link below, which expires after 24 hours.";
-"city.share.queued" = "Waiting — the city’s server couldn’t be reached. It’s retried automatically; you can also retry now.";
-"city.share.queued_offline" = "This Mac isn’t online right now. It’s filed in the archive automatically once it is.";
-"city.share.retry_now" = "Retry Now";
 "city.share.failed_format" = "Not filed: %@";
 "city.share.failed_safe" = "The transcript is all still on this Mac — nothing was lost.";
 "city.share.not_filed" = "This recording hasn’t been filed in the archive.";
-"city.share.withdrawn" = "This transcript was withdrawn from the archive. You can pick another event or file it again.";
-"city.share.pick" = "Choose Event from Calendar…";
 "city.share.change" = "Change…";
 
 /* City: what is said once filing finishes in the background. */
@@ -1697,12 +1584,10 @@
 /* 0.8.2 after */
 "recording.result.title" = "Recorded";
 "recording.result.title_format" = "Recorded · %@";
-"recording.result.summary.text_and_audio" = "The transcript is below. The audio stays on this Mac.";
 "recording.result.summary.text_only" = "The transcript is below. The audio was deleted, as this recording was set to do.";
 "recording.result.summary.audio_only" = "This one is audio only. Refine it to get a transcript.";
 "recording.result.refine.detail" = "Transcribes the whole recording again. More accurate than the live version.";
 "recording.result.refine.needs_setup" = "Refining has to be set up in Settings first.";
-"recording.result.refine.open_settings" = "Open Settings";
 "recording.result.refine.in_progress" = "Refining now. This takes a little while.";
 "recording.result.refine.ready" = "The refined transcript is ready.";
 "recording.result.refine.failed" = "The last refine didn’t work.";
@@ -1719,12 +1604,7 @@
 "session.version.show_refined" = "See the refined transcript";
 "session.version.show_live" = "See the live version";
 "session.menu.label" = "More for this recording";
-"session.menu.rename" = "Rename…";
-"session.menu.file_into_topic" = "Add to topic…";
-"session.menu.destroy_audio" = "Delete the audio, keep the text…";
 "session.menu.destroy_audio.refining" = "Refining is using the audio. Delete it once that’s done.";
-"session.menu.delete" = "Delete this recording…";
-"session.rename.title" = "Rename this recording";
 "session.delete.confirm_title_format" = "Delete “%@”?";
 "session.delete.confirm_message" = "The recording, with its transcript and audio, moves to the Trash. You can restore it from there.";
 "session.delete.done" = "Moved to the Trash";
@@ -1744,13 +1624,11 @@
 /* 0.8.2 settings */
 "settings.section.account_name" = "Account";
 "settings.section.advanced_name" = "Advanced";
-"settings.account.subtitle" = "Who you are, what powers live text, and your devices — all on this page.";
 "settings.account.signin_title" = "Sign in with your Zu identity";
 "settings.account.signin_detail" = "Once signed in, you can file transcripts to your city’s archive as yourself. Recording and live text work the same without signing in.";
 "settings.account.identity_title" = "Your Zu identity";
 "city.archive.title" = "The city’s archive";
 "city.archive.subtitle" = "What gets filed, when it is filed after a recording, and the recordings you have filed.";
-"settings.live_text.title" = "Live text and translation";
 "settings.live_text.source.invite" = "Live text runs on your invite code.";
 "settings.live_text.source.invite_time_format" = "Live text runs on your invite code, with about %1$lld h %2$lld min of recording left.";
 "settings.live_text.source.invite_spent" = "Your invite code has run out of time, so there is no live text for now.";
@@ -1759,22 +1637,16 @@
 "settings.live_text.shared_detail" = "Live text and translations both draw on this time. Refining a transcript needs your own key.";
 "settings.live_text.invite_field_label" = "Invite code";
 "settings.live_text.invite_hint" = "If you have an invite code, enter it here and live text is ready to use.";
-"settings.live_text.invite_on" = "Invite code is active";
 "settings.live_text.use_invite" = "Use the invite code for live text";
 "settings.live_text.use_own_key" = "Use your own key…";
-"settings.account.devices_title" = "My devices";
 "settings.account.devices_subtitle" = "Sync recordings, transcripts and notes between your own Macs. They travel directly between them — no server, and no sign-in needed.";
 "settings.account.devices_add_subtitle" = "Create a pairing code here and enter it under Settings › Account › My devices on the other Mac — or the other way round.";
-"settings.general.subtitle_plain" = "Interface language, appearance, updates and shortcuts.";
 "settings.general.welcome_again_hint_plain" = "Go through it again: what live text needs, the microphone, and how recording works. Your recordings and settings stay as they are.";
 "settings.advanced.subtitle" = "Most people never need this page.";
-"settings.advanced.own_key_format" = "Your own %@ key";
+"settings.advanced.own_key_format" = "%@ key";
 "settings.advanced.capture_key_subtitle" = "Only needed if you have no invite code, or want to refine transcripts.";
-"settings.advanced.sharing_title" = "Links you are sharing";
-"settings.advanced.sharing_how" = "How sharing works";
 "settings.advanced.sharing_how_live" = "While recording, you can show captions to the audience: people in the room scan a code to follow along.";
 "settings.advanced.sharing_how_recording" = "A finished recording can be shared from its menu: send a copy, or create a read-only link that lasts 24 hours.";
-"settings.advanced.backup_title" = "Backup and restore";
 "backup.add_hint_account" = "Create a backup code and paste it under Settings › Account › My devices on the Mac that will keep the backups. After that it backs up every day, skipping days with no changes.";
 "backup.code_hint_account" = "On the Mac that will keep the backups, open Settings › Account › My devices and paste this code. It works once, for 10 minutes.";
 "backup.restore_explain_account" = "On the Mac you want to restore to, open Settings › Account › My devices and paste the restore code. Restoring merges this backup in: what that Mac already has stays as is, and anything permanently deleted doesn’t come back. Text only, no audio.";
@@ -1793,23 +1665,17 @@
 "settings.diagnostics.recording_keeping_up" = "keeping up";
 "onboarding.step.live_text" = "Live text";
 "onboarding.step.microphone" = "Microphone";
-"onboarding.live_text.title" = "What live text needs";
 "onboarding.live_text.subtitle" = "If you have an invite code, enter it here: text and translations will appear as you record. Without one you can still record.";
 "onboarding.live_text.redeem" = "Turn on";
-"onboarding.live_text.visual" = "Text and translation, as you record";
 "onboarding.live_text.use_own_key_format" = "Use your own %@ key";
 "onboarding.live_text.use_invite" = "Use an invite code instead";
 "onboarding.live_text.skip" = "Skip for now, just record";
-"onboarding.welcome.privacy_plain" = "Recordings stay on this Mac by default. Whether a recording gets live text — which sends its audio to the transcription service — is your choice each time.";
+"onboarding.welcome.privacy_plain" = "Recordings are stored on this Mac. Whether a recording gets live text — which sends its audio to the transcription service — is your choice each time.";
 "onboarding.permissions.action.open_system_settings" = "Open System Settings";
 "onboarding.permissions.denied_hint" = "In System Settings, turn on ZuTalk under Microphone, then come back here.";
 "sidebar.account.sign_in" = "Sign in";
 "sidebar.account.hint" = "Open Settings › Account";
 /* 0.8.2 home */
-"home.start.change" = "Change";
-"home.start.change_done" = "Done";
-"home.start.change_hint" = "Change languages, sound source and other options";
-"home.start.offline_hint" = "This Mac is offline, so live text can’t run. Connect to a network, or choose Change and turn it off before recording.";
 "home.plan.speak_format" = "Speaking %@";
 "home.plan.speak_translate_format" = "Speaking %1$@, also translated into %2$@";
 "home.plan.speak_many_format" = "Speaking %@, translated into each other";
@@ -1825,21 +1691,16 @@
 "home.options.languages_detail" = "Up to three. With two or more, each is translated into the others.";
 "home.options.source_detail_microphone_or_mac" = "Records what the microphone hears: a meeting in the room, a class, yourself. To capture the other side of an online meeting, choose Sound from this Mac.";
 "home.options.live_text" = "Live text";
-"home.options.live_text_detail" = "When on, the sound is sent to an online service that writes and translates it as you record. When off, the recording stays on this Mac.";
 "home.options.live_text_needs_setup" = "Live text needs an invite code or a key of your own. For now this records audio only.";
-"home.options.live_text_setup" = "Open Settings";
 "home.options.live_text_invite_format" = "Using your invite code: about %@ of recording left.";
 "home.options.topic" = "Add to a topic";
 "home.options.topic_detail" = "A topic is a folder for a series of recordings. You can skip it and choose one any time later.";
 "home.options.topic.none" = "None";
 "home.options.topic.new" = "New topic…";
-"home.options.hosting" = "I’m hosting an event";
-"home.options.hosting_detail" = "Adds two things: showing captions to the audience, and filing the transcript in the city’s archive.";
+"home.options.hosting_detail" = "Adds two things: showing captions to the audience, and filing the recording in the city’s archive.";
 "home.options.import" = "Import an existing recording…";
-"home.hosting.sign_in_hint" = "Sign in with your Zu identity, and a recording’s transcript can be filed in your city’s archive when it ends.";
-"home.hosting.sign_in_button" = "Sign in";
+"home.hosting.sign_in_hint" = "Sign in with your Zu identity, and a recording’s transcript and audio can be filed in your city’s archive when it ends.";
 "home.search.placeholder" = "Search recordings";
-"home.empty.sentence" = "No recordings yet. Press Start recording above, and what you record will be listed here by date.";
 "home.filter.no_topic" = "Not in a topic";
 "home.filter.no_topic_empty" = "Every recording is in a topic.";
 "home.row.put_in_topic" = "Add to topic";
@@ -1852,3 +1713,160 @@
 "capture.languages.role.spoken_format" = "%@ is a spoken language — if nobody speaks it, click to make it “also translate into”";
 "capture.languages.role.translated_format" = "%@ is only translated into — if someone speaks it, click to make it a spoken language";
 "audio_input.sound_from_mac" = "Sound from this Mac (online meetings, videos)";
+
+/* 0.8.3 home card */
+"home.card.sound_from_mac" = "This Mac’s sound";
+"home.card.hosting" = "Hosting";
+"home.card.choose_event" = "Choose event";
+"home.card.dont_file" = "Don’t file";
+"home.card.move_earlier" = "Move earlier";
+"home.card.move_later" = "Move later";
+
+/* 0.8.3 home */
+"home.card.live_text_disclosure" = "When on, audio goes to Soniox to become live text and translations.";
+"home.catalog.membership_failed" = "Couldn’t load which topics recordings are in.";
+"home.topics.new" = "New";
+"home.create.confirm" = "Create";
+/* 0.8.3 topics */
+"topics.options.header" = "Defaults";
+"topics.options.languages" = "Languages";
+"topics.options.sound" = "Sound";
+"topics.options.audio" = "Audio";
+"topics.options.edit" = "Edit";
+"topics.options.preview" = "Preview";
+"knowledge.action.new" = "New";
+"knowledge.action.import" = "Import";
+"knowledge.meter.title" = "Length";
+"trash.action.empty" = "Empty";
+"topic.collab.action.copy" = "Copy";
+"topic.collab.action.invite" = "Invite";
+"topic.collab.action.stop" = "Stop";
+"topic.collab.action.leave" = "Leave";
+/* 0.8.3 windows */
+"share.fact.no_audio" = "No audio";
+"share.fact.encrypted" = "End-to-end encrypted";
+"share.fact.deleted_on_stop" = "Deleted on stop";
+"share.fact.kept_24h" = "Kept about 24 hours after stop";
+"share.fact.expires_24h" = "Expires after 24 hours";
+"share.live.keep_short" = "Keep transcript";
+"share.live.start_short" = "Start";
+"share.live.stop_short" = "Stop";
+"share.live.replace_short" = "New link";
+"share.live.ended" = "Stopped showing captions";
+"share.qr.show" = "QR code";
+"share.copy.sent" = "Sent";
+"nearby.pill.count_format" = "Nearby · %lld";
+"nearby.send.empty" = "No Mac nearby is receiving";
+"subtitle.overlay.menu.banner" = "Strip across the top";
+"subtitle.overlay.menu.backdrop" = "Background";
+/* 0.8.3 settings */
+"settings.switch.on" = "On";
+"settings.switch.off" = "Off";
+"settings.action.copy" = "Copy";
+"settings.action.copied" = "Copied";
+"settings.action.replace" = "Replace";
+"settings.action.stop" = "Stop";
+"settings.action.create" = "Create";
+"settings.group.devices" = "Devices";
+"settings.group.updates" = "Updates";
+"settings.group.shortcuts" = "Shortcuts";
+"settings.general.appearance" = "Appearance";
+"settings.updates.check" = "Check";
+"settings.devices.this_mac_label" = "This Mac";
+"settings.devices.pairing_code" = "Pairing code";
+"settings.devices.online" = "Online";
+"settings.backup.code" = "Backup code";
+"settings.live_text.status.spent" = "Used up";
+"settings.live_text.status.own_key" = "Your own key";
+"settings.credentials.status.saved" = "Saved";
+"settings.credentials.status.verified" = "Verified";
+"settings.credentials.status.invalid" = "Invalid";
+"onboarding.start" = "Start";
+"onboarding.back" = "Back";
+"onboarding.skip" = "Skip";
+"onboarding.finish" = "Open ZuTalk";
+"onboarding.permissions.allow" = "Allow";
+"onboarding.permissions.allowed" = "Allowed";
+"settings.credentials.key_placeholder" = "API key";
+/* 0.8.3 recording */
+"recording.word.copy" = "Copy";
+"recording.word.share" = "Share";
+"recording.word.rename" = "Rename";
+"recording.word.delete_audio" = "Delete audio";
+"recording.word.version" = "Version";
+"recording.word.read_only" = "Read-only";
+"recording.word.open" = "Open";
+"recording.word.verify" = "Verify";
+"recording.word.select" = "Select";
+"recording.word.select_all" = "Select all";
+"recording.details.files" = "Files";
+"recording.details.info" = "Info";
+"recording.details.setup" = "Setup";
+"recording.city.waiting" = "Queued";
+"recording.city.filed" = "Filed";
+"recording.city.changed" = "Outdated";
+"recording.city.event_gone" = "Event deleted";
+"recording.marks.empty_live" = "Press ⌃⌥S when something matters.";
+/* 0.8.3 city */
+"city.word.chosen" = "Chosen";
+"city.word.waiting" = "Queued";
+"city.word.waiting_offline" = "Offline";
+"city.word.filed" = "Filed";
+"city.word.event_gone" = "Event deleted";
+"city.identity.word" = "Identity";
+"city.what.text_word" = "Text";
+"city.what.speakers_word" = "Speakers";
+"city.when.word" = "When";
+"city.when.auto_word" = "Automatic";
+"city.when.ask_word" = "Ask first";
+"city.filings.word" = "Recordings";
+"city.picker.search_word" = "Search";
+"city.audio.off" = "No audio";
+"city.audio.included" = "With audio";
+"city.audio.absent" = "Audio not filed";
+"city.audio.queued" = "Audio queued";
+"city.audio.uploading" = "Filing audio";
+"city.audio.progress_format" = "Audio %1$lld/%2$lld";
+"city.audio.filed" = "Audio filed";
+"city.audio.refused" = "Audio refused";
+"city.audio.too_big" = "Audio too large";
+"city.audio.capped" = "Audio resumes later";
+"city.audio.missing" = "No audio left";
+"city.audio.unreadable" = "Audio not prepared";
+"city.audio.retained" = "Audio remains filed";
+"city.audio.file" = "Add audio";
+"city.audio.disclosure" = "The audio is filed too. Filed audio is public — anyone with its address can fetch it — and can’t be deleted; the city’s hosts can have it transcribed again.";
+"city.audio.public" = "Filed audio is public and can’t be deleted.";
+"city.audio.reason.withheld" = "This recording is set to go without audio.";
+"city.audio.reason.setting_off" = "Audio is off in Settings › Account › Archive.";
+"city.audio.reason.absent" = "The text is filed; the audio isn’t. Choose File Audio to add it.";
+"city.audio.reason.capped_format" = "Today’s audio limit for the city is reached. Filing resumes by itself after %@.";
+"city.audio.reason.missing" = "This Mac no longer has this recording’s audio, so there is none to file.";
+"city.audio.reason.retained_format" = "The %lld audio parts already filed stay on the city’s server and can’t be deleted.";
+"city.summary.names" = "Speaker names are included.";
+"city.summary.no_names" = "Speaker names are left out.";
+"city.summary.audio_included" = "The audio is filed too: once filed it is public and can’t be deleted.";
+"city.signin.disclosure" = "Once signed in, this Mac can do in your name anything you can do in the city. Recordings you file to an event include their audio by default. What is filed — text and audio — is public and can’t be deleted. On a shared computer, sign out when you’re done.";
+"city.withdraw.confirm_one" = "The archive’s pages stop showing it; the text and audio already filed stay in the city’s records and can’t be deleted.";
+"city.signout.confirm_one" = "Your sign-in is removed from this Mac; what is already filed stays in the city, and anything still queued — text or audio — won’t be filed.";
+"city.toast.audio_filed" = "Audio filed in the archive";
+"city.toast.audio_stopped_format" = "Audio not fully filed · %@";
+"city.toast.audio_failed" = "Couldn’t file the audio";
+"city.error.audio_not_filed" = "File this recording’s transcript first; its audio can be filed only after that.";
+"city.error.audio_off" = "Audio is off in Settings › Account › Archive. Turn it on, then try again.";
+"city.error.audio_withheld" = "This recording is set to go without audio. Change that, then try again.";
+"city.error.audio_bad_part" = "This recording’s audio couldn’t be prepared, so nothing was sent. Try again.";
+"city.error.audio_refused" = "The city didn’t accept the audio. It takes audio only from its residents, for events a resident created or that you host or record. The transcript is filed.";
+"city.error.audio_too_big" = "One part of the audio is larger than the city accepts. The transcript is filed.";
+"city.error.audio_daily_cap" = "Today’s audio limit for the city is reached. Filing resumes by itself later.";
+"city.error.audio_server_full" = "The city’s server is out of space. It will be retried automatically.";
+"city.tally.audio_sending_format" = "%lld filing audio";
+"city.tally.audio_stuck_format" = "%lld with audio not filed";
+"city.sidebar.audio_stuck_format" = "Archive: audio not filed for %lld";
+"city.sidebar.audio_sending_format" = "Archive: filing audio for %lld";
+"city.switch.on" = "On";
+"city.switch.off" = "Off";
+"city.withdraw.confirm_short" = "Withdraw from the archive?";
+
+/* 0.8.3 integration */
+"resources.audio.destroy.confirm_filed" = "The copy already filed to the city’s archive stays there; it cannot be deleted from here.";

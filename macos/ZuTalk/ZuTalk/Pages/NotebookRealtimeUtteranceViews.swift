@@ -217,13 +217,13 @@ struct NotebookRealtimeUtteranceView: View {
             )
             .font(.captionMedium)
             .foregroundColor(.signalAmber)
-            Text(String(localized: "capture.transcript.snapshot_unavailable_detail"))
-                .font(.caption)
-                .foregroundColor(.textSecondary)
         }
         .padding(Spacing.lg)
         .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
+        // What is and is not lost, for whoever asks.
+        .help(String(localized: "capture.transcript.snapshot_unavailable_detail"))
         .accessibilityElement(children: .combine)
+        .accessibilityHint(Text(String(localized: "capture.transcript.snapshot_unavailable_detail")))
     }
 
     private var transcriptionHeader: some View {
@@ -258,27 +258,34 @@ struct NotebookRealtimeUtteranceView: View {
     @ViewBuilder
     private var statusActions: some View {
         if isBeingRecorded == false {
-            Button(action: copyTranscript) {
-                Label(
-                    String(localized: "capture.transcript.copy"),
-                    systemImage: Icon.copy
-                )
-            }
-            .buttonStyle(.borderless)
+            ActionPill(
+                String(localized: "recording.word.copy"),
+                systemImage: Icon.copy,
+                style: .quiet,
+                help: copyTranscriptHint,
+                accessibilityLabel: String(localized: "capture.transcript.copy"),
+                action: copyTranscript
+            )
+            // Room for a full-size target around the pill, as before.
             .frame(minWidth: 44, minHeight: 44)
             .disabled(canCopyTranscript == false)
-            .help(copyTranscriptHint)
-            .accessibilityLabel(Text(String(localized: "capture.transcript.copy")))
-            .accessibilityHint(Text(copyTranscriptHint))
         }
 
         if hasAnyEditableLane == false {
-            Label(String(localized: "capture.transcript.read_only"), systemImage: "lock.fill")
+            // A word; when it can be edited is the tooltip. Kept as small
+            // as it was: it also shows above the transcript while recording.
+            Label(String(localized: "recording.word.read_only"), systemImage: "lock.fill")
                 .font(.caption)
                 .foregroundColor(.textSecondary)
+                .help(String(localized: "capture.transcript.read_only"))
+                .accessibilityHint(Text(String(localized: "capture.transcript.read_only")))
         }
         if run.projectionState == .failed, run.captureState.isActive == false {
-            Button(String(localized: "capture.transcript.retry_projection")) {
+            ActionPill(
+                String(localized: "capture.transcript.retry_projection"),
+                systemImage: "arrow.clockwise",
+                help: String(localized: "capture.transcript.retry_projection_hint")
+            ) {
                 do {
                     try history.retryProjection(sessionId: run.sessionId)
                 } catch {
@@ -288,8 +295,6 @@ struct NotebookRealtimeUtteranceView: View {
                     )
                 }
             }
-            .buttonStyle(.borderless)
-            .accessibilityHint(Text(String(localized: "capture.transcript.retry_projection_hint")))
         }
     }
 
@@ -411,25 +416,24 @@ struct NotebookRealtimeUtteranceView: View {
         }
     }
 
+    /// The one line of a run with nothing in it yet. The second line it
+    /// used to carry is its tooltip.
     private func compactEmptyRun(title: String, description: String) -> some View {
-        HStack(alignment: .top, spacing: Spacing.md) {
+        HStack(alignment: .center, spacing: Spacing.md) {
             Image(systemName: "waveform.slash")
                 .font(.system(size: 18, weight: .medium))
                 .foregroundColor(.textTertiary)
                 .frame(width: 28, height: 28)
-            VStack(alignment: .leading, spacing: Spacing.xs) {
-                Text(title)
-                    .font(.captionMedium)
-                    .foregroundColor(.textPrimary)
-                Text(description)
-                    .font(.caption)
-                    .foregroundColor(.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+                .accessibilityHidden(true)
+            Text(title)
+                .font(.body)
+                .foregroundColor(.textSecondary)
         }
         .padding(Spacing.lg)
         .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
+        .help(description)
         .accessibilityElement(children: .combine)
+        .accessibilityHint(Text(description))
     }
 
     private var createdAtText: String {
@@ -602,9 +606,21 @@ private struct ParticipantDirectoryList: View {
                         TextField("", text: $draft)
                             .textFieldStyle(.roundedBorder)
                             .onSubmit { rename(participant) }
-                        Button(String(localized: "capture.speaker.save")) { rename(participant) }
-                            .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        Button(String(localized: "common.cancel")) { editingId = nil }
+                        ActionPill(
+                            String(localized: "capture.speaker.save"),
+                            systemImage: "checkmark",
+                            tone: .on
+                        ) {
+                            rename(participant)
+                        }
+                        .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        ActionPill(
+                            String(localized: "common.cancel"),
+                            systemImage: "xmark",
+                            style: .quiet
+                        ) {
+                            editingId = nil
+                        }
                     } else {
                         Text(participant.displayName)
                             .font(.body)
@@ -614,23 +630,30 @@ private struct ParticipantDirectoryList: View {
                             .font(.caption)
                             .foregroundColor(.textTertiary)
                         Spacer(minLength: Spacing.sm)
-                        Button(String(localized: "capture.speaker.directory.rename")) {
+                        // What each does to the recordings that use the name
+                        // is the tooltip, and — for removing — the question
+                        // asked before it is done.
+                        ActionPill(
+                            nil,
+                            systemImage: "pencil",
+                            help: String(localized: "capture.speaker.directory.detail"),
+                            accessibilityLabel: String(localized: "capture.speaker.directory.rename")
+                        ) {
                             draft = participant.displayName
                             editingId = participant.id
                         }
-                        .buttonStyle(.borderless)
-                        Button(String(localized: "capture.speaker.directory.remove"), role: .destructive) {
+                        ActionPill(
+                            nil,
+                            systemImage: "trash",
+                            iconTint: .signalRed,
+                            help: String(localized: "capture.speaker.directory.detail"),
+                            accessibilityLabel: String(localized: "capture.speaker.directory.remove")
+                        ) {
                             confirmRemove(participant)
                         }
-                        .buttonStyle(.borderless)
                     }
                 }
-                .font(.caption)
             }
-            Text(String(localized: "capture.speaker.directory.detail"))
-                .font(.caption)
-                .foregroundColor(.textTertiary)
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -679,6 +702,15 @@ private struct NotebookSpeakerEditorSheet: View {
     @State private var errorMessage: String?
     /// Name the same-labelled speaker from after a reconnect too.
     @State private var includeReconnectTwins = true
+    /// The kept list of names is open.
+    @State private var showsDirectory = false
+
+    private var directoryTitle: String {
+        String(
+            format: String(localized: "capture.speaker.directory_format"),
+            Int64(history.orderedSpeakerParticipants.count)
+        )
+    }
 
     private var speaker: NotebookSessionSpeakerDTO? {
         history.sessionSpeaker(id: sessionSpeakerId, sessionId: sessionId)
@@ -710,141 +742,153 @@ private struct NotebookSpeakerEditorSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.lg) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: Spacing.xs) {
-                    Text(String(localized: "capture.speaker.editor.title"))
-                        .font(.title3.weight(.semibold))
-                        .foregroundColor(.textPrimary)
-                    Text(speakerIdentity)
-                        .font(.caption.monospaced())
-                        .foregroundColor(.textSecondary)
-                        .textSelection(.enabled)
-                }
+            // The title, who it is, and — one click away in the ⓘ — what
+            // is and is not kept about a speaker.
+            HStack(spacing: Spacing.sm) {
+                Text(String(localized: "capture.speaker.editor.title"))
+                    .font(.titleMD)
+                    .foregroundColor(.textPrimary)
+                Text(speakerIdentity)
+                    .font(.caption.monospaced())
+                    .foregroundColor(.textSecondary)
+                    .textSelection(.enabled)
+                InfoButton(
+                    String(localized: "capture.speaker.privacy_detail"),
+                    accessibilityLabel: String(localized: "capture.speaker.editor.title")
+                )
+                .accessibilityIdentifier("capture.speaker.privacy")
                 Spacer(minLength: Spacing.lg)
-                Button(String(localized: "capture.speaker.close")) {
-                    onClose()
-                }
+                ActionPill(
+                    String(localized: "capture.speaker.close"),
+                    systemImage: "xmark",
+                    style: .quiet,
+                    action: onClose
+                )
                 .keyboardShortcut(.cancelAction)
             }
 
-            Label(
-                String(localized: "capture.speaker.privacy_detail"),
-                systemImage: "lock.shield"
-            )
-            .font(.caption)
-            .foregroundColor(.textSecondary)
-            .fixedSize(horizontal: false, vertical: true)
-
             if reconnectTwins.isEmpty == false, let speaker {
-                VStack(alignment: .leading, spacing: 2) {
-                    Toggle(
-                        String(
-                            format: String(localized: "capture.speaker.reconnect_twin_format"),
-                            speaker.providerLabel
-                        ),
-                        isOn: $includeReconnectTwins
-                    )
-                    .toggleStyle(.checkbox)
-                    .font(.caption)
-                    Text(String(localized: "capture.speaker.reconnect_twin_detail"))
-                        .font(.caption)
-                        .foregroundColor(.textTertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                Toggle(
+                    String(
+                        format: String(localized: "capture.speaker.reconnect_twin_format"),
+                        speaker.providerLabel
+                    ),
+                    isOn: $includeReconnectTwins
+                )
+                .toggleStyle(.checkbox)
+                .font(.body)
+                // Why there are two of the same speaker, for whoever asks.
+                .help(String(localized: "capture.speaker.reconnect_twin_detail"))
+                .accessibilityHint(Text(String(localized: "capture.speaker.reconnect_twin_detail")))
                 .accessibilityIdentifier("capture.speaker.reconnect_twins")
             }
 
-            Divider()
-
-            VStack(alignment: .leading, spacing: Spacing.sm) {
-                Text(String(localized: "capture.speaker.session_name"))
-                    .font(.captionMedium)
-                    .foregroundColor(.textPrimary)
-                Text(String(localized: "capture.speaker.session_name_detail"))
-                    .font(.caption)
-                    .foregroundColor(.textSecondary)
-                HStack(spacing: Spacing.sm) {
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                GroupHeader(
+                    String(localized: "capture.speaker.session_name"),
+                    help: String(localized: "capture.speaker.session_name_detail")
+                )
+                HStack(spacing: PillMetrics.spacing) {
                     TextField(
                         String(localized: "capture.speaker.session_name_placeholder"),
                         text: $sessionName
                     )
                     .textFieldStyle(.roundedBorder)
-                    Button(String(localized: "capture.speaker.save")) {
-                        saveSessionName()
-                    }
+                    ActionPill(
+                        String(localized: "capture.speaker.save"),
+                        systemImage: "checkmark",
+                        tone: .on,
+                        action: saveSessionName
+                    )
                     .disabled(sessionNameIsEmpty)
-                    Button(String(localized: "capture.speaker.clear")) {
-                        clearSessionName()
-                    }
+                    ActionPill(
+                        String(localized: "capture.speaker.clear"),
+                        systemImage: "xmark",
+                        action: clearSessionName
+                    )
                     .disabled(speaker?.localDisplayName == nil)
                 }
             }
 
-            Divider()
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                GroupHeader(
+                    String(localized: "capture.speaker.participant"),
+                    help: String(localized: "capture.speaker.participant_detail")
+                )
 
-            VStack(alignment: .leading, spacing: Spacing.sm) {
-                Text(String(localized: "capture.speaker.participant"))
-                    .font(.captionMedium)
-                    .foregroundColor(.textPrimary)
-                Text(String(localized: "capture.speaker.participant_detail"))
-                    .font(.caption)
-                    .foregroundColor(.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                HStack(spacing: Spacing.sm) {
-                    Picker(
-                        String(localized: "capture.speaker.participant"),
-                        selection: $selectedParticipantId
+                HStack(spacing: PillMetrics.spacing) {
+                    MenuPill(
+                        history.orderedSpeakerParticipants
+                            .first { $0.id == selectedParticipantId }?.displayName
+                            ?? String(localized: "capture.speaker.select_participant"),
+                        titleIsName: selectedParticipantId.isEmpty == false,
+                        systemImage: "person.crop.circle",
+                        help: String(localized: "capture.speaker.participant_detail"),
+                        accessibilityLabel: String(localized: "capture.speaker.participant")
                     ) {
-                        Text(String(localized: "capture.speaker.select_participant")).tag("")
-                        ForEach(history.orderedSpeakerParticipants) { participant in
-                            Text(participant.displayName).tag(participant.id)
+                        history.orderedSpeakerParticipants.map { participant in
+                            PillMenuItem(
+                                participant.displayName,
+                                isOn: participant.id == selectedParticipantId
+                            ) {
+                                selectedParticipantId = participant.id
+                            }
                         }
                     }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .frame(maxWidth: .infinity)
+                    .disabled(history.orderedSpeakerParticipants.isEmpty)
 
-                    Button(String(localized: "capture.speaker.link")) {
-                        linkSelectedParticipant()
-                    }
+                    ActionPill(
+                        String(localized: "capture.speaker.link"),
+                        systemImage: "link",
+                        action: linkSelectedParticipant
+                    )
                     .disabled(selectedParticipantId.isEmpty)
+
+                    if speaker?.participantId != nil {
+                        ActionPill(
+                            String(localized: "capture.speaker.unlink"),
+                            systemImage: "minus.circle",
+                            action: unlinkParticipant
+                        )
+                    }
+                    Spacer(minLength: 0)
                 }
 
-                HStack(spacing: Spacing.sm) {
+                HStack(spacing: PillMetrics.spacing) {
                     TextField(
                         String(localized: "capture.speaker.new_participant_placeholder"),
                         text: $newParticipantName
                     )
                     .textFieldStyle(.roundedBorder)
-                    Button(String(localized: "capture.speaker.create_and_link")) {
-                        createAndLinkParticipant()
-                    }
+                    ActionPill(
+                        String(localized: "capture.speaker.create_and_link"),
+                        systemImage: "plus",
+                        action: createAndLinkParticipant
+                    )
                     .disabled(newParticipantNameIsEmpty)
-                }
-
-                if speaker?.participantId != nil {
-                    Button(String(localized: "capture.speaker.unlink")) {
-                        unlinkParticipant()
-                    }
-                    .buttonStyle(.borderless)
                 }
             }
 
             // The names above are kept across recordings. Typos and people
-            // entered twice used to stay in the list for good.
+            // entered twice used to stay in the list for good. The way in
+            // is a pill showing how many there are, not a line of text with
+            // a triangle beside it.
             if history.orderedSpeakerParticipants.isEmpty == false {
-                DisclosureGroup(
-                    String(
-                        format: String(localized: "capture.speaker.directory_format"),
-                        Int64(history.orderedSpeakerParticipants.count)
-                    )
-                ) {
-                    ParticipantDirectoryList(history: history, onError: { errorMessage = $0 })
-                        .padding(.top, Spacing.xs)
+                HStack(spacing: 0) {
+                    TogglePill(
+                        isOn: showsDirectory,
+                        on: .init(directoryTitle, systemImage: "person.2.fill"),
+                        off: .init(directoryTitle, systemImage: "person.2"),
+                        help: String(localized: "capture.speaker.directory.detail")
+                    ) {
+                        showsDirectory.toggle()
+                    }
+                    .accessibilityIdentifier("capture.speaker.directory")
+                    Spacer(minLength: 0)
                 }
-                .font(.captionMedium)
-                .accessibilityIdentifier("capture.speaker.directory")
+                if showsDirectory {
+                    ParticipantDirectoryList(history: history, onError: { errorMessage = $0 })
+                }
             }
 
             if let errorMessage {

@@ -894,6 +894,12 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
     func cityAccount()  -> FfiCityAccount?
 
     /**
+     * 交音频之前问一遍:现在能不能交、一段多长、哪几段已经在城的服务器上。
+     * 不走网络。`upload` 为 false 时不要导出音频。
+     */
+    func cityAudioPlan(sessionId: String)  -> FfiCityAudioPlan
+
+    /**
      * 这场录音归到哪场活动;`event` 为空就是这场不交。录之前、录音中、
      * 录完以后都能改;已经交上去的要先撤下。
      */
@@ -908,6 +914,24 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
      * 这个人能往里放东西的频道,按上一次取活动时的样子。
      */
     func cityChannels()  -> [FfiCityChannel]
+
+    /**
+     * 交音频的一段。走网络,一段可能要传好几分钟,别在主线程上调。
+     *
+     * App 把这场录音的音频按 `city_audio_plan` 说的长度切开,每一段导出成一个
+     * 能单独播放的 AAC `.m4a` 文件,一段调一次:`n` 是段号(从 0 起),`total`
+     * 是一共几段,`path` 是那个文件,`t0_ms`、`dur_ms` 是这一段在录音时间线上
+     * 的起点和长度(和转录句子的时刻同一个钟),`levels` 是每秒一个 0–9 的
+     * 音量(画波形用,可以为空,最多 3600 个)。文件由 App 自己删。
+     *
+     * 这一段已经在城的服务器上就直接给回,不联网。出错分两种:
+     * - 发不了、不该发(没登录、文字还没交、设置关着、这一场单独关了、参数
+     * 不对、这一场正在交别的)—— 回错误,账本不动;
+     * - 发了没成(没连上、城不收、太大、今天放得太多、服务器满了)—— 照常
+     * 给回这场录音的状态,原因在 `audio_error_code` 里。文字交上去了这件事
+     * 不受影响。
+     */
+    func cityFileAudioPart(sessionId: String, n: UInt32, total: UInt32, path: String, t0Ms: Int64, durMs: Int64, levels: String) throws  -> FfiCityFiling
 
     /**
      * 交到档案馆。走网络。没连上时留在排队,给回的那一份写着。
@@ -944,9 +968,25 @@ public protocol ZuTalkCoreProtocol: AnyObject, Sendable {
     func cityLoginWithRecoveryKey(server: String, recoveryKey: String) throws  -> FfiCityAccount
 
     /**
+     * 音频该交、还没交完、现在去交有用的录音。启动时、网络回来时照这份单子
+     * 接着交(每一场先问 `city_audio_plan`)。城不收的、一段太大的不在里面
+     * —— 再试也一样,等人来看;今天放得太多的,到城说的时候才回到单子上。
+     * 没登录时是空的:导出音频不便宜,交不了就别让 App 白忙。
+     */
+    func cityPendingAudioSessions()  -> [String]
+
+    /**
      * 还在排队的录音。启动时、网络回来时照这份单子重发。
      */
     func cityPendingSessions()  -> [String]
+
+    /**
+     * 这一场交不交音频。`enabled` 为 false:设置里开着,这一场也不交;为
+     * true:照设置来(设置关着时仍然不交 —— 设置是总开关,单场只能往少里
+     * 改)。录之前、录音中、交了文字以后都能改;已经交上去的音频撤不回来。
+     * 不走网络。这场录音还没归到活动时回 `city.error.unbound`。
+     */
+    func citySetSessionAudio(sessionId: String, enabled: Bool) throws  -> FfiCityFiling
 
     /**
      * 退出登录:钥匙和说明从这台 Mac 上删掉。交过什么的账留着。
@@ -2300,6 +2340,19 @@ open func cityAccount() -> FfiCityAccount?  {
 }
 
     /**
+     * 交音频之前问一遍:现在能不能交、一段多长、哪几段已经在城的服务器上。
+     * 不走网络。`upload` 为 false 时不要导出音频。
+     */
+open func cityAudioPlan(sessionId: String) -> FfiCityAudioPlan  {
+    return try!  FfiConverterTypeFfiCityAudioPlan_lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zutalkcore_city_audio_plan(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),$0
+    )
+})
+}
+
+    /**
      * 这场录音归到哪场活动;`event` 为空就是这场不交。录之前、录音中、
      * 录完以后都能改;已经交上去的要先撤下。
      */
@@ -2332,6 +2385,37 @@ open func cityChannels() -> [FfiCityChannel]  {
     return try!  FfiConverterSequenceTypeFfiCityChannel.lift(try! rustCall() {
     uniffi_vt_ffi_fn_method_zutalkcore_city_channels(
             self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+    /**
+     * 交音频的一段。走网络,一段可能要传好几分钟,别在主线程上调。
+     *
+     * App 把这场录音的音频按 `city_audio_plan` 说的长度切开,每一段导出成一个
+     * 能单独播放的 AAC `.m4a` 文件,一段调一次:`n` 是段号(从 0 起),`total`
+     * 是一共几段,`path` 是那个文件,`t0_ms`、`dur_ms` 是这一段在录音时间线上
+     * 的起点和长度(和转录句子的时刻同一个钟),`levels` 是每秒一个 0–9 的
+     * 音量(画波形用,可以为空,最多 3600 个)。文件由 App 自己删。
+     *
+     * 这一段已经在城的服务器上就直接给回,不联网。出错分两种:
+     * - 发不了、不该发(没登录、文字还没交、设置关着、这一场单独关了、参数
+     * 不对、这一场正在交别的)—— 回错误,账本不动;
+     * - 发了没成(没连上、城不收、太大、今天放得太多、服务器满了)—— 照常
+     * 给回这场录音的状态,原因在 `audio_error_code` 里。文字交上去了这件事
+     * 不受影响。
+     */
+open func cityFileAudioPart(sessionId: String, n: UInt32, total: UInt32, path: String, t0Ms: Int64, durMs: Int64, levels: String)throws  -> FfiCityFiling  {
+    return try  FfiConverterTypeFfiCityFiling_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_city_file_audio_part(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),
+        FfiConverterUInt32.lower(n),
+        FfiConverterUInt32.lower(total),
+        FfiConverterString.lower(path),
+        FfiConverterInt64.lower(t0Ms),
+        FfiConverterInt64.lower(durMs),
+        FfiConverterString.lower(levels),$0
     )
 })
 }
@@ -2423,12 +2507,42 @@ open func cityLoginWithRecoveryKey(server: String, recoveryKey: String)throws  -
 }
 
     /**
+     * 音频该交、还没交完、现在去交有用的录音。启动时、网络回来时照这份单子
+     * 接着交(每一场先问 `city_audio_plan`)。城不收的、一段太大的不在里面
+     * —— 再试也一样,等人来看;今天放得太多的,到城说的时候才回到单子上。
+     * 没登录时是空的:导出音频不便宜,交不了就别让 App 白忙。
+     */
+open func cityPendingAudioSessions() -> [String]  {
+    return try!  FfiConverterSequenceString.lift(try! rustCall() {
+    uniffi_vt_ffi_fn_method_zutalkcore_city_pending_audio_sessions(
+            self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+    /**
      * 还在排队的录音。启动时、网络回来时照这份单子重发。
      */
 open func cityPendingSessions() -> [String]  {
     return try!  FfiConverterSequenceString.lift(try! rustCall() {
     uniffi_vt_ffi_fn_method_zutalkcore_city_pending_sessions(
             self.uniffiCloneHandle(),$0
+    )
+})
+}
+
+    /**
+     * 这一场交不交音频。`enabled` 为 false:设置里开着,这一场也不交;为
+     * true:照设置来(设置关着时仍然不交 —— 设置是总开关,单场只能往少里
+     * 改)。录之前、录音中、交了文字以后都能改;已经交上去的音频撤不回来。
+     * 不走网络。这场录音还没归到活动时回 `city.error.unbound`。
+     */
+open func citySetSessionAudio(sessionId: String, enabled: Bool)throws  -> FfiCityFiling  {
+    return try  FfiConverterTypeFfiCityFiling_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+    uniffi_vt_ffi_fn_method_zutalkcore_city_set_session_audio(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(sessionId),
+        FfiConverterBool.lower(enabled),$0
     )
 })
 }
@@ -4780,6 +4894,137 @@ public func FfiConverterTypeFfiCityAccount_lower(_ value: FfiCityAccount) -> Rus
 }
 
 
+/**
+ * 交音频之前问一遍:要不要导出,怎么切,哪几段已经交了。
+ */
+public struct FfiCityAudioPlan: Equatable, Hashable {
+    /**
+     * 现在能不能交。false 就什么都别导出,`hold_code` 说为什么。
+     */
+    public var upload: Bool
+    /**
+     * 不能交的原因:`city.error.signed_out`、`unbound`、`audio_not_filed`、
+     * `audio_off`、`audio_withheld`、`audio_daily_cap`。
+     */
+    public var holdCode: String?
+    /**
+     * 同 `FfiCityFiling.audio_due`:该不该由 App 自己开始、接着交。
+     */
+    public var due: Bool
+    /**
+     * 一段多长(毫秒):300 000。最后一段可以短。第 n 段从 n × part_ms 开始。
+     */
+    public var partMs: Int64
+    /**
+     * 一段最多多少字节(16 MiB)。
+     */
+    public var maxPartBytes: UInt64
+    /**
+     * 导出成什么:`audio/mp4`(AAC,`.m4a`)。
+     */
+    public var mime: String
+    /**
+     * 上一次说的一共几段;0 是还没开始。
+     */
+    public var partsPlanned: UInt32
+    /**
+     * 城的服务器上已经有的段号,从小到大。
+     */
+    public var partsFiled: [UInt32]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * 现在能不能交。false 就什么都别导出,`hold_code` 说为什么。
+         */upload: Bool,
+        /**
+         * 不能交的原因:`city.error.signed_out`、`unbound`、`audio_not_filed`、
+         * `audio_off`、`audio_withheld`、`audio_daily_cap`。
+         */holdCode: String?,
+        /**
+         * 同 `FfiCityFiling.audio_due`:该不该由 App 自己开始、接着交。
+         */due: Bool,
+        /**
+         * 一段多长(毫秒):300 000。最后一段可以短。第 n 段从 n × part_ms 开始。
+         */partMs: Int64,
+        /**
+         * 一段最多多少字节(16 MiB)。
+         */maxPartBytes: UInt64,
+        /**
+         * 导出成什么:`audio/mp4`(AAC,`.m4a`)。
+         */mime: String,
+        /**
+         * 上一次说的一共几段;0 是还没开始。
+         */partsPlanned: UInt32,
+        /**
+         * 城的服务器上已经有的段号,从小到大。
+         */partsFiled: [UInt32]) {
+        self.upload = upload
+        self.holdCode = holdCode
+        self.due = due
+        self.partMs = partMs
+        self.maxPartBytes = maxPartBytes
+        self.mime = mime
+        self.partsPlanned = partsPlanned
+        self.partsFiled = partsFiled
+    }
+
+
+
+
+}
+
+#if compiler(>=6)
+extension FfiCityAudioPlan: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiCityAudioPlan: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiCityAudioPlan {
+        return
+            try FfiCityAudioPlan(
+                upload: FfiConverterBool.read(from: &buf),
+                holdCode: FfiConverterOptionString.read(from: &buf),
+                due: FfiConverterBool.read(from: &buf),
+                partMs: FfiConverterInt64.read(from: &buf),
+                maxPartBytes: FfiConverterUInt64.read(from: &buf),
+                mime: FfiConverterString.read(from: &buf),
+                partsPlanned: FfiConverterUInt32.read(from: &buf),
+                partsFiled: FfiConverterSequenceUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiCityAudioPlan, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.upload, into: &buf)
+        FfiConverterOptionString.write(value.holdCode, into: &buf)
+        FfiConverterBool.write(value.due, into: &buf)
+        FfiConverterInt64.write(value.partMs, into: &buf)
+        FfiConverterUInt64.write(value.maxPartBytes, into: &buf)
+        FfiConverterString.write(value.mime, into: &buf)
+        FfiConverterUInt32.write(value.partsPlanned, into: &buf)
+        FfiConverterSequenceUInt32.write(value.partsFiled, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiCityAudioPlan_lift(_ buf: RustBuffer) throws -> FfiCityAudioPlan {
+    return try FfiConverterTypeFfiCityAudioPlan.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiCityAudioPlan_lower(_ value: FfiCityAudioPlan) -> RustBuffer {
+    return FfiConverterTypeFfiCityAudioPlan.lower(value)
+}
+
+
 public struct FfiCityCalendar: Equatable, Hashable {
     public var events: [FfiCityEvent]
     /**
@@ -4991,26 +5236,97 @@ public struct FfiCityFiling: Equatable, Hashable {
     public var signerName: String
     public var languages: [FfiCityLanguageCount]
     public var speakers: UInt32
+    /**
+     * 0.8.0–0.8.2 交上去的标记数。标记不再交:这一版起交的永远是 0;以前
+     * 交的留在城的日志里删不掉,这个数照实留着。
+     */
     public var marks: UInt32
     /**
      * 交上去以后在这台 Mac 上改过、还没更新过去的句数。
      */
     public var changedSentences: UInt32
+    /**
+     * 文字这一路的错。音频没交成不写在这里,也不改 `state`。
+     */
     public var errorCode: String?
     /**
      * 档案馆里这件素材的网址。
      */
     public var webUrl: String?
+    /**
+     * 这一场要不要带音频:设置里「连音频一起交」开着,这一场也没单独关掉。
+     */
+    public var audioWanted: Bool
+    /**
+     * 这一场单独设成了不交音频(`city_set_session_audio`)。
+     */
+    public var audioWithheld: Bool
+    /**
+     * 音频该交、还没交完、现在也还要:App 自己接着交(启动时、网络回来时)。
+     * 以前只交了文字的录音不在此列,等人开口。
+     */
+    public var audioDue: Bool
+    /**
+     * 音频一共几段;0 是还没开始交。
+     */
+    public var audioPartsPlanned: UInt32
+    /**
+     * 城的服务器上已经有几段。撤下以后这个数也留着:交上去的音频撤不回来。
+     */
+    public var audioPartsFiled: UInt32
+    /**
+     * 音频上一次没交成的原因:`city.error.audio_refused`、`audio_too_big`、
+     * `audio_daily_cap`、`audio_server_full`,或者 `city.error.offline`、
+     * `city.error.server`。交成了就清掉。
+     */
+    public var audioErrorCode: String?
+    /**
+     * `audio_error_code` 是 `city.error.audio_daily_cap` 时:什么时候能再交
+     * (Unix 秒)。
+     */
+    public var audioRetryAtEpoch: Int64?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(sessionId: String, eventId: String, eventTitle: String, eventStartMs: Int64, channelTitle: String?, state: FfiCityFilingState, filedAtEpoch: Int64?, signerName: String, languages: [FfiCityLanguageCount], speakers: UInt32, marks: UInt32,
+    public init(sessionId: String, eventId: String, eventTitle: String, eventStartMs: Int64, channelTitle: String?, state: FfiCityFilingState, filedAtEpoch: Int64?, signerName: String, languages: [FfiCityLanguageCount], speakers: UInt32,
+        /**
+         * 0.8.0–0.8.2 交上去的标记数。标记不再交:这一版起交的永远是 0;以前
+         * 交的留在城的日志里删不掉,这个数照实留着。
+         */marks: UInt32,
         /**
          * 交上去以后在这台 Mac 上改过、还没更新过去的句数。
-         */changedSentences: UInt32, errorCode: String?,
+         */changedSentences: UInt32,
+        /**
+         * 文字这一路的错。音频没交成不写在这里,也不改 `state`。
+         */errorCode: String?,
         /**
          * 档案馆里这件素材的网址。
-         */webUrl: String?) {
+         */webUrl: String?,
+        /**
+         * 这一场要不要带音频:设置里「连音频一起交」开着,这一场也没单独关掉。
+         */audioWanted: Bool,
+        /**
+         * 这一场单独设成了不交音频(`city_set_session_audio`)。
+         */audioWithheld: Bool,
+        /**
+         * 音频该交、还没交完、现在也还要:App 自己接着交(启动时、网络回来时)。
+         * 以前只交了文字的录音不在此列,等人开口。
+         */audioDue: Bool,
+        /**
+         * 音频一共几段;0 是还没开始交。
+         */audioPartsPlanned: UInt32,
+        /**
+         * 城的服务器上已经有几段。撤下以后这个数也留着:交上去的音频撤不回来。
+         */audioPartsFiled: UInt32,
+        /**
+         * 音频上一次没交成的原因:`city.error.audio_refused`、`audio_too_big`、
+         * `audio_daily_cap`、`audio_server_full`,或者 `city.error.offline`、
+         * `city.error.server`。交成了就清掉。
+         */audioErrorCode: String?,
+        /**
+         * `audio_error_code` 是 `city.error.audio_daily_cap` 时:什么时候能再交
+         * (Unix 秒)。
+         */audioRetryAtEpoch: Int64?) {
         self.sessionId = sessionId
         self.eventId = eventId
         self.eventTitle = eventTitle
@@ -5025,6 +5341,13 @@ public struct FfiCityFiling: Equatable, Hashable {
         self.changedSentences = changedSentences
         self.errorCode = errorCode
         self.webUrl = webUrl
+        self.audioWanted = audioWanted
+        self.audioWithheld = audioWithheld
+        self.audioDue = audioDue
+        self.audioPartsPlanned = audioPartsPlanned
+        self.audioPartsFiled = audioPartsFiled
+        self.audioErrorCode = audioErrorCode
+        self.audioRetryAtEpoch = audioRetryAtEpoch
     }
 
 
@@ -5056,7 +5379,14 @@ public struct FfiConverterTypeFfiCityFiling: FfiConverterRustBuffer {
                 marks: FfiConverterUInt32.read(from: &buf),
                 changedSentences: FfiConverterUInt32.read(from: &buf),
                 errorCode: FfiConverterOptionString.read(from: &buf),
-                webUrl: FfiConverterOptionString.read(from: &buf)
+                webUrl: FfiConverterOptionString.read(from: &buf),
+                audioWanted: FfiConverterBool.read(from: &buf),
+                audioWithheld: FfiConverterBool.read(from: &buf),
+                audioDue: FfiConverterBool.read(from: &buf),
+                audioPartsPlanned: FfiConverterUInt32.read(from: &buf),
+                audioPartsFiled: FfiConverterUInt32.read(from: &buf),
+                audioErrorCode: FfiConverterOptionString.read(from: &buf),
+                audioRetryAtEpoch: FfiConverterOptionInt64.read(from: &buf)
         )
     }
 
@@ -5075,6 +5405,13 @@ public struct FfiConverterTypeFfiCityFiling: FfiConverterRustBuffer {
         FfiConverterUInt32.write(value.changedSentences, into: &buf)
         FfiConverterOptionString.write(value.errorCode, into: &buf)
         FfiConverterOptionString.write(value.webUrl, into: &buf)
+        FfiConverterBool.write(value.audioWanted, into: &buf)
+        FfiConverterBool.write(value.audioWithheld, into: &buf)
+        FfiConverterBool.write(value.audioDue, into: &buf)
+        FfiConverterUInt32.write(value.audioPartsPlanned, into: &buf)
+        FfiConverterUInt32.write(value.audioPartsFiled, into: &buf)
+        FfiConverterOptionString.write(value.audioErrorCode, into: &buf)
+        FfiConverterOptionInt64.write(value.audioRetryAtEpoch, into: &buf)
     }
 }
 
@@ -5096,7 +5433,10 @@ public func FfiConverterTypeFfiCityFiling_lower(_ value: FfiCityFiling) -> RustB
 
 public struct FfiCityFilingOptions: Equatable, Hashable {
     public var speakerNames: Bool
-    public var marks: Bool
+    /**
+     * 连音频一起交。默认开。交上去的音频是公开的,撤不回来。
+     */
+    public var audio: Bool
     /**
      * 停止录音后自己去交;关着就等人按。
      */
@@ -5104,12 +5444,15 @@ public struct FfiCityFilingOptions: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(speakerNames: Bool, marks: Bool,
+    public init(speakerNames: Bool,
+        /**
+         * 连音频一起交。默认开。交上去的音频是公开的,撤不回来。
+         */audio: Bool,
         /**
          * 停止录音后自己去交;关着就等人按。
          */automatic: Bool) {
         self.speakerNames = speakerNames
-        self.marks = marks
+        self.audio = audio
         self.automatic = automatic
     }
 
@@ -5130,14 +5473,14 @@ public struct FfiConverterTypeFfiCityFilingOptions: FfiConverterRustBuffer {
         return
             try FfiCityFilingOptions(
                 speakerNames: FfiConverterBool.read(from: &buf),
-                marks: FfiConverterBool.read(from: &buf),
+                audio: FfiConverterBool.read(from: &buf),
                 automatic: FfiConverterBool.read(from: &buf)
         )
     }
 
     public static func write(_ value: FfiCityFilingOptions, into buf: inout [UInt8]) {
         FfiConverterBool.write(value.speakerNames, into: &buf)
-        FfiConverterBool.write(value.marks, into: &buf)
+        FfiConverterBool.write(value.audio, into: &buf)
         FfiConverterBool.write(value.automatic, into: &buf)
     }
 }
@@ -12351,6 +12694,31 @@ fileprivate struct FfiConverterOptionCallbackInterfaceFfiLaneCredentialRequester
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceUInt32: FfiConverterRustBuffer {
+    typealias SwiftType = [UInt32]
+
+    public static func write(_ value: [UInt32], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterUInt32.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [UInt32] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [UInt32]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterUInt32.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceUInt64: FfiConverterRustBuffer {
     typealias SwiftType = [UInt64]
 
@@ -13511,6 +13879,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zutalkcore_city_account() != 27993) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_city_audio_plan() != 48855) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_city_bind_session() != 31740) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -13518,6 +13889,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_city_channels() != 4701) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_city_file_audio_part() != 55713) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_city_file_session() != 32491) {
@@ -13544,7 +13918,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_vt_ffi_checksum_method_zutalkcore_city_login_with_recovery_key() != 48689) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_city_pending_audio_sessions() != 15704) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_city_pending_sessions() != 9277) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_vt_ffi_checksum_method_zutalkcore_city_set_session_audio() != 14306) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_vt_ffi_checksum_method_zutalkcore_city_sign_out() != 19466) {

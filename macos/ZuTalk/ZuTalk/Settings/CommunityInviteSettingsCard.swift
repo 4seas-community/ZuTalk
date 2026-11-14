@@ -1,40 +1,49 @@
 import SwiftUI
 
-/// 「设置 › 账号」里「转录和翻译」那张卡:现在靠什么出字,一句话;邀请码在这里
-/// 填、换、删;要用自己的密钥,从最下面那一行去「高级」。
+/// 「设置 › 账号」里「出字」那张卡。三行:
+///   1. 现在靠什么出字 —— 一个图标、几个词(邀请码还能录多久也在这几个词里);
+///   2. 邀请码 —— 没有的时候是一栏和「启用」;有的时候是开关、更换、删除;
+///   3. 「用自己的密钥…」—— 一颗胶囊,点了去「高级」。
 ///
-/// 这张卡以前叫「社区邀请」,在「实时字幕」一节里排在服务密钥下面。大多数人手里
-/// 有的是邀请码,不是密钥,所以它现在在「账号」里,邀请码排在前面。卡片上不出现
-/// 供应商的名字:用邀请码的人不需要知道背后是谁。
+/// 卡片上没有句子。原来的那几句(邀请时长怎么算、开关关了以后用什么、删除了
+/// 会怎样)都在各自控件的悬停提示里;删除仍然先问一遍。卡片上也不出现供应商
+/// 的名字:用邀请码的人不需要知道背后是谁。
 struct CommunityInviteSettingsCard: View {
     @ObservedObject private var invite = CommunityInviteSession.shared
-    /// 只为了密钥存上、删掉的时候,那一句话跟着变;密钥本身从不进界面。
+    /// 只为了密钥存上、删掉的时候,那几个词跟着变;密钥本身从不进界面。
     @ObservedObject private var credentials = ProviderCredentialSession.shared
+    @Environment(\.settingsFixture) private var fixture
     @State private var code = ""
     @State private var isReplacing = false
     @State private var isConfirmingRemoval = false
 
+    private var model: LiveTextCardModel {
+        fixture?.liveText ?? .live(invite: invite, credentials: credentials)
+    }
+
     var body: some View {
-        SettingsCard {
-            statusRow
+        let model = model
+        return SettingsCard {
+            LiveTextStatusRow(
+                source: model.source,
+                isRefreshing: model.isWorking,
+                onRefresh: model.inviteActive && model.inviteEnabled
+                    ? { Task { await invite.refreshQuota() } }
+                    : nil
+            )
             SettingsRowDivider()
-            if invite.isActive {
-                sourceToggleRow
-                SettingsRowDivider()
-                if isReplacing {
-                    redeemEditor
-                } else {
-                    replaceRow
-                }
-                SettingsRowDivider()
-                removeRow
+            if model.inviteActive, isReplacing == false {
+                inviteRow(model)
             } else {
-                inactiveEditor
+                redeemRow(model)
             }
             SettingsRowDivider()
             ownKeyRow
         }
-        .task { await invite.refreshQuota() }
+        .task {
+            guard fixture == nil else { return }
+            await invite.refreshQuota()
+        }
         .alert(
             String(localized: "community_invite.remove_confirm_title"),
             isPresented: $isConfirmingRemoval
@@ -53,152 +62,107 @@ struct CommunityInviteSettingsCard: View {
         }
     }
 
-    /// 现在靠什么出字。剩余时间就写在这一句里,不另起一行再报一遍。
-    private var statusRow: some View {
-        LiveTextStatusRow(
-            source: LiveTextSource.current(invite: invite, credentials: credentials),
-            isRefreshing: invite.isWorking,
-            onRefresh: invite.isActive && invite.isEnabled
-                ? { Task { await invite.refreshQuota() } }
-                : nil
-        )
-    }
-
-    private var sourceToggleRow: some View {
+    /// 邀请码已经在这台 Mac 上:用不用它、换一个、删掉。
+    private func inviteRow(_ model: LiveTextCardModel) -> some View {
         SettingsRow(
-            String(localized: "settings.live_text.use_invite"),
+            String(localized: "settings.live_text.invite_field_label"),
             description: String(localized: "community_invite.use_toggle_detail")
         ) {
-            Toggle(
-                String(localized: "settings.live_text.use_invite"),
-                isOn: Binding(
-                    get: { invite.isEnabled },
-                    set: { enabled in
-                        invite.setEnabled(enabled)
-                        // Recording overrides the runtime Soniox key with the
-                        // invite's temporary key; switching back to the user's
-                        // own key must restore the saved credential.
-                        if enabled == false {
-                            try? ProviderCredentialSession.shared.activateSavedCredentials()
-                        }
-                    }
-                )
-            )
-            .labelsHidden()
-            .toggleStyle(.switch)
+            SettingsSwitch(
+                isOn: model.inviteEnabled,
+                label: String(localized: "settings.live_text.use_invite"),
+                help: String(localized: "community_invite.use_toggle_detail")
+            ) { enabled in
+                invite.setEnabled(enabled)
+                // Recording overrides the runtime Soniox key with the
+                // invite's temporary key; switching back to the user's
+                // own key must restore the saved credential.
+                if enabled == false {
+                    try? ProviderCredentialSession.shared.activateSavedCredentials()
+                }
+            }
             .accessibilityIdentifier("settings.community-invite.use-toggle")
-        }
-    }
 
-    private var replaceRow: some View {
-        SettingsRow(String(localized: "settings.live_text.invite_on")) {
-            Button(String(localized: "community_invite.replace")) {
+            ActionPill(
+                String(localized: "settings.action.replace"),
+                systemImage: "arrow.left.arrow.right",
+                help: String(localized: "community_invite.replace"),
+                accessibilityLabel: String(localized: "community_invite.replace")
+            ) {
                 code = ""
                 isReplacing = true
             }
-            .buttonStyle(.bordered)
-            .frame(minHeight: 44)
-        }
-    }
+            .accessibilityIdentifier("settings.community-invite.replace")
 
-    private var removeRow: some View {
-        SettingsRow(
-            String(localized: "community_invite.remove"),
-            description: String(localized: "community_invite.remove_detail")
-        ) {
-            Button(String(localized: "community_invite.remove"), role: .destructive) {
+            ActionPill(
+                String(localized: "common.delete"),
+                systemImage: "trash",
+                help: String(localized: "community_invite.remove_detail"),
+                accessibilityLabel: String(localized: "community_invite.remove")
+            ) {
                 isConfirmingRemoval = true
             }
-            .buttonStyle(.bordered)
-            .frame(minHeight: 44)
             .accessibilityIdentifier("settings.community-invite.remove")
         }
     }
 
-    // 这几行的内容都比卡片窄。不撑满的话,卡片会把整行摆到中间去。
-    private var redeemEditor: some View {
+    /// 一栏和「启用」。换邀请码的时候多一个「取消」,不想换了能退回去。
+    private func redeemRow(_ model: LiveTextCardModel) -> some View {
         SettingsFullRow {
-            redeemField
-            redeemError
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
+            HStack(spacing: PillMetrics.spacing) {
+                SettingsField(
+                    String(localized: "community_invite.placeholder"),
+                    text: $code,
+                    onSubmit: redeem
+                )
+                .disabled(model.isWorking)
+                .settingsExplained(String(localized: "settings.live_text.invite_hint"))
+                .accessibilityLabel(String(localized: "settings.live_text.invite_field_label"))
+                .accessibilityIdentifier("settings.community-invite.code")
 
-    private var inactiveEditor: some View {
-        SettingsFullRow {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(String(localized: "settings.live_text.invite_field_label"))
-                    .font(Font.sans12)
-                    .foregroundColor(.textPrimary)
-                Text(String(localized: "settings.live_text.invite_hint"))
-                    .font(Font.sans11)
-                    .foregroundColor(.textTertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            redeemField
-            redeemError
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    @ViewBuilder
-    private var redeemError: some View {
-        if let error = invite.errorMessage {
-            Label(error, systemImage: "exclamationmark.triangle.fill")
-                .font(Font.sans11)
-                .foregroundColor(.signalAmber)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private var redeemField: some View {
-        HStack(spacing: Spacing.sm) {
-            TextField(
-                String(localized: "community_invite.placeholder"),
-                text: $code
-            )
-            .textFieldStyle(.roundedBorder)
-            .frame(maxWidth: .infinity)
-            .frame(minHeight: 44)
-            .disabled(invite.isWorking)
-            .onSubmit(redeem)
-            .accessibilityLabel(String(localized: "settings.live_text.invite_field_label"))
-            .accessibilityIdentifier("settings.community-invite.code")
-
-            Button {
-                redeem()
-            } label: {
-                if invite.isWorking {
+                if model.isWorking {
                     ProgressView()
                         .controlSize(.small)
+                        .frame(width: PillMetrics.height, height: PillMetrics.height)
                 } else {
-                    Text(String(localized: "community_invite.action"))
+                    ActionPill(
+                        String(localized: "onboarding.live_text.redeem"),
+                        systemImage: "checkmark",
+                        action: redeem
+                    )
+                    .disabled(code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityIdentifier("settings.community-invite.redeem")
+                }
+
+                if model.inviteActive {
+                    ActionPill(
+                        String(localized: "common.cancel"),
+                        systemImage: "xmark",
+                        style: .quiet
+                    ) {
+                        code = ""
+                        isReplacing = false
+                    }
                 }
             }
-            .buttonStyle(.borderedProminent)
-            .frame(minHeight: 44)
-            .disabled(
-                invite.isWorking
-                    || code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            )
+
+            if let error = model.errorMessage {
+                SettingsProblem(error)
+            }
         }
     }
 
-    /// 安静的一行:要用自己的密钥的人知道往哪走,别的人不被它打扰。
+    /// 要用自己的密钥的人知道往哪走,别的人不被它打扰。
     private var ownKeyRow: some View {
         SettingsFullRow {
-            Button(String(localized: "settings.live_text.use_own_key")) {
+            ActionPill(
+                String(localized: "settings.live_text.use_own_key"),
+                systemImage: "key"
+            ) {
                 SettingsRouter.shared.section = .advanced
             }
-            // The app's own colour for a text action, as on Home's 更改:
-            // the system link blue is used nowhere else in the window.
-            .buttonStyle(.plain)
-            .foregroundColor(.brandAccent)
-            .font(Font.sans12)
             .accessibilityIdentifier("settings.live-text.use-own-key")
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func redeem() {
@@ -213,8 +177,32 @@ struct CommunityInviteSettingsCard: View {
     }
 }
 
-/// 「现在靠什么出字」那一行:一个图标、一句话。邀请码在用的时候,右边多一个
-/// 「再问一遍还剩多少」的按钮。
+/// 「出字」那张卡画的是什么:靠什么出字,邀请码在不在、开没开,是不是正在问
+/// 邀请服务,上一次出了什么错。纯数据:卡片只看它,测试可以给它任何一种。
+struct LiveTextCardModel: Equatable {
+    var source: LiveTextSource
+    var inviteActive = false
+    var inviteEnabled = false
+    var isWorking = false
+    var errorMessage: String?
+
+    @MainActor
+    static func live(
+        invite: CommunityInviteSession,
+        credentials: any ProviderCredentialSessioning
+    ) -> LiveTextCardModel {
+        LiveTextCardModel(
+            source: .current(invite: invite, credentials: credentials),
+            inviteActive: invite.isActive,
+            inviteEnabled: invite.isEnabled,
+            isWorking: invite.isWorking,
+            errorMessage: invite.errorMessage
+        )
+    }
+}
+
+/// 「现在靠什么出字」那一行:一个图标、几个词。邀请码在用的时候,右边多一颗
+/// 「再问一遍还剩多少」的胶囊。整句在悬停提示里。
 struct LiveTextStatusRow: View {
     let source: LiveTextSource
     var isRefreshing = false
@@ -225,39 +213,43 @@ struct LiveTextStatusRow: View {
         SettingsFullRow {
             HStack(alignment: .center, spacing: Spacing.sm) {
                 Image(systemName: source.symbol)
-                    .font(.system(size: 14))
-                    .foregroundColor(source.powersLiveText ? .brandAccent : .textTertiary)
+                    .font(PillMetrics.iconFont)
+                    .foregroundColor(tint)
                     .frame(width: 20)
                     .accessibilityHidden(true)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(source.sentence)
-                        .font(.bodyMedium)
-                        .foregroundColor(.textPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityIdentifier("settings.live-text.source")
-                    if case .invite = source {
-                        Text(String(localized: "settings.live_text.shared_detail"))
-                            .font(Font.sans11)
-                            .foregroundColor(.textTertiary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
+                Text(source.status)
+                    .font(.bodyMedium)
+                    .foregroundColor(.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityHint(Text(explanation))
+                    .accessibilityIdentifier("settings.live-text.source")
 
                 Spacer(minLength: Spacing.sm)
 
                 if let onRefresh {
-                    Button(action: onRefresh) {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
+                    ActionPill(
+                        nil,
+                        systemImage: "arrow.triangle.2.circlepath",
+                        help: String(localized: "community_invite.refresh"),
+                        accessibilityLabel: String(localized: "community_invite.refresh"),
+                        action: onRefresh
+                    )
                     .disabled(isRefreshing)
-                    .help(String(localized: "community_invite.refresh"))
-                    .accessibilityLabel(String(localized: "community_invite.refresh"))
                 }
             }
+            .help(explanation)
         }
+    }
+
+    private var tint: Color {
+        if source == .inviteSpent { return .signalAmber }
+        return source.powersLiveText ? .brandAccent : .textTertiary
+    }
+
+    /// 整句,邀请码在用的时候再加上「这段时间怎么算」。
+    private var explanation: String {
+        guard case .invite = source else { return source.sentence }
+        return source.sentence + "\n" + String(localized: "settings.live_text.shared_detail")
     }
 }

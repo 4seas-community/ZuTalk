@@ -504,7 +504,6 @@ private struct NotebookRealtimeCaptureConsole: View {
     private var inactiveProfileControls: some View {
         VStack(alignment: .leading, spacing: 0) {
             languageSelectionSection
-            controlDivider
             automaticRealtimeDisclosure
         }
         .padding(.horizontal, Spacing.md)
@@ -518,44 +517,36 @@ private struct NotebookRealtimeCaptureConsole: View {
         .opacity(editor.canEdit ? 1 : 0.58)
     }
 
+    /// One word over the language pills. The question it used to ask, and
+    /// the two lines about order and about what Start does, are its tooltip.
     private var languageSelectionSection: some View {
         VStack(alignment: .leading, spacing: Spacing.xs) {
             HStack(alignment: .center, spacing: Spacing.md) {
-                Label(
-                    String(localized: "capture.settings.languages.question"),
-                    systemImage: "character.bubble"
+                GroupHeader(
+                    String(localized: "session.settings.field.languages"),
+                    help: [
+                        String(localized: "capture.settings.languages.question"),
+                        String(localized: "capture.settings.languages.ordered_detail"),
+                        String(localized: "capture.settings.realtime.start_disclosure"),
+                    ].joined(separator: "\n")
                 )
-                    .font(.captionMedium)
-                    .foregroundColor(.textPrimary)
                 Spacer(minLength: Spacing.sm)
                 persistenceStatus
             }
-            Text(String(localized: "capture.settings.languages.ordered_detail"))
-                .font(.system(size: 10))
-                .foregroundColor(.textTertiary)
-                .fixedSize(horizontal: false, vertical: true)
 
             CaptureLanguageEditor(editor: editor)
         }
         .padding(.vertical, Spacing.sm)
     }
 
+    /// Nothing while the key is in order. A key that is missing or needs
+    /// attention is a status: an icon and a word.
+    @ViewBuilder
     private var automaticRealtimeDisclosure: some View {
-        VStack(alignment: .leading, spacing: Spacing.xs) {
-            Label(
-                String(localized: "capture.settings.realtime.start_disclosure"),
-                systemImage: "network"
-            )
-                .font(.system(size: 10))
-                .foregroundColor(.textTertiary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if let credentialAttentionTitle {
-                credentialStatusLabel(title: credentialAttentionTitle)
-            }
+        if let credentialAttentionTitle {
+            credentialStatusLabel(title: credentialAttentionTitle)
+                .padding(.vertical, Spacing.sm)
         }
-        .padding(.vertical, Spacing.sm)
-        .accessibilityElement(children: .contain)
     }
 
     private func credentialStatusLabel(title: String) -> some View {
@@ -606,10 +597,6 @@ private struct NotebookRealtimeCaptureConsole: View {
         case .savedInactive: .signalAmber
         case .missing: .textTertiary
         }
-    }
-
-    private var controlDivider: some View {
-        Divider().background(Color.borderGhost.opacity(0.24))
     }
 
     private func languageLabel(_ code: String) -> String {
@@ -668,24 +655,17 @@ private struct NotebookRealtimeCaptureConsole: View {
         actionTitle: String,
         action: @escaping () -> Void
     ) -> some View {
-        VStack(alignment: .trailing, spacing: 2) {
-            HStack(spacing: Spacing.xs) {
-                Label(title, systemImage: "exclamationmark.triangle.fill")
-                    .font(.captionMedium)
-                    .foregroundColor(.signalAmber)
-                    .lineLimit(1)
-                Button(actionTitle, action: action)
-                    .buttonStyle(.link)
-                    .font(.caption)
-            }
-            Text(message)
-                .font(.system(size: 10))
-                .foregroundColor(.textTertiary)
-                .lineLimit(2)
-                .multilineTextAlignment(.trailing)
+        // What went wrong, and the one thing to do about it. The service's
+        // own wording is the tooltip.
+        HStack(spacing: PillMetrics.spacing) {
+            Label(title, systemImage: "exclamationmark.triangle.fill")
+                .font(.captionMedium)
+                .foregroundColor(.signalAmber)
+                .lineLimit(1)
+                .help(message)
+                .accessibilityLabel(Text("\(title). \(message)"))
+            ActionPill(actionTitle, systemImage: "arrow.clockwise", style: .quiet, action: action)
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(Text("\(title). \(message)"))
     }
 
 }
@@ -812,26 +792,28 @@ private struct NotebookRealtimeHistoryView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .accessibilityLabel(Text(String(localized: "capture.settings.autosave.loading")))
         } else if let lastError = history.lastError {
-            EmptyState(
-                icon: "exclamationmark.triangle.fill",
-                title: String(localized: "capture.route.unavailable"),
-                description: lastError,
-                action: (
-                    label: String(localized: "capture.settings.autosave.retry"),
+            OneSentenceState(
+                systemImage: "exclamationmark.triangle.fill",
+                sentence: String(localized: "capture.route.unavailable"),
+                tint: .signalAmber,
+                detail: lastError,
+                action: .init(
+                    title: String(localized: "capture.settings.autosave.retry"),
+                    systemImage: "arrow.clockwise",
                     handler: { Task { await reloadHistory() } }
                 )
             )
         } else if presentedRun == nil {
             // Nothing is being recorded here yet: say what will appear, not
             // that a recording "has no realtime result".
-            EmptyState(
-                icon: "captions.bubble",
-                title: String(localized: focusSessionId == nil
+            OneSentenceState(
+                systemImage: "captions.bubble",
+                sentence: String(localized: focusSessionId == nil
                     ? "capture.live.idle_title"
-                    : "editor.transcript.realtime.empty_title"),
-                description: String(localized: focusSessionId == nil
-                    ? "capture.live.idle_detail"
-                    : "editor.transcript.realtime.empty_desc")
+                    : "editor.transcript.realtime.empty_desc"),
+                detail: focusSessionId == nil
+                    ? String(localized: "capture.live.idle_detail")
+                    : nil
             )
         } else {
             ScrollViewReader { proxy in
@@ -1234,18 +1216,20 @@ private struct NotebookRealtimeTranscriptLoadView: View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
             switch state {
             case .failed(let message):
+                // The sentence and its one action; why is the tooltip.
                 Label(
                     String(localized: "capture.transcript.load_recording_failed"),
                     systemImage: "exclamationmark.triangle.fill"
                 )
                     .font(.captionMedium)
                     .foregroundColor(.signalAmber)
-                Text(message)
-                    .font(.caption)
-                    .foregroundColor(.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Button(String(localized: "capture.settings.autosave.retry"), action: retry)
-                    .buttonStyle(.borderless)
+                    .help(message)
+                    .accessibilityHint(Text(message))
+                ActionPill(
+                    String(localized: "capture.settings.autosave.retry"),
+                    systemImage: "arrow.clockwise",
+                    action: retry
+                )
             case .unloaded, .loading, .loaded:
                 HStack(spacing: Spacing.sm) {
                     ProgressView().controlSize(.small)

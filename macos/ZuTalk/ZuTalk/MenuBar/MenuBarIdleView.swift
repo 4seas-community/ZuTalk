@@ -72,8 +72,10 @@ private struct MenuBarActionRow: View {
             .padding(.horizontal, Spacing.sm)
             .frame(height: Spacing.xl)
             .background(
+                // The line tokens flip with the appearance; a white wash did
+                // not show at all on the light popover.
                 RoundedRectangle(cornerRadius: Radius.sm)
-                    .fill(isHovering ? Color.white.opacity(0.08) : Color.clear)
+                    .fill(isHovering ? Color.line10 : Color.clear)
             )
             .contentShape(Rectangle())
         }

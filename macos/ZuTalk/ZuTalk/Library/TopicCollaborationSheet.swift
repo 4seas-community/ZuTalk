@@ -4,13 +4,27 @@
 // 协作走的是设备同步的同一套引擎(本地优先,不经服务器、不要账号):主题、
 // 它的录音、转录稿、笔记、标记双方都能改,改动自动合并;音频永远只留在录音
 // 的那台 Mac 上。邀请码是进这个主题的钥匙,十分钟内有效、只能用一次。
+//
+// 面板上不写段落(docs/product/interface-layers.md「界面怎么写」)。上面那段话
+// 是告知 —— 对方能看到什么、音频不会过去 —— 所以没有删,在标题旁边的 ⓘ 里;
+// 邀请码怎么用,在邀请码旁边的 ⓘ 里;移出和停止各自的后果,在按下去那一刻的
+// 确认框里。
 
 import Combine
 import SwiftUI
 
 struct TopicCollaborationSheet: View {
+    /// A state to show as it is, without asking the sync engine: a way to
+    /// look at the sheet, not a second source of truth.
+    struct Showing {
+        var status: FfiTopicCollaboration?
+        var invite: DeviceSyncStore.PendingInvite?
+        var problem: String?
+    }
+
     let topicID: String
     let title: String
+    private let isFixed: Bool
 
     @ObservedObject private var store = DeviceSyncStore.shared
     @Environment(\.dismiss) private var dismiss
@@ -23,19 +37,33 @@ struct TopicCollaborationSheet: View {
 
     private let tick = Timer.publish(every: 3, on: .main, in: .common).autoconnect()
 
+    init(topicID: String, title: String, showing: Showing? = nil) {
+        self.topicID = topicID
+        self.title = title
+        isFixed = showing != nil
+        _status = State(initialValue: showing?.status)
+        _invite = State(initialValue: showing?.invite)
+        _problem = State(initialValue: showing?.problem)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.lg) {
-            VStack(alignment: .leading, spacing: Spacing.xs) {
-                Text(String(format: String(localized: "topic.collab.title_format"), title))
+            // The topic's name, and beside it what collaborating shares and
+            // what it never does.
+            HStack(spacing: 2) {
+                Text(heading)
                     .font(.titleMD)
                     .foregroundColor(.textPrimary)
-                Text(String(localized: "topic.collab.explain"))
-                    .font(.bodySM)
-                    .foregroundColor(.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .accessibilityAddTraits(.isHeader)
+                InfoButton(String(localized: "topic.collab.explain"), accessibilityLabel: heading)
+                .accessibilityIdentifier("topic.collab.info")
+                Spacer(minLength: 0)
             }
 
             if status?.removed == true {
+                // A status: said once, in full.
                 Label(String(localized: "topic.collab.removed"), systemImage: "person.crop.circle.badge.xmark")
                     .font(.bodySM)
                     .foregroundColor(.textSecondary)
@@ -57,16 +85,21 @@ struct TopicCollaborationSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            HStack {
+            HStack(spacing: Spacing.md) {
                 if status?.shared == true {
-                    Button(role: .destructive) {
+                    // Quiet, and it asks first: the confirmation says what
+                    // stopping leaves behind.
+                    ActionPill(
+                        String(localized: isOwner ? "topic.collab.action.stop" : "topic.collab.action.leave"),
+                        systemImage: isOwner ? "stop.circle" : "rectangle.portrait.and.arrow.right",
+                        style: .quiet,
+                        help: leaveExplanation,
+                        accessibilityLabel: leaveLabel
+                    ) {
                         confirmingLeave = true
-                    } label: {
-                        Text(isOwner
-                            ? String(localized: "topic.collab.stop")
-                            : String(localized: "topic.collab.leave"))
                     }
                     .disabled(working)
+                    .accessibilityIdentifier("topic.collab.leave")
                 }
                 Spacer()
                 Button(String(localized: "common.done")) { dismiss() }
@@ -93,17 +126,15 @@ struct TopicCollaborationSheet: View {
                 : String(localized: "topic.collab.leave_confirm_title"),
             isPresented: $confirmingLeave
         ) {
-            Button(
-                isOwner ? String(localized: "topic.collab.stop") : String(localized: "topic.collab.leave"),
-                role: .destructive,
-                action: leave
-            )
+            Button(leaveLabel, role: .destructive, action: leave)
             Button(String(localized: "common.cancel"), role: .cancel) {}
         } message: {
-            Text(isOwner
-                ? String(localized: "topic.collab.stop_confirm_message")
-                : String(localized: "topic.collab.leave_confirm_message"))
+            Text(leaveExplanation)
         }
+    }
+
+    private var heading: String {
+        String(format: String(localized: "topic.collab.title_format"), title)
     }
 
     private var isOwner: Bool { status?.isOwner == true }
@@ -114,36 +145,56 @@ struct TopicCollaborationSheet: View {
         return status.isOwner
     }
 
+    /// What the quiet pill at the bottom does, in full: the pill itself says
+    /// it in one word.
+    private var leaveLabel: String {
+        String(localized: isOwner ? "topic.collab.stop" : "topic.collab.leave")
+    }
+
+    private var leaveExplanation: String {
+        String(localized: isOwner
+            ? "topic.collab.stop_confirm_message"
+            : "topic.collab.leave_confirm_message")
+    }
+
     // MARK: - 成员
 
     private var members: some View {
         VStack(alignment: .leading, spacing: Spacing.sm) {
-            Text(String(localized: "topic.collab.members"))
-                .font(.captionMedium)
-                .foregroundColor(.textTertiary)
+            PlainSectionHeader(String(localized: "topic.collab.members"))
             ForEach(status?.members ?? [], id: \.deviceId) { member in
                 HStack(spacing: Spacing.sm) {
                     Image(systemName: member.isThisDevice ? "laptopcomputer" : "person")
                         .foregroundColor(.textTertiary)
                         .frame(width: 18)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(member.isThisDevice
-                            ? String(format: String(localized: "topic.collab.this_mac_format"), member.name)
-                            : (member.name.isEmpty ? String(localized: "settings.devices.unnamed") : member.name))
-                            .font(.bodySM)
-                            .foregroundColor(.textPrimary)
-                        if member.isThisDevice == false {
-                            Text(DevicesSettingsSection.presence(member))
-                                .font(.caption)
-                                .foregroundColor(.textTertiary)
-                        }
+                        .accessibilityHidden(true)
+                    Text(member.isThisDevice
+                        ? String(format: String(localized: "topic.collab.this_mac_format"), member.name)
+                        : (member.name.isEmpty ? String(localized: "settings.devices.unnamed") : member.name))
+                        .font(.body)
+                        .foregroundColor(.textPrimary)
+                        .lineLimit(1)
+                    Spacer(minLength: Spacing.sm)
+                    if member.isThisDevice == false {
+                        PlainStatus(
+                            DevicesSettingsSection.presence(member),
+                            systemImage: nil,
+                            tint: member.connected ? .signalGreen : .textTertiary
+                        )
                     }
-                    Spacer()
                     if isOwner, member.isThisDevice == false {
-                        Button(String(localized: "settings.devices.remove")) { removing = member }
-                            .disabled(working)
+                        ActionPill(
+                            String(localized: "settings.devices.remove"),
+                            systemImage: "person.badge.minus",
+                            style: .quiet,
+                            help: String(localized: "topic.collab.remove_confirm_message")
+                        ) {
+                            removing = member
+                        }
+                        .disabled(working)
                     }
                 }
+                .frame(minHeight: PillMetrics.height)
             }
         }
     }
@@ -154,40 +205,60 @@ struct TopicCollaborationSheet: View {
     private var inviteBlock: some View {
         if let invite, invite.expiresAt > Date() {
             VStack(alignment: .leading, spacing: Spacing.sm) {
-                Text(String(localized: "topic.collab.code_hint"))
-                    .font(.caption)
-                    .foregroundColor(.textTertiary)
+                PlainSectionHeader(
+                    String(localized: "topic.collab.join_placeholder"),
+                    help: String(localized: "topic.collab.code_hint")
+                )
+                // The code is a value: shown whole, selectable, with Copy
+                // beside it.
                 Text(invite.code)
                     .font(Font.mono10Medium)
                     .foregroundColor(.textPrimary)
                     .textSelection(.enabled)
                     .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(Spacing.sm)
+                    .background(Color.bgSunken.opacity(0.6))
+                    .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
                     .accessibilityIdentifier("topic.collab.code")
-                HStack {
+                HStack(spacing: Spacing.sm) {
                     TimelineView(.periodic(from: .now, by: 1)) { context in
-                        Text(String(
-                            format: String(localized: "settings.devices.code_expires_format"),
-                            DevicesSettingsSection.countdown(until: invite.expiresAt, now: context.date)
-                        ))
-                        .font(.caption)
-                        .foregroundColor(.textTertiary)
+                        PlainStatus(
+                            String(
+                                format: String(localized: "settings.devices.code_expires_format"),
+                                DevicesSettingsSection.countdown(until: invite.expiresAt, now: context.date)
+                            ),
+                            systemImage: "clock"
+                        )
                     }
-                    Spacer()
-                    Button(String(localized: "settings.devices.copy_code")) {
+                    Spacer(minLength: Spacing.sm)
+                    // Where the other person pastes it: needed to finish
+                    // the job, so one click away rather than a tooltip only.
+                    InfoButton(
+                        String(localized: "topic.collab.code_hint"),
+                        accessibilityLabel: String(localized: "topic.collab.join_placeholder")
+                    )
+                    ActionPill(
+                        String(localized: "topic.collab.action.copy"),
+                        systemImage: "doc.on.doc"
+                    ) {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(invite.code, forType: .string)
                         ToastCenter.shared.success(String(localized: "sync.invite.copied"))
                     }
+                    .accessibilityIdentifier("topic.collab.copy")
                 }
             }
         } else {
-            Button {
+            ActionPill(
+                String(localized: "topic.collab.action.invite"),
+                systemImage: "person.badge.plus",
+                help: String(localized: "topic.collab.code_hint"),
+                accessibilityLabel: String(localized: "topic.collab.invite")
+            ) {
                 createInvite()
-            } label: {
-                Label(String(localized: "topic.collab.invite"), systemImage: "person.badge.plus")
             }
-            .buttonStyle(.borderedProminent)
             .disabled(working)
             .accessibilityIdentifier("topic.collab.invite")
         }
@@ -196,6 +267,7 @@ struct TopicCollaborationSheet: View {
     // MARK: - 动作
 
     private func reload() {
+        guard isFixed == false else { return }
         status = store.topicStatus(notebookId: topicID)
     }
 
@@ -245,7 +317,8 @@ struct TopicCollaborationSheet: View {
     }
 }
 
-/// 在主题列表里输入别人给的协作邀请码。
+/// 在主题列表里输入别人给的协作邀请码。标题旁边的 ⓘ 里是告知:什么会同步过来,
+/// 音频留在对方那里。
 struct JoinTopicSheet: View {
     @ObservedObject private var store = DeviceSyncStore.shared
     @Environment(\.dismiss) private var dismiss
@@ -253,14 +326,18 @@ struct JoinTopicSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.lg) {
-            VStack(alignment: .leading, spacing: Spacing.xs) {
+            HStack(spacing: 2) {
                 Text(String(localized: "topic.collab.join_title"))
                     .font(.titleMD)
                     .foregroundColor(.textPrimary)
-                Text(String(localized: "topic.collab.join_explain"))
-                    .font(.bodySM)
-                    .foregroundColor(.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .lineLimit(1)
+                    .accessibilityAddTraits(.isHeader)
+                InfoButton(
+                    String(localized: "topic.collab.join_explain"),
+                    accessibilityLabel: String(localized: "topic.collab.join_title")
+                )
+                .accessibilityIdentifier("topic.collab.join-info")
+                Spacer(minLength: 0)
             }
             TextField(String(localized: "topic.collab.join_placeholder"), text: $code)
                 .textFieldStyle(.roundedBorder)

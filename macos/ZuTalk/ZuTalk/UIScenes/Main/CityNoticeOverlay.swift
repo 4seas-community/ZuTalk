@@ -4,6 +4,9 @@
 // 停止录音不等上传,交档案馆在后台;交完要有一句话,还要能一下点到档案馆里
 // 那一件。`ToastCenter` 的提示不带按钮,所以这一条单独画,叠在主窗口底部
 // 正中,不和右下角的普通提示抢位置。
+//
+// 一条就是:一个图标、一句状态、一个动作。说的是文字交上去了;音频跟在后面
+// 一段段交,到哪了看录音上的那一枚,这里不替它说「都交完了」。
 
 import SwiftUI
 
@@ -53,11 +56,9 @@ private struct CityNoticeView: View {
                 .truncationMode(.middle)
                 .help(notice.text)
             if let actionTitle {
-                Button(action: onAction) {
-                    Text(actionTitle)
-                }
-                .controlSize(.small)
-                .accessibilityIdentifier(AccessibilityID.cityNoticeAction)
+                // 这一条唯一的动作,和别处的小控件一个样子。
+                ActionPill(actionTitle, systemImage: actionIcon, action: onAction)
+                    .accessibilityIdentifier(AccessibilityID.cityNoticeAction)
             }
             Button(action: onDismiss) {
                 Image(systemName: Icon.xmark)
@@ -87,6 +88,13 @@ private struct CityNoticeView: View {
         switch notice.action {
         case .file: return "archivebox"
         case .open, nil: return "checkmark.circle"
+        }
+    }
+
+    private var actionIcon: String {
+        switch notice.action {
+        case .file: return "arrow.up.circle"
+        case .open, nil: return "arrow.up.right.square"
         }
     }
 

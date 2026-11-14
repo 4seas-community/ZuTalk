@@ -8,6 +8,10 @@ import SwiftUI
 /// channel is chosen here, with the topic's other settings, rather than in the
 /// app's settings. ZuTalk only picks a channel: creating and managing channels
 /// stays in the browser. Shows nothing while no resident is signed in.
+///
+/// One row: the word "Channel" and a pill showing the channel chosen. What
+/// the card used to spell out underneath — what a channel is for, whose
+/// channels are listed — is the pill's tooltip.
 struct CityTopicChannelCard: View {
     let notebookId: String
     @ObservedObject private var city = CityStore.shared
@@ -19,32 +23,16 @@ struct CityTopicChannelCard: View {
                     .font(.captionMedium)
                     .foregroundColor(.textSecondary)
 
-                Text(String(localized: "city.topic.subtitle"))
-                    .font(.caption)
-                    .foregroundColor(.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
                 HStack(spacing: Spacing.sm) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(String(localized: "city.topic.channel"))
-                            .font(.captionMedium)
-                            .foregroundColor(.textPrimary)
-                        Text(String(
-                            format: String(localized: "city.topic.channel_detail_format"),
-                            account.cityName.isEmpty ? account.server : account.cityName
-                        ))
-                        .font(.sans11)
-                        .foregroundColor(.textTertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    }
-
+                    Text(String(localized: "city.topic.channel"))
+                        .font(.captionMedium)
+                        .foregroundColor(.textPrimary)
                     Spacer(minLength: Spacing.sm)
-
+                    // A name gives way when the row is short of room; while
+                    // there is room it is offered it before the gap is.
                     channelMenu(account)
+                        .layoutPriority(1)
                 }
-                .padding(Spacing.md)
-                .background(Color.bgSunken.opacity(0.35))
-                .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
             }
             .padding(Spacing.lg)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -66,45 +54,42 @@ struct CityTopicChannelCard: View {
 
     private func channelMenu(_ account: FfiCityAccount) -> some View {
         let current = city.topicChannels[notebookId]
-        return Menu {
-            Button {
-                city.setTopicChannel(notebookId: notebookId, channel: nil)
-            } label: {
-                menuLabel(String(localized: "city.topic.no_channel"), selected: current == nil)
-            }
+        let explanation = [
+            String(localized: "city.topic.subtitle"),
+            String(
+                format: String(localized: "city.topic.channel_detail_format"),
+                account.cityName.isEmpty ? account.server : account.cityName
+            ),
+        ].joined(separator: "\n")
+        return MenuPill(
+            current?.title ?? String(localized: "city.topic.no_channel"),
+            titleIsName: current != nil,
+            systemImage: "number",
+            help: explanation,
+            accessibilityLabel: String(localized: "city.topic.channel")
+        ) {
+            var items = [
+                PillMenuItem(String(localized: "city.topic.no_channel"), isOn: current == nil) {
+                    city.setTopicChannel(notebookId: notebookId, channel: nil)
+                },
+            ]
             if city.channels.isEmpty == false {
-                Divider()
+                items.append(.separator)
             }
-            ForEach(city.channels, id: \.id) { channel in
-                Button {
+            for channel in city.channels {
+                items.append(PillMenuItem(channel.title, isOn: current?.id == channel.id) {
                     city.setTopicChannel(notebookId: notebookId, channel: channel)
-                } label: {
-                    menuLabel(channel.title, selected: current?.id == channel.id)
-                }
+                })
             }
-            Divider()
+            items.append(.separator)
             // Channels are created on the city's own site; this only chooses one.
-            Button(String(localized: "city.topic.new_channel")) {
+            items.append(PillMenuItem(String(localized: "city.topic.new_channel")) {
                 if let url = CityText.siteURL(server: account.server) {
                     NSWorkspace.shared.open(url)
                 }
-            }
-        } label: {
-            Text(current?.title ?? String(localized: "city.topic.no_channel"))
+            })
+            return items
         }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-        .accessibilityLabel(Text(String(localized: "city.topic.channel")))
-        .accessibilityValue(Text(current?.title ?? String(localized: "city.topic.no_channel")))
         .accessibilityIdentifier(AccessibilityID.cityTopicChannel)
-    }
-
-    @ViewBuilder
-    private func menuLabel(_ title: String, selected: Bool) -> some View {
-        if selected {
-            Label(title, systemImage: "checkmark")
-        } else {
-            Text(title)
-        }
     }
 }

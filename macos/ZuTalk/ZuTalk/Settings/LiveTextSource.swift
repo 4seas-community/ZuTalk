@@ -1,9 +1,10 @@
 // LiveTextSource.swift
 // 现在靠什么出字:邀请码、自己的密钥,还是什么都没有。
 //
-// 「设置 › 账号」的「转录和翻译」和首次使用的第二步都要说这一句。说法只有
-// 一处,判断也只有一处;判断是纯函数,可以单独测。句子里不出现供应商的名字:
-// 用邀请码的人不需要知道背后是谁,用自己密钥的人去「高级」看。
+// 「设置 › 账号」的「出字」和首次使用的第二步都要说这件事。说法只有一处,
+// 判断也只有一处;判断是纯函数,可以单独测。页面上写的是几个词(`status`),
+// 整句(`sentence`)在提示里。哪一种都不出现供应商的名字:用邀请码的人不需要
+// 知道背后是谁,用自己密钥的人去「高级」看。
 
 import Foundation
 
@@ -71,7 +72,29 @@ enum LiveTextSource: Equatable {
         }
     }
 
-    /// 那一句话。
+    /// 页面上写的那几个词:靠什么,还剩多少。整句(`sentence`)在提示里。
+    var status: String {
+        let invite = String(localized: "settings.live_text.invite_field_label")
+        switch self {
+        case .invite(let recordableSeconds?):
+            let seconds = max(0, recordableSeconds)
+            return invite + " · " + String(
+                format: String(localized: "community_invite.remaining_recordable_format"),
+                Int64(seconds / 3_600),
+                Int64((seconds % 3_600) / 60)
+            )
+        case .invite(nil):
+            return invite
+        case .inviteSpent:
+            return invite + " · " + String(localized: "settings.live_text.status.spent")
+        case .ownKey:
+            return String(localized: "settings.live_text.status.own_key")
+        case .nothing:
+            return String(localized: "captions_choice.off")
+        }
+    }
+
+    /// 那一句话。页面上不写,在悬停提示和无障碍提示里。
     var sentence: String {
         switch self {
         case .invite(let recordableSeconds?):

@@ -24,6 +24,13 @@ struct MenuBarProcessingView: View {
                     .font(Font.sans12)
                     .foregroundColor(info.color)
                 Spacer(minLength: 0)
+                // The figure belongs to the status it measures, not on a
+                // line of its own under the bar.
+                if info.stage != .completed {
+                    Text("\(Int(info.progress * 100))%")
+                        .font(Font.monoNum11)
+                        .foregroundColor(Color.textTertiary)
+                }
             }
 
             if info.stage != .completed {
@@ -41,10 +48,6 @@ struct MenuBarProcessingView: View {
                     }
                     .frame(height: 4)
                 }
-
-                Text("\(Int(info.progress * 100))%")
-                    .font(Font.mono9)
-                    .foregroundColor(Color.textTertiary)
             }
 
             Button(action: openSession) {

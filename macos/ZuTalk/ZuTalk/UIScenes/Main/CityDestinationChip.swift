@@ -5,13 +5,18 @@ import SwiftUI
 ///
 /// The bar sits above every page, so the destination stays in sight while
 /// reading another recording or writing notes, and can be changed halfway —
-/// to another event, or to not filing at all. In a narrow window it collapses
-/// to an archive-box icon that opens the same card.
+/// to another event, to not filing at all, or to filing without its audio.
+/// In a narrow window it collapses to an archive-box icon that opens the same
+/// card.
 ///
-/// It appears only for a recording that was given an event (on the Record
-/// page, where that choice is confirmed). Once cleared from here it stays, in
+/// It appears only for a recording that was given an event (on the start
+/// card, where that choice is confirmed). Once cleared from here it stays, in
 /// its "not filing" form, until the recording ends: otherwise the one control
 /// that could undo the change would vanish with it.
+///
+/// The card is a name and three pills. What it used to spell out — in whose
+/// name, which languages, and that the audio goes too and cannot be taken
+/// back — is behind the ⓘ beside the event's name.
 struct CityDestinationChip: View {
     /// An icon instead of the event's name, for a narrow window.
     var compact = false
@@ -24,7 +29,7 @@ struct CityDestinationChip: View {
            let sessionId = city.activeSessionId,
            city.activeFiling != nil || city.activeDestinationCleared {
             let filing = city.activeFiling
-            let title = filing?.eventTitle ?? String(localized: "city.action.not_filing")
+            let title = filing?.eventTitle ?? String(localized: "home.card.dont_file")
             Button {
                 showsCard.toggle()
             } label: {
@@ -57,7 +62,26 @@ struct CityDestinationChip: View {
             .accessibilityHint(Text(String(localized: "city.bar.hint")))
             .accessibilityIdentifier(AccessibilityID.cityBarChip)
             .popover(isPresented: $showsCard, arrowEdge: .bottom) {
-                card(account: account, sessionId: sessionId, filing: filing)
+                CityDestinationCard(
+                    account: account,
+                    filing: filing,
+                    options: city.options,
+                    // Read when the card opens; the bar does not need to
+                    // follow the capture store for this.
+                    languages: ActiveBilingualTranscriptStore.shared.selectedLanguages,
+                    onChange: {
+                        // A sheet cannot come up while the popover is still closing.
+                        showsCard = false
+                        DispatchQueue.main.async { showsPicker = true }
+                    },
+                    onNotFiling: {
+                        showsCard = false
+                        Task { await city.bind(sessionId: sessionId, event: nil) }
+                    },
+                    onAudio: { enabled in
+                        Task { await city.setSessionAudio(sessionId: sessionId, enabled: enabled) }
+                    }
+                )
             }
             .sheet(isPresented: $showsPicker) {
                 CityEventPickerSheet(selectedEventId: filing?.eventId, recording: nil) { event in
@@ -71,91 +95,129 @@ struct CityDestinationChip: View {
         guard let filing else { return String(localized: "city.bar.not_filing") }
         return String(format: String(localized: "city.bar.files_to_format"), filing.eventTitle)
     }
+}
 
-    private func card(account: FfiCityAccount, sessionId: String, filing: FfiCityFiling?) -> some View {
-        VStack(alignment: .leading, spacing: Spacing.sm + 2) {
-            Text(String(localized: filing == nil
-                ? "city.bar.heading_none"
-                : city.options.automatic ? "city.bar.heading_automatic" : "city.bar.heading_ask"))
-                .captionXsLabel()
+/// The card the chip opens: the event, and what can be changed about it while
+/// recording. A plain view of what it is given, so it can be looked at
+/// without a recording in progress.
+struct CityDestinationCard: View {
+    let account: FfiCityAccount
+    /// Nil once the person said this recording is not to be filed.
+    let filing: FfiCityFiling?
+    let options: FfiCityFilingOptions
+    let languages: [String]
+    let onChange: () -> Void
+    let onNotFiling: () -> Void
+    /// Whether this recording's audio is to be filed with it.
+    let onAudio: (Bool) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            // When it will be filed: a status.
+            Label(heading, systemImage: filing == nil ? "archivebox" : "arrow.up.circle")
+                .font(.sans11)
                 .foregroundColor(.textTertiary)
+                .lineLimit(1)
 
             if let filing {
-                VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: Spacing.xs) {
                     Text(filing.eventTitle)
                         .font(.bodyMedium)
                         .foregroundColor(.textPrimary)
+                        .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text(Self.place(account: account, channel: filing.channelTitle))
-                        .font(.sans11)
-                        .foregroundColor(.textTertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                line(
-                    systemImage: "archivebox",
-                    text: CityText.whatIsFiled(
-                        signer: filing.signerName.isEmpty ? account.personName : filing.signerName,
-                        // Read when the card opens; the bar does not need to
-                        // follow the capture store for this.
-                        languages: ActiveBilingualTranscriptStore.shared.selectedLanguages,
-                        options: city.options
+                    // What goes, where, in whose name, and that it cannot be
+                    // taken back: one click away.
+                    InfoButton(
+                        explanation(filing),
+                        accessibilityLabel: String(localized: "city.record.title")
                     )
-                )
-                line(systemImage: "lock.fill", text: String(localized: "city.summary.audio_stays"))
-            } else {
-                Text(String(localized: "city.bar.not_filing_detail"))
-                    .font(.bodySM)
-                    .foregroundColor(.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            HStack(spacing: Spacing.sm) {
-                Button(String(localized: filing == nil
-                    ? "city.action.pick_from_calendar"
-                    : "city.action.change_event")) {
-                    // A sheet cannot come up while the popover is still closing.
-                    showsCard = false
-                    DispatchQueue.main.async { showsPicker = true }
+                    Spacer(minLength: 0)
                 }
-                .accessibilityIdentifier(AccessibilityID.cityBarChange)
-                if filing != nil {
-                    Button(String(localized: "city.action.not_filing")) {
-                        showsCard = false
-                        Task { await city.bind(sessionId: sessionId, event: nil) }
-                    }
-                    .buttonStyle(.link)
+                PillStrip {
+                    ActionPill(
+                        String(localized: "city.share.change"),
+                        systemImage: "calendar",
+                        help: String(localized: "city.record.change_hint"),
+                        action: onChange
+                    )
+                    .accessibilityIdentifier(AccessibilityID.cityBarChange)
+                    CityAudioPill(filing: filing, options: options, onChange: onAudio)
+                        .accessibilityIdentifier("recording-bar.city.audio")
+                } trailing: {
+                    ActionPill(
+                        String(localized: "home.card.dont_file"),
+                        systemImage: "xmark.circle",
+                        style: .quiet,
+                        help: String(localized: "city.bar.not_filing_detail"),
+                        action: onNotFiling
+                    )
                     .accessibilityIdentifier(AccessibilityID.cityBarNotFiling)
                 }
+            } else {
+                ActionPill(
+                    String(localized: "home.card.choose_event"),
+                    systemImage: "calendar",
+                    help: String(localized: "city.bar.not_filing_detail"),
+                    action: onChange
+                )
+                .accessibilityIdentifier(AccessibilityID.cityBarChange)
             }
-            .padding(.top, 2)
         }
         .padding(Spacing.md)
-        .frame(width: 300, alignment: .leading)
+        .frame(width: 320, alignment: .leading)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(AccessibilityID.cityBarCard)
     }
 
-    private func line(systemImage: String, text: String) -> some View {
-        HStack(alignment: .top, spacing: Spacing.sm) {
-            Image(systemName: systemImage)
-                .iconSizeSmall()
-                .foregroundColor(.textTertiary)
-                .accessibilityHidden(true)
-            Text(text)
-                .font(.sans11)
-                .foregroundColor(.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
+    private var heading: String {
+        String(localized: filing == nil
+            ? "city.bar.heading_none"
+            : options.automatic ? "city.bar.heading_automatic" : "city.bar.heading_ask")
     }
 
-    /// "<city> · <server> · Channel “…”".
-    private static func place(account: FfiCityAccount, channel: String?) -> String {
-        var parts: [String] = []
-        if account.cityName.isEmpty == false { parts.append(account.cityName) }
-        parts.append(account.server)
-        if let channel, channel.isEmpty == false {
-            parts.append(String(format: String(localized: "city.bar.channel_format"), channel))
+    /// "<city> · <server> · Channel “…”", then the whole sentence of what is
+    /// filed — with the audio, when this recording carries it.
+    private func explanation(_ filing: FfiCityFiling) -> String {
+        var place: [String] = []
+        if account.cityName.isEmpty == false { place.append(account.cityName) }
+        place.append(account.server)
+        if let channel = filing.channelTitle, channel.isEmpty == false {
+            place.append(String(format: String(localized: "city.bar.channel_format"), channel))
         }
-        return parts.joined(separator: " · ")
+        return [
+            place.joined(separator: " · "),
+            CityText.summary(
+                signer: filing.signerName.isEmpty ? account.personName : filing.signerName,
+                languages: languages,
+                options: options,
+                channel: nil,
+                audio: filing.audioWanted
+            ),
+        ].joined(separator: "\n")
+    }
+}
+
+/// This recording's audio switch: on, its audio is filed with it; off, this
+/// recording goes without. It can only reduce — with the setting off it shows
+/// off and cannot be turned on from here.
+struct CityAudioPill: View {
+    let filing: FfiCityFiling
+    let options: FfiCityFilingOptions
+    let onChange: (Bool) -> Void
+
+    var body: some View {
+        TogglePill(
+            isOn: filing.audioWanted,
+            on: .init(String(localized: "city.what.audio"), systemImage: "waveform"),
+            off: .init(String(localized: "city.audio.off"), systemImage: "speaker.slash"),
+            help: options.audio
+                ? CityText.audioDisclosure
+                : String(localized: "city.audio.reason.setting_off"),
+            accessibilityLabel: String(localized: "city.what.audio")
+        ) {
+            onChange(filing.audioWithheld)
+        }
+        .disabled(options.audio == false)
     }
 }

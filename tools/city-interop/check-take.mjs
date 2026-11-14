@@ -7,6 +7,9 @@
    host — once holding a recovery key, once as someone who moved to
    did:webvh — and every record it prints is put through the city's
    verifier, its fact set, its recording reducer and its archive reducer.
+   That includes the records for the parts of the recording's audio; the
+   limits vt-city holds itself to are compared with the ones the city's
+   source states.
 
      CITY_SRC=<city checkout> node tools/city-interop/check-take.mjs
 
@@ -86,7 +89,7 @@ async function scenario(host, label) {
   same(tp.segs.map(({ t, d, sp, text }) => ({ t, d, sp, text })), want.sentences, "sentences");
   same(Object.fromEntries(tp.names), want.names, "speaker names");
   same(tp.segs.map((s) => tape.speaker(tp, s.sp)), want.sentences.map((s) => want.names[s.sp]), "each sentence shows its speaker's name");
-  same(tp.marks, want.marks, "highlights");
+  ok(tp.marks.length === 0 && ![...out.records, ...out.fix, ...out.retranslate, ...out.withdraw, ...out.parts].some((r) => r.e.type === "tape/mark"), "no highlight is signed: where someone marked a recording is not filed");
   same([...tp.langs.keys()].sort(), Object.keys(want.languages).sort(), "languages");
   for (const [lang, lines] of Object.entries(want.languages)) {
     const got = tape.trLines(tp, lang);
@@ -97,6 +100,34 @@ async function scenario(host, label) {
   same(tape.onAir(w.query, w.events.get(event.id), NOW + 1000), [], "nobody is shown as still recording");
   /* What a take without audio comes to. */
   same([tp.parts.length, tp.dur, tape.bars(tp).length, tape.gaps(tp).length, tape.locate(tp, 0)], [0, 0, 0, 0, null], "no audio: no parts, no length of its own, no waveform, nothing to fill, nowhere to seek");
+
+  /* ---- the audio: one record per part, on the take ---- */
+  {
+    const rules = city.fileRules, lim = out.limits;
+    same([lim.file_max, lim.part_ms, lim.upload_bytes_per_sec, lim.upload_grace_secs, lim.levels_max, lim.mime_max],
+      [rules.fileMax, tape.PART_MS, rules.uploadBytesPerSec, rules.uploadGraceSecs, rules.levelsMax, rules.mimeMax],
+      "file size, part length, upload allowance and what readers keep are the city's own numbers");
+    ok(rules.mime.test(lim.mime), "the server serves the type vt-city signs as itself");
+    for (const [i, rec] of [...out.parts, out.part_again].entries()) same(await record.intrinsic(rec), "ok", `part record ${i} passes the city's verifier`);
+    ok([...out.parts, out.part_again].every((r) => r.e.type === "tape/part" && r.e.by === host.id && isDeepStrictEqual(r.e.links, [out.take_id]) && isDeepStrictEqual(r.e.deps, [out.take_id])),
+      "each part is the take author's, about the take, and stands on the take alone");
+    const read = (t) => t.parts.map(({ n, file, size, t0, dur, mime, lv }) => ({ n, file, size, t0, dur, mime, lv }));
+    const heard = await merged([...out.records, ...out.parts]);
+    same(read(heard.tp), want.parts, "the city reads both parts as signed, in order");
+    same(read((await merged([...out.records, ...[...out.parts].reverse()])).tp), want.parts, "whichever part arrives first");
+    same(heard.tp.dur, want.duration_ms, "the parts add up to the length of the recording");
+    same([0, 19_999, 20_000, 25_500, 99_000].map((ms) => { const at = tape.locate(heard.tp, ms); return [at.part.n, at.at]; }),
+      [[0, 0], [0, 19_999], [1, 0], [1, 5_500], [1, 10_000]], "any moment is found in its part; past the end is the end of the last");
+    same(tape.bars(heard.tp, 30).map((v) => Math.round(v * 9)).join(""), want.parts.map((p) => p.lv).join(""), "the waveform is the loudness as signed");
+    same(tape.gaps(heard.tp).length, 0, "the transcript covers the audio: nothing for the city to transcribe again");
+    same(heard.archive.blocks.get(out.block_id)?.take, out.take_id, "the archive item plays that take");
+    /* A part exported a second time, its first file never having arrived:
+       the city keeps the first record it meets for a part number, and it
+       meets the earlier-dated one first. */
+    const again = await merged([...out.records, ...out.parts, out.part_again]);
+    same(read(again.tp), [want.parts[0], want.part_again], "of two records for one part the city plays the earlier-dated");
+    ok(out.part_again.e.at < out.parts[1].e.at, "which is why a second export is dated before the first");
+  }
 
   const block = w.archive.blocks.get(out.block_id);
   ok(!!block, "the city finds the archive item");

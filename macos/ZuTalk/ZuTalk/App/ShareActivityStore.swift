@@ -285,9 +285,14 @@ final class ShareActivityStore: ObservableObject {
         liveOrphanTicks = 0
         let kept = live.keepsAfterEnd
         stopLive()
-        ToastCenter.shared.info(String(localized: kept
-            ? "share.live.ended_with_recording_kept"
-            : "share.live.ended_with_recording"))
+        // 标题是一句状态;链接上的内容怎么样了(删了,还是留约 24 小时、去哪里
+        // 提前收回)是告知,原话放在下面那一行。
+        ToastCenter.shared.info(
+            String(localized: "share.live.ended"),
+            detail: String(localized: kept
+                ? "share.live.ended_with_recording_kept"
+                : "share.live.ended_with_recording")
+        )
     }
 }
 

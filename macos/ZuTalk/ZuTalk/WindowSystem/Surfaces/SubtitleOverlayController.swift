@@ -1108,7 +1108,7 @@ final class SubtitleOverlayPresentationSettings: ObservableObject {
     @Published private(set) var isPinned: Bool
     @Published var displayMode: SubtitleOverlayDisplayMode {
         didSet {
-            UserDefaults.standard.set(
+            defaults.set(
                 displayMode.rawValue,
                 forKey: Self.displayModeDefaultsKey
             )
@@ -1117,16 +1117,22 @@ final class SubtitleOverlayPresentationSettings: ObservableObject {
 
     @Published var theme: SubtitleOverlayTheme {
         didSet {
-            UserDefaults.standard.set(
+            defaults.set(
                 theme.rawValue,
                 forKey: SubtitleOverlayTheme.defaultsKey
             )
         }
     }
 
-    private static let displayModeDefaultsKey = "zutalk.subtitleOverlay.displayMode"
+    static let displayModeDefaultsKey = "zutalk.subtitleOverlay.displayMode"
 
-    private init(defaults: UserDefaults = .standard) {
+    /// Where the choices are kept. The app's own; a test passes a store
+    /// that keeps them to itself, so showing a theme or a layout never
+    /// changes the real setting.
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
         SubtitleOverlayFontPolicy.migrateStoredModeIfNeeded(defaults: defaults)
         if defaults.object(forKey: SubtitleOverlayWindowPolicy.pinnedDefaultsKey) == nil {
             isPinned = true
@@ -1141,7 +1147,7 @@ final class SubtitleOverlayPresentationSettings: ObservableObject {
             ?? .dark
     }
 
-    func togglePinned(defaults: UserDefaults = .standard) {
+    func togglePinned() {
         isPinned.toggle()
         defaults.set(isPinned, forKey: SubtitleOverlayWindowPolicy.pinnedDefaultsKey)
     }
@@ -1154,24 +1160,21 @@ struct SubtitleOverlayView: View {
     /// they moved, at its bounded rate.
     @ObservedObject private var timeline: LiveTranscriptTimeline
     @ObservedObject private var coordinator = SubtitleOverlayCoordinator.shared
-    @ObservedObject private var presentationSettings = SubtitleOverlayPresentationSettings.shared
+    @ObservedObject private var presentationSettings: SubtitleOverlayPresentationSettings
     // Only for the status sentence: "offline" is said instead of "connecting".
     @ObservedObject private var network = NetworkReachability.shared
     // 观看端分支的数据源:别人房间里的远端预览帧。本机没在录而人在房间里
     // 时,画布切到它 —— 同一扇窗、同一套主题与字号,只有内容来源不同。
     @Environment(\.accessibilityReduceTransparency)
     private var accessibilityReduceTransparency
-    @AppStorage(SubtitleOverlayBackdropPolicy.defaultsKey)
-    private var storedBackdropOpacity = SubtitleOverlayBackdropPolicy.defaultOpacity
-    @AppStorage(SubtitleOverlayFontPolicy.defaultsKey)
-    private var storedFontSize = SubtitleOverlayFontPolicy.defaultValue
-    @AppStorage(SubtitleOverlayFontPolicy.modeDefaultsKey)
-    private var storedFontMode = SubtitleOverlayFontMode.automatic
+    @AppStorage private var storedBackdropOpacity: Double
+    @AppStorage private var storedFontSize: Double
+    @AppStorage private var storedFontMode: SubtitleOverlayFontMode
     // The canvas size feeds the automatic font, and the control bar lives
     // outside the content's GeometryReader, so the size passes through view
     // state instead of a geometry parameter.
     @State private var canvasSize = CGSize.zero
-    @State private var isHoveringOverlay = false
+    @State private var isHoveringOverlay: Bool
     // Reveal cursors live outside view identity: a resize across a
     // column-count threshold or a font step rebuilds the band structure and
     // with it every column view, and per-view state would replay the live
@@ -1197,6 +1200,10 @@ struct SubtitleOverlayView: View {
     // wrong the moment the bar became two rows. Measured from the chrome, so
     // it cannot drift from it again.
     @State private var measuredControlBarHeight: CGFloat?
+    /// Builds and shows the ⋯ menu. Held here rather than by the bar: the bar
+    /// leaves the view tree when the pointer does, and a menu that is open
+    /// must still be able to run what was picked.
+    @State private var moreMenu = SubtitleOverlayMenuPresenter()
 
     /// Before the chrome has ever been laid out there is nothing to measure,
     /// and the band still has to be big enough to summon it.
@@ -1212,10 +1219,35 @@ struct SubtitleOverlayView: View {
     // read than one that simply is where the words are.
     private static let liveTailAnchorID = "zutalk.subtitleOverlay.live-tail"
 
-    init(store: ActiveBilingualTranscriptStore) {
+    /// The app passes only the store. The rest is for looking at the window
+    /// without touching what the person chose: a test passes settings and a
+    /// defaults store of its own, and may ask for the hover bar to be up.
+    init(
+        store: ActiveBilingualTranscriptStore,
+        settings: SubtitleOverlayPresentationSettings? = nil,
+        defaults: UserDefaults = .standard,
+        showsControls: Bool = false
+    ) {
         self.store = store
         _livePresentation = ObservedObject(wrappedValue: store.livePresentation)
         _timeline = ObservedObject(wrappedValue: store.timeline)
+        _presentationSettings = ObservedObject(wrappedValue: settings ?? .shared)
+        _storedBackdropOpacity = AppStorage(
+            wrappedValue: SubtitleOverlayBackdropPolicy.defaultOpacity,
+            SubtitleOverlayBackdropPolicy.defaultsKey,
+            store: defaults
+        )
+        _storedFontSize = AppStorage(
+            wrappedValue: SubtitleOverlayFontPolicy.defaultValue,
+            SubtitleOverlayFontPolicy.defaultsKey,
+            store: defaults
+        )
+        _storedFontMode = AppStorage(
+            wrappedValue: SubtitleOverlayFontMode.automatic,
+            SubtitleOverlayFontPolicy.modeDefaultsKey,
+            store: defaults
+        )
+        _isHoveringOverlay = State(initialValue: showsControls)
     }
 
     var body: some View {
@@ -1235,7 +1267,7 @@ struct SubtitleOverlayView: View {
             .overlay(alignment: .topTrailing) {
                 // The leading inset is transparent and belongs to the layout,
                 // not to the chrome: it is what guarantees the controls can
-                // never slide under the maximize affordance at the opposite
+                // never slide under the restore affordance at the opposite
                 // corner, however wide the operator's window is.
                 hoverControlBar
                     .padding(.leading, 50)
@@ -1250,14 +1282,15 @@ struct SubtitleOverlayView: View {
                     )
             }
             .overlay(alignment: .topLeading) {
-                // The two placement controls stay together in the corner the
-                // hover bar deliberately leaves free, so neither depends on
-                // the operator finding the hover strip first.
-                HStack(spacing: 6) {
-                    maximizeButton
-                    bannerButton
+                // An operator-sized window shows nothing until it is hovered.
+                // Once it fills a display or sits as a banner, the way back
+                // stays in the corner the hover bar deliberately leaves free:
+                // getting the window back must not depend on finding the
+                // hover strip, or on this panel being key for Esc.
+                if coordinator.isMaximized {
+                    restoreButton
+                        .padding(8)
                 }
-                .padding(8)
             }
             .clipShape(RoundedRectangle(cornerRadius: canvasCornerRadius, style: .continuous))
             .montereyContinuousHover { isActive, location in
@@ -1359,24 +1392,29 @@ struct SubtitleOverlayView: View {
 
     /// Two compact rows, always, sized to what they carry.
     ///
-    /// Everything in here has a fixed width — a 144 pt mode picker, a 110 pt
-    /// font slider, a 72 pt opacity slider, five 28 pt buttons — so one row
-    /// comes to roughly 970 points before any spacing. On a desk that is a
-    /// toolbar. On a projector it is a banner nearly as wide as the canvas,
-    /// and the room reads it as part of the slide.
+    /// The bar holds only what someone presenting reaches for at once: the
+    /// status sentence, Mark / Pause / Stop, pin, ⋯ and close on the first
+    /// row; the layout switch and the text size on the second. Everything
+    /// that is set once per venue — theme, backdrop, automatic size, fill,
+    /// banner — is in the ⋯ menu (`SubtitleOverlayMenu`).
     ///
-    /// Two rows cut the width to whichever row is wider, about half. A
-    /// `ViewThatFits` used to offer this shape only as a fallback for windows
-    /// too narrow for one row, which meant the wide venues that need it most
-    /// never got it — and it could not have helped anyway, because each row
-    /// carried a `Spacer` and the whole thing sat on a full-width band, so it
-    /// stretched to the window either way. Both are gone; the rows now hug.
+    /// Everything in here has a fixed width — a 144 pt layout switch, a
+    /// 110 pt font slider, six 28 pt buttons — so the second row is 364 pt
+    /// and the first is 208 pt plus the status sentence. With the bar's own
+    /// padding and the 50 pt left free in the opposite corner, that leaves
+    /// the sentence about 266 pt in a window at its minimum width of 560.
     ///
-    /// The window title goes with them. It named the window to a room that is
-    /// already looking at it.
-    /// Always two rows; the only thing that degrades on a genuinely small
-    /// window is the status prose, which is the one item here the operator can
-    /// read somewhere else. Every control stays.
+    /// One row would be nearly twice as wide. On a desk that is a toolbar. On
+    /// a projector it is a banner nearly as wide as the canvas, and the room
+    /// reads it as part of the slide; a `ViewThatFits` used to offer two rows
+    /// only as a fallback for narrow windows, which meant the wide venues
+    /// that need it most never got it. So the rows hug, and there are always
+    /// two.
+    ///
+    /// The only thing that degrades on a genuinely small window is the status
+    /// prose, which shrinks to its dot: the colour still says whether the
+    /// text needs a look, and the sentence is its tooltip. Every control
+    /// stays.
     private var controlBar: some View {
         MontereyHorizontalViewThatFits {
             controlRows(includesStatus: true)
@@ -1392,13 +1430,10 @@ struct SubtitleOverlayView: View {
     private func controlRows(includesStatus: Bool) -> some View {
         VStack(alignment: .trailing, spacing: 6) {
             HStack(spacing: 8) {
-                if includesStatus {
-                    captureStatus
-                }
+                captureStatus(showsSentence: includesStatus)
                 SubtitleOverlayRecordingControls(opacity: controlsOpacity)
-                backdropOpacityControl
-                themeButton
                 pinButton
+                moreButton
                 closeButton
             }
             HStack(spacing: 8) {
@@ -1408,48 +1443,51 @@ struct SubtitleOverlayView: View {
         }
     }
 
-    /// Puts the canvas across the top of the display at full width, leaving
-    /// the slide underneath visible. Separate from the fill control rather
-    /// than a third stop on it: an operator reaching for one of these in front
-    /// of a room should not have to cycle through the other.
-    private var bannerButton: some View {
+    /// Opens the menu of everything that left the bar.
+    private var moreButton: some View {
         Button {
-            coordinator.toggleBanner()
+            moreMenu.popUp(moreMenuItems)
         } label: {
-            Image(systemName: coordinator.placement == .banner
-                ? "rectangle.topthird.inset.filled"
-                : "rectangle.tophalf.inset.filled")
-                .font(.system(size: 11, weight: .semibold))
+            Image(systemName: "ellipsis")
+                .font(.system(size: 11, weight: .bold))
                 .frame(width: 28, height: 28)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .foregroundColor(.secondary)
-        .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(SubtitleOverlayPalette.surface.opacity(controlsOpacity))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .strokeBorder(SubtitleOverlayPalette.hairline, lineWidth: 0.5)
-                )
-        )
-        .help(String(localized: coordinator.placement == .banner
-            ? "subtitle.overlay.restore"
-            : "subtitle.overlay.banner"))
-        .accessibilityLabel(Text(String(localized: coordinator.placement == .banner
-            ? "subtitle.overlay.restore"
-            : "subtitle.overlay.banner")))
-        .accessibilityIdentifier(AccessibilityID.floatingSubtitleBanner)
-        .keyboardShortcut("b", modifiers: [.control, .command])
+        .background(SubtitleOverlayMenuAnchor(presenter: moreMenu))
+        .help(String(localized: "recording_bar.more"))
+        .accessibilityLabel(Text(String(localized: "recording_bar.more")))
+        .accessibilityIdentifier("capture.floatingSubtitles.more")
     }
 
-    private var maximizeButton: some View {
+    private var moreMenuItems: [SubtitleOverlayMenuItem] {
+        SubtitleOverlayMenu.items(
+            state: SubtitleOverlayMenu.State(
+                theme: presentationSettings.theme,
+                placement: coordinator.placement,
+                fontIsAutomatic: storedFontMode == .automatic,
+                backdropOpacity: configuredCanvasOpacity,
+                backdropAdjustable: accessibilityReduceTransparency == false
+            ),
+            actions: SubtitleOverlayMenu.Actions(
+                toggleFontAutomatic: toggleFontAutomatic,
+                setTheme: { presentationSettings.theme = $0 },
+                setBackdropOpacity: { storedBackdropOpacity = $0 },
+                toggleFilled: { coordinator.toggleMaximized() },
+                toggleBanner: { coordinator.toggleBanner() }
+            )
+        )
+    }
+
+    /// Gives the operator their own window back from either presentation
+    /// placement. It carries the identifier of the control that put the
+    /// window there.
+    private var restoreButton: some View {
         Button {
-            coordinator.toggleMaximized()
+            coordinator.restoreWindow()
         } label: {
-            Image(systemName: coordinator.placement == .filled
-                ? "arrow.down.right.and.arrow.up.left"
-                : "arrow.up.left.and.arrow.down.right")
+            Image(systemName: "arrow.down.right.and.arrow.up.left")
                 .font(.system(size: 11, weight: .semibold))
                 .frame(width: 28, height: 28)
                 .contentShape(Rectangle())
@@ -1464,34 +1502,61 @@ struct SubtitleOverlayView: View {
                         .strokeBorder(SubtitleOverlayPalette.hairline, lineWidth: 0.5)
                 )
         )
-        // Keyed to the fill placement like the icon: in banner placement this
-        // button fills the screen, and it used to say "Restore".
-        .help(String(localized: coordinator.placement == .filled
-            ? "subtitle.overlay.restore"
-            : "subtitle.overlay.maximize"))
-        .accessibilityLabel(Text(String(localized: coordinator.placement == .filled
-            ? "subtitle.overlay.restore"
-            : "subtitle.overlay.maximize")))
-        .accessibilityIdentifier(AccessibilityID.floatingSubtitleMaximize)
-        .keyboardShortcut("f", modifiers: [.control, .command])
+        .help(String(localized: "subtitle.overlay.restore"))
+        .accessibilityLabel(Text(String(localized: "subtitle.overlay.restore")))
+        .accessibilityIdentifier(coordinator.placement == .banner
+            ? AccessibilityID.floatingSubtitleBanner
+            : AccessibilityID.floatingSubtitleMaximize)
     }
 
     /// The same one sentence as the recording bar and the menu bar
     /// (docs/product/interface-layers.md), so the person running the room
     /// reads one wording everywhere. Which languages are behind stays in the
     /// badge beside it.
-    private var captureStatus: some View {
-        let line = RecordingBarModel.current(
+    ///
+    /// In a window too narrow for the sentence the dot stays on its own:
+    /// amber when the text needs a look, and the sentence is its tooltip.
+    private func captureStatus(showsSentence: Bool) -> some View {
+        let model = RecordingBarModel.current(
             capture: store,
             commands: .shared,
             networkOffline: network.isOffline
-        ).statusLine
+        )
+        let line = model.statusLine
+        let detail = [showsSentence ? nil : line.text, model.statusDetail]
+            .compactMap { $0 }
+            .joined(separator: "\n")
         return HStack(spacing: 8) {
-            Text(line.text)
-                .font(.captionMedium)
-                .foregroundColor(line.reportsTextProblem ? .accentGold : .textSecondary)
-                .lineLimit(1)
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(statusDotColor(model))
+                    .frame(width: 7, height: 7)
+                    .accessibilityHidden(true)
+                if showsSentence {
+                    Text(line.text)
+                        .font(.captionMedium)
+                        .foregroundColor(line.reportsTextProblem ? .accentGold : .textSecondary)
+                        .lineLimit(1)
+                }
+            }
+            .frame(minHeight: 28)
+            .contentShape(Rectangle())
+            .help(detail.isEmpty ? line.text : detail)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(line.text))
+            .accessibilityHint(Text(model.statusDetail ?? ""))
             degradedLanesBadge
+        }
+    }
+
+    /// The recording bar's own dot, except that a problem with the text
+    /// turns it amber: here the dot may be all there is room for.
+    private func statusDotColor(_ model: RecordingBarModel) -> Color {
+        if model.statusLine.reportsTextProblem { return .accentGold }
+        switch model.phase {
+        case .recording: return .signalRed
+        case .paused, .pausing, .resuming: return .accentGold
+        case .stopping: return .textTertiary
         }
     }
 
@@ -1543,30 +1608,6 @@ struct SubtitleOverlayView: View {
             : "subtitle.overlay.unpinned")))
     }
 
-    private var themeButton: some View {
-        Button {
-            presentationSettings.theme = presentationSettings.theme.toggled
-        } label: {
-            Image(systemName: presentationSettings.theme == .dark
-                ? "moon.fill"
-                : "sun.max.fill")
-                .font(.system(size: 11, weight: .semibold))
-                .frame(width: 28, height: 28)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .foregroundColor(.secondary)
-        .help(String(localized: presentationSettings.theme == .dark
-            ? "subtitle.overlay.theme.switch_to_light"
-            : "subtitle.overlay.theme.switch_to_dark"))
-        .accessibilityLabel(Text(String(localized: presentationSettings.theme == .dark
-            ? "subtitle.overlay.theme.switch_to_light"
-            : "subtitle.overlay.theme.switch_to_dark")))
-        .accessibilityValue(Text(String(localized: presentationSettings.theme == .dark
-            ? "subtitle.overlay.theme.dark"
-            : "subtitle.overlay.theme.light")))
-    }
-
     private var closeButton: some View {
         Button {
             coordinator.dismiss()
@@ -1595,6 +1636,11 @@ struct SubtitleOverlayView: View {
                 .tag(SubtitleOverlayDisplayMode.conversation)
         }
         .pickerStyle(.segmented)
+        // Without this the Mac prints the picker's name beside the segments,
+        // inside the same 144 points: it wrapped one character to a line and
+        // made the bar three times as tall. The name stays what VoiceOver
+        // reads.
+        .labelsHidden()
         .frame(width: 144)
         .help(String(localized: presentationSettings.displayMode == .conversation
             ? "subtitle.overlay.mode.conversation.help"
@@ -1639,43 +1685,12 @@ struct SubtitleOverlayView: View {
             ) {
                 setManualFontSize(SubtitleOverlayFontPolicy.larger(than: fontSize))
             }
-
-            fontAutoButton
         }
         .padding(2)
         .background(
             RoundedRectangle(cornerRadius: 7, style: .continuous)
                 .fill(Color.primary.opacity(0.07))
         )
-    }
-
-    private var backdropOpacityControl: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "circle.lefthalf.filled")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(.secondary)
-                .accessibilityHidden(true)
-
-            Slider(
-                value: Binding(
-                    get: { configuredCanvasOpacity },
-                    set: { storedBackdropOpacity = $0 }
-                ),
-                in: SubtitleOverlayBackdropPolicy.opacityRange
-            )
-            .controlSize(.mini)
-            .frame(width: 72)
-            .accessibilityLabel(Text(String(localized: "subtitle.overlay.background_opacity")))
-            .accessibilityValue(Text(verbatim: "\(Int(canvasOpacity * 100))%"))
-        }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 4)
-        .background(
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(Color.primary.opacity(0.07))
-        )
-        .disabled(accessibilityReduceTransparency)
-        .help(String(localized: "subtitle.overlay.background_opacity"))
     }
 
     /// Every manual size control funnels through here: asking for a specific
@@ -1689,34 +1704,17 @@ struct SubtitleOverlayView: View {
         }
     }
 
-    private var fontAutoButton: some View {
-        Button {
-            if storedFontMode == .automatic {
-                // Freeze the size automatic chose so leaving it never moves
-                // the canvas.
-                storedFontSize = fontSize
-                storedFontMode = .manual
-            } else {
-                storedFontMode = .automatic
-            }
-        } label: {
-            Image(systemName: storedFontMode == .automatic ? "a.circle.fill" : "a.circle")
-                .font(.system(size: 11, weight: .semibold))
-                .frame(width: 28, height: 26)
-                .contentShape(Rectangle())
+    /// "Caption size follows the window", in the ⋯ menu. Automatic is the
+    /// default and the slider is the way out of it; this is the way back.
+    private func toggleFontAutomatic() {
+        if storedFontMode == .automatic {
+            // Freeze the size automatic chose so leaving it never moves
+            // the canvas.
+            storedFontSize = fontSize
+            storedFontMode = .manual
+        } else {
+            storedFontMode = .automatic
         }
-        .buttonStyle(.plain)
-        .foregroundColor(storedFontMode == .automatic ? .accentColor : .secondary)
-        .help(String(localized: storedFontMode == .automatic
-            ? "subtitle.overlay.font_auto.disable"
-            : "subtitle.overlay.font_auto.enable"))
-        .accessibilityLabel(Text(String(localized: storedFontMode == .automatic
-            ? "subtitle.overlay.font_auto.disable"
-            : "subtitle.overlay.font_auto.enable")))
-        .accessibilityValue(Text(String(localized: storedFontMode == .automatic
-            ? "subtitle.overlay.font_auto.on"
-            : "subtitle.overlay.font_auto.off")))
-        .accessibilityIdentifier(AccessibilityID.floatingSubtitleFontAuto)
     }
 
     private func fontButton(
@@ -2771,12 +2769,18 @@ final class SubtitleOverlayController: NSWindowController, ManagedWindowControll
     init(store: ActiveBilingualTranscriptStore) {
         self.store = store
         let spec = WindowSpec.required(.subtitleOverlay)
-        let panel = NSPanel(
+        let panel = SubtitleOverlayPanel(
             contentRect: spec.initialContentRect,
             styleMask: spec.styleMask,
             backing: .buffered,
             defer: false
         )
+        panel.onPlacementShortcut = { shortcut in
+            switch shortcut {
+            case .fill: SubtitleOverlayCoordinator.shared.toggleMaximized()
+            default: SubtitleOverlayCoordinator.shared.toggleBanner()
+            }
+        }
         panel.identifier = NSUserInterfaceItemIdentifier(WindowSurfaceID.subtitleOverlay.rawValue)
         panel.isReleasedWhenClosed = false
         super.init(window: panel)
@@ -3067,6 +3071,26 @@ final class SubtitleOverlayController: NSWindowController, ManagedWindowControll
     private func persistFrame(defaults: UserDefaults = .standard) {
         guard isMaximized == false, isApplyingMaximizedTransition == false else { return }
         defaults.set(NSStringFromRect(managedWindow.frame), forKey: Self.savedFrameKey)
+    }
+}
+
+/// The caption window's panel. ⌃⌘F fills the display and ⌃⌘B lays the banner
+/// across its top.
+///
+/// Those two shortcuts used to belong to two buttons that were always on
+/// screen. The buttons are now items of the hover bar's ⋯ menu, and the bar
+/// is only there while the pointer is over the window — so the panel answers
+/// the shortcuts itself, whether or not anything is showing. The menu items
+/// print the same two (`SubtitleOverlayShortcut`).
+final class SubtitleOverlayPanel: NSPanel {
+    var onPlacementShortcut: ((SubtitleOverlayShortcut) -> Void)?
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if let shortcut = SubtitleOverlayShortcut.matching(event), let onPlacementShortcut {
+            onPlacementShortcut(shortcut)
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
     }
 }
 

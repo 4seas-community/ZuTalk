@@ -680,9 +680,9 @@ private enum KnowledgeProfileStoreError: LocalizedError {
     }
 }
 
-/// 专有词与背景的资料库,从主题设置里打开。资料可以给多个主题共用,
+/// 专有词与背景的资料库,从主题选项里打开。资料可以给多个主题共用,
 /// 所以它不属于某一个主题;但它只在录音要用到时才有意义,所以入口放在
-/// 主题设置,而不是侧边栏的第一层。
+/// 主题选项,而不是侧边栏的第一层。
 struct KnowledgeLibrarySheet: View {
     @Environment(\.presentationMode) private var presentationMode
 
@@ -692,10 +692,14 @@ struct KnowledgeLibrarySheet: View {
             Divider()
             HStack {
                 Spacer()
+                // Esc, not Return: the page's one filled button is New, and
+                // Return in the fields above adds a term rather than closing
+                // the sheet under the person typing.
                 Button(String(localized: "common.done")) {
                     presentationMode.wrappedValue.dismiss()
                 }
-                .keyboardShortcut(.defaultAction)
+                .keyboardShortcut(.cancelAction)
+                .accessibilityIdentifier("knowledge.done")
             }
             .padding(Spacing.md)
         }
@@ -703,11 +707,23 @@ struct KnowledgeLibrarySheet: View {
     }
 }
 
+/// The list of sets, and — once one is opened — its editor.
+///
+/// Nothing on either is explained in place (docs/product/interface-layers.md
+/// 「界面怎么写」): the list is rows of a name and its counts, the actions are
+/// one word each, and the sentence that used to sit under every title is
+/// that title's tooltip.
 struct KnowledgeLibraryPage: View {
     @StateObject private var store = KnowledgeProfileStore()
     @State private var selectedID: UUID?
     @State private var isCreating = false
     @State private var newName = ""
+
+    /// - Parameter opening: The set to show the editor of straight away;
+    ///   the list when nil.
+    init(opening: UUID? = nil) {
+        _selectedID = State(initialValue: opening)
+    }
 
     var body: some View {
         Group {
@@ -729,100 +745,58 @@ struct KnowledgeLibraryPage: View {
 
     private var overview: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: Spacing.xl) {
-                HStack(alignment: .firstTextBaseline) {
-                    VStack(alignment: .leading, spacing: Spacing.xs) {
-                        Text(String(localized: "knowledge.title"))
-                            .font(.titleLG)
-                            .foregroundColor(.textPrimary)
-                        Text(String(localized: "knowledge.subtitle"))
-                            .font(.bodySM)
-                            .foregroundColor(.textSecondary)
-                    }
-                    Spacer()
-                    Button(action: chooseJSONToImport) {
-                        Label(
-                            String(localized: "knowledge.import_json"),
-                            systemImage: "square.and.arrow.down"
+            VStack(alignment: .leading, spacing: Spacing.lg) {
+                PlainPageHeader(
+                    String(localized: "knowledge.title"),
+                    help: String(localized: "knowledge.subtitle")
+                ) {
+                    HStack(spacing: Spacing.md) {
+                        ActionPill(
+                            String(localized: "knowledge.action.import"),
+                            systemImage: "square.and.arrow.down",
+                            style: .quiet,
+                            help: String(localized: "knowledge.import_json.message"),
+                            accessibilityLabel: String(localized: "knowledge.import_json"),
+                            action: chooseJSONToImport
                         )
-                        .frame(minHeight: 44)
-                    }
-                    .buttonStyle(.bordered)
-                    .accessibilityIdentifier("knowledge.import_json")
+                        .accessibilityIdentifier("knowledge.import_json")
 
-                    Button {
-                        newName = ""
-                        isCreating = true
-                    } label: {
-                        Label(String(localized: "knowledge.new"), systemImage: "plus")
-                            .frame(minHeight: 44)
+                        FilledActionPill(
+                            String(localized: "knowledge.action.new"),
+                            systemImage: "plus",
+                            accessibilityLabel: String(localized: "knowledge.new")
+                        ) {
+                            newName = ""
+                            isCreating = true
+                        }
+                        .accessibilityIdentifier("knowledge.new")
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.brandAccent)
-                    .accessibilityIdentifier("knowledge.new")
                 }
 
                 if let error = store.persistenceError {
                     Label(error, systemImage: "exclamationmark.triangle")
                         .font(.bodySM)
                         .foregroundColor(.destructive)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
                 }
 
                 if store.activeProfiles.isEmpty {
-                    VStack(spacing: Spacing.md) {
-                        Image(systemName: "books.vertical")
-                            .font(.system(size: 36))
-                            .foregroundColor(.brandAccent)
-                        Text(String(localized: "knowledge.empty.title"))
-                            .font(.titleMD)
-                            .foregroundColor(.textPrimary)
-                        Text(String(localized: "knowledge.empty.description"))
-                            .font(.bodySM)
-                            .foregroundColor(.textSecondary)
-                            .multilineTextAlignment(.center)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 360)
+                    PlainEmptyLine(String(localized: "knowledge.empty.description"))
+                        .accessibilityIdentifier("knowledge.empty")
                 } else {
-                    LazyVGrid(
-                        columns: [GridItem(.adaptive(minimum: 280, maximum: 380), spacing: Spacing.md)],
-                        spacing: Spacing.md
-                    ) {
+                    LazyVStack(alignment: .leading, spacing: Spacing.xs) {
                         ForEach(store.activeProfiles) { profile in
-                            Button { selectedID = profile.id } label: {
-                                VStack(alignment: .leading, spacing: Spacing.md) {
-                                    Image(systemName: "book.closed.fill")
-                                        .foregroundColor(.brandAccent)
-                                    Text(profile.name)
-                                        .font(.titleMD)
-                                        .foregroundColor(.textPrimary)
-                                    Text(profile.summary.isEmpty
-                                         ? String(localized: "knowledge.card.no_summary")
-                                         : profile.summary)
-                                        .font(.bodySM)
-                                        .foregroundColor(.textSecondary)
-                                        .lineLimit(3)
-                                    Text(String(
-                                        format: String(localized: "knowledge.card.counts"),
-                                        profile.terms.filter(\.isEnabled).count,
-                                        profile.translationTerms.filter(\.isEnabled).count
-                                    ))
-                                    .font(.caption)
-                                    .foregroundColor(.textTertiary)
-                                }
-                                .padding(Spacing.lg)
-                                .frame(maxWidth: .infinity, minHeight: 190, alignment: .topLeading)
-                                .background(Color.bgElevated.opacity(0.36))
-                                .overlay(RoundedRectangle(cornerRadius: Radius.md)
-                                    .stroke(Color.borderGhost, lineWidth: Stroke.thin))
-                                .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+                            KnowledgeProfileRow(profile: profile) {
+                                selectedID = profile.id
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                 }
             }
             .frame(maxWidth: 1_080, alignment: .leading)
-            .padding(Spacing.xl)
+            .padding(.horizontal, Spacing.xl)
+            .padding(.vertical, Spacing.lg)
             .frame(maxWidth: .infinity, alignment: .top)
         }
     }
@@ -869,7 +843,74 @@ struct KnowledgeLibraryPage: View {
     }
 }
 
+/// One set in the list: its name, the person's own line about it when they
+/// wrote one, and how much is in it.
+private struct KnowledgeProfileRow: View {
+    let profile: KnowledgeProfile
+    let onOpen: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: onOpen) {
+            HStack(alignment: .center, spacing: Spacing.md) {
+                Image(systemName: "book.closed")
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundColor(.textSecondary)
+                    .frame(width: 20)
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(profile.name)
+                        .font(.bodyMedium)
+                        .foregroundColor(.textPrimary)
+                        .lineLimit(1)
+                    if profile.summary.isEmpty == false {
+                        Text(profile.summary)
+                            .font(.bodySM)
+                            .foregroundColor(.textSecondary)
+                            .lineLimit(1)
+                    }
+                }
+
+                Spacer(minLength: Spacing.sm)
+
+                Text(String(
+                    format: String(localized: "knowledge.card.counts"),
+                    profile.terms.filter(\.isEnabled).count,
+                    profile.translationTerms.filter(\.isEnabled).count
+                ))
+                .font(.bodySM)
+                .foregroundColor(.textTertiary)
+                .lineLimit(1)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.textTertiary)
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, Spacing.md)
+            .padding(.vertical, Spacing.xsm)
+            .frame(minHeight: 52)
+            .background(Color.bgElevated.opacity(isHovering ? 0.34 : 0.18))
+            .overlay(
+                RoundedRectangle(cornerRadius: Radius.sm)
+                    .strokeBorder(Color.borderGhost.opacity(0.45), lineWidth: Stroke.thin)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+            .contentShape(RoundedRectangle(cornerRadius: Radius.sm))
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+    }
+}
+
 private struct KnowledgeProfilePage: View {
+    /// What a set may hold before the service stops reading the rest.
+    private static let tokenBudget = 8_000
+
     @State private var draft: KnowledgeProfile
     @State private var lastSavedDraft: KnowledgeProfile
     @State private var savedRevision: UInt64
@@ -896,7 +937,7 @@ private struct KnowledgeProfilePage: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: Spacing.xl) {
+            VStack(alignment: .leading, spacing: Spacing.lg) {
                 header
                 contextMeter
                 profileSection
@@ -905,7 +946,8 @@ private struct KnowledgeProfilePage: View {
                 translationsSection
             }
             .frame(maxWidth: 920, alignment: .leading)
-            .padding(Spacing.xl)
+            .padding(.horizontal, Spacing.xl)
+            .padding(.vertical, Spacing.lg)
             .frame(maxWidth: .infinity, alignment: .top)
         }
         .montereyOnChange(of: draft) { _, _ in scheduleSave() }
@@ -913,19 +955,24 @@ private struct KnowledgeProfilePage: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: Spacing.md) {
-            HStack {
-                Button(action: leavePage) {
-                    Label(String(localized: "knowledge.back"), systemImage: "chevron.left")
-                }
-                .buttonStyle(.plain)
-                Spacer()
-                Button {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            HStack(spacing: Spacing.md) {
+                ActionPill(
+                    String(localized: "knowledge.back"),
+                    systemImage: "chevron.left",
+                    style: .quiet,
+                    action: leavePage
+                )
+                .accessibilityIdentifier("knowledge.back")
+                Spacer(minLength: Spacing.md)
+                saveStatus
+                ActionPill(
+                    String(localized: "knowledge.ai.improve"),
+                    systemImage: "sparkles",
+                    style: .quiet
+                ) {
                     ToastCenter.shared.info(String(localized: "knowledge.ai.coming_soon"))
-                } label: {
-                    Label(String(localized: "knowledge.ai.improve"), systemImage: "sparkles")
                 }
-                .buttonStyle(.bordered)
             }
 
             TextField(String(localized: "knowledge.name"), text: $draft.name)
@@ -936,50 +983,69 @@ private struct KnowledgeProfilePage: View {
                 .textFieldStyle(.plain)
                 .font(.body)
                 .foregroundColor(.textSecondary)
+
             if let persistenceError {
-                Label(
-                    String(localized: "capture.settings.autosave.save_failed"),
-                    systemImage: "exclamationmark.triangle.fill"
-                )
-                .font(.captionMedium)
-                .foregroundColor(.signalAmber)
+                // An error: said in full, and selectable so it can be sent on.
                 Text(persistenceError)
-                    .font(.caption)
+                    .font(.bodySM)
                     .foregroundColor(.signalAmber)
+                    .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
-            } else {
-                Text(String(
-                    format: String(localized: "knowledge.saved_revision"),
-                    Int64(savedRevision)
-                ))
-                .font(.caption)
-                .foregroundColor(.textTertiary)
             }
         }
     }
 
+    /// Saved or not, as an icon and a word; which revision is the detail.
+    @ViewBuilder
+    private var saveStatus: some View {
+        if persistenceError != nil {
+            PlainStatus(
+                String(localized: "capture.settings.autosave.save_failed"),
+                systemImage: "exclamationmark.triangle.fill",
+                tint: .signalAmber
+            )
+        } else {
+            PlainStatus(
+                String(localized: "capture.settings.autosave.saved"),
+                systemImage: "checkmark.circle.fill",
+                tint: .signalGreen,
+                help: String(
+                    format: String(localized: "knowledge.saved_revision"),
+                    Int64(savedRevision)
+                )
+            )
+        }
+    }
+
+    /// How much of what the service will read this set already takes up: a
+    /// word, a bar and two numbers. What is being measured is the tooltip.
     private var contextMeter: some View {
         let estimate = estimatedTokens
-        return VStack(alignment: .leading, spacing: Spacing.xs) {
-            HStack {
-                Label(String(localized: "knowledge.context.title"), systemImage: "waveform.badge.magnifyingglass")
-                    .font(.bodyMedium)
-                Spacer()
-                Text("\(estimate.formatted()) / 8,000 tokens")
-                    .font(.bodySM)
-                    .foregroundColor(estimate > 8_000 ? .destructive : .textSecondary)
-            }
-            ProgressView(value: min(Double(estimate) / 8_000, 1))
-                .tint(estimate > 8_000 ? .destructive : .brandAccent)
+        let isOver = estimate > Self.tokenBudget
+        let explanation = String(localized: "knowledge.context.title")
+            + " · \(estimate.formatted()) / \(Self.tokenBudget.formatted()) tokens"
+        return HStack(spacing: Spacing.md) {
+            PlainSectionHeader(String(localized: "knowledge.meter.title"), help: explanation)
+            ProgressView(value: min(Double(estimate) / Double(Self.tokenBudget), 1))
+                .tint(isOver ? .destructive : .brandAccent)
+                .frame(maxWidth: 240)
+                .accessibilityLabel(Text(String(localized: "knowledge.context.title")))
+            Text("\(estimate.formatted()) / \(Self.tokenBudget.formatted())")
+                .font(.bodySM)
+                .monospacedDigit()
+                .foregroundColor(isOver ? .destructive : .textSecondary)
+                .lineLimit(1)
+            Spacer(minLength: 0)
         }
-        .padding(Spacing.md)
-        .background(Color.bgElevated.opacity(0.34))
-        .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+        .help(explanation)
     }
 
     private var profileSection: some View {
-        section(String(localized: "knowledge.general.title"), subtitle: String(localized: "knowledge.general.subtitle")) {
-            VStack(spacing: Spacing.md) {
+        section(
+            String(localized: "knowledge.general.title"),
+            help: String(localized: "knowledge.general.subtitle")
+        ) {
+            PlainRowGroup(spacing: Spacing.sm) {
                 field(String(localized: "knowledge.general.topic"), text: $draft.general.topic)
                 field(String(localized: "knowledge.general.setting"), text: $draft.general.setting)
                 field(String(localized: "knowledge.general.location"), text: $draft.general.location)
@@ -991,92 +1057,121 @@ private struct KnowledgeProfilePage: View {
     }
 
     private var backgroundSection: some View {
-        section(String(localized: "knowledge.background.title"), subtitle: String(localized: "knowledge.background.subtitle")) {
+        section(
+            String(localized: "knowledge.background.title"),
+            help: String(localized: "knowledge.background.subtitle")
+        ) {
             TextEditor(text: $draft.backgroundText)
                 .font(.body)
                 .montereyScrollContentBackground(hidden: true)
                 .padding(Spacing.sm)
-                .frame(minHeight: 180)
+                .frame(minHeight: 160)
                 .background(Color.bgElevated.opacity(0.28))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Radius.sm)
+                        .strokeBorder(Color.borderGhost, lineWidth: Stroke.thin)
+                )
                 .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+                .accessibilityLabel(Text(String(localized: "knowledge.background.title")))
         }
     }
 
     private var termsSection: some View {
-        section(String(localized: "knowledge.terms.title"), subtitle: String(localized: "knowledge.terms.subtitle")) {
+        section(
+            String(localized: "knowledge.terms.title"),
+            help: String(localized: "knowledge.terms.subtitle")
+        ) {
             VStack(alignment: .leading, spacing: Spacing.sm) {
                 ForEach($draft.terms) { $term in
-                    HStack {
+                    HStack(spacing: Spacing.sm) {
                         TextField(String(localized: "knowledge.term.placeholder"), text: $term.value)
-                        Button(role: .destructive) {
+                            .textFieldStyle(.roundedBorder)
+                        removeButton {
                             draft.terms.removeAll { $0.id == term.id }
-                        } label: { Image(systemName: "xmark") }
-                        .buttonStyle(.plain)
+                        }
                     }
                 }
-                HStack {
+                HStack(spacing: Spacing.sm) {
                     TextField(String(localized: "knowledge.term.add"), text: $newTerm)
+                        .textFieldStyle(.roundedBorder)
                         .onSubmit(addTerm)
-                    Button(action: addTerm) { Image(systemName: "plus") }
-                        .buttonStyle(.bordered)
+                    ActionPill(
+                        nil,
+                        systemImage: "plus",
+                        help: String(localized: "knowledge.term.add"),
+                        accessibilityLabel: String(localized: "knowledge.term.add"),
+                        action: addTerm
+                    )
                 }
             }
         }
     }
 
     private var translationsSection: some View {
-        section(String(localized: "knowledge.translations.title"), subtitle: String(localized: "knowledge.translations.subtitle")) {
-            VStack(spacing: Spacing.sm) {
+        section(
+            String(localized: "knowledge.translations.title"),
+            help: String(localized: "knowledge.translations.subtitle")
+        ) {
+            VStack(alignment: .leading, spacing: Spacing.sm) {
                 ForEach($draft.translationTerms) { $term in
-                    HStack {
+                    HStack(spacing: Spacing.sm) {
                         TextField(String(localized: "knowledge.translation.source"), text: $term.sourceText)
-                        Image(systemName: "arrow.right").foregroundColor(.textTertiary)
+                            .textFieldStyle(.roundedBorder)
+                        Image(systemName: "arrow.right")
+                            .foregroundColor(.textTertiary)
+                            .accessibilityHidden(true)
                         TextField(String(localized: "knowledge.translation.target"), text: $term.targetText)
-                        Button(role: .destructive) {
+                            .textFieldStyle(.roundedBorder)
+                        removeButton {
                             draft.translationTerms.removeAll { $0.id == term.id }
-                        } label: { Image(systemName: "xmark") }
-                        .buttonStyle(.plain)
+                        }
                     }
                 }
-                Button {
+                ActionPill(
+                    nil,
+                    systemImage: "plus",
+                    help: String(localized: "knowledge.translation.add"),
+                    accessibilityLabel: String(localized: "knowledge.translation.add")
+                ) {
                     draft.translationTerms.append(.init(sourceText: "", targetText: ""))
-                } label: {
-                    Label(String(localized: "knowledge.translation.add"), systemImage: "plus")
                 }
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
 
+    /// A group: a one-word header, then its fields. Space sets the groups
+    /// apart; what the group is for is the header's tooltip.
     private func section<Content: View>(
         _ title: String,
-        subtitle: String,
+        help: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: Spacing.md) {
-            VStack(alignment: .leading, spacing: Spacing.xs) {
-                Text(title).font(.titleMD).foregroundColor(.textPrimary)
-                Text(subtitle).font(.bodySM).foregroundColor(.textSecondary)
-            }
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            PlainSectionHeader(title, help: help)
             content()
         }
-        .padding(Spacing.lg)
-        .background(Color.bgElevated.opacity(0.22))
-        .overlay(RoundedRectangle(cornerRadius: Radius.md)
-            .stroke(Color.borderGhost, lineWidth: Stroke.thin))
-        .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func field(_ label: String, text: Binding<String>) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: Spacing.md) {
-            Text(label)
-                .font(.bodySM)
-                .foregroundColor(.textSecondary)
-                .frame(width: 110, alignment: .leading)
-            TextField(label, text: text)
+        PlainRow(label) {
+            TextField("", text: text)
                 .textFieldStyle(.roundedBorder)
+                .accessibilityLabel(Text(label))
         }
+    }
+
+    private func removeButton(_ action: @escaping () -> Void) -> some View {
+        Button(role: .destructive, action: action) {
+            Image(systemName: "xmark")
+                .font(PillMetrics.chevronFont)
+                .foregroundColor(.textTertiary)
+                .frame(width: PillMetrics.segmentWidth, height: PillMetrics.segmentWidth)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(String(localized: "common.delete"))
+        .accessibilityLabel(Text(String(localized: "common.delete")))
     }
 
     private var estimatedTokens: Int {

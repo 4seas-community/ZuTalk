@@ -3,10 +3,17 @@
 //
 // 0.8.1 里在主窗口按「停止」,页面上没有任何一处说这场录音存下来了 —— 只有从
 // 菜单栏、字幕窗、快捷键停的才有一条提示。人最常做的下一件事(把字贴走)也要
-// 自己去找按钮。这张卡就摆在文字稿上面,第一个按钮是「复制全文」
-// (docs/product/interface-layers.md「一屏一个主要动作」)。
+// 自己去找按钮。0.8.2 在文字稿上面摆了这张卡,可是卡上有一句说明、三个按钮、
+// 再加一行带解释的「精修」,还说了一句「音频留在这台 Mac」—— 这一版起音频可以
+// 交到城的档案馆,那句话不再成立。
 //
-// 卡只认一个 `RecordingResultCardModel`:说什么、摆哪些按钮都由它定,它又只由
+// 现在卡上只有两样(docs/product/interface-layers.md「界面怎么写」):标题一行
+// (✓ 录好了 · 时长),和一排胶囊 —— 复制(唯一填了底色的那一颗)、导出、分享、
+// 精修;归了活动的录音,这一排的末尾是档案馆的状态,一个图标加一个词。没有
+// 句子。精修停在哪一步,写在那颗胶囊的词、图标和颜色上,原来那句解释进了它的
+// 悬停提示;要先开通的那种,点下去仍然是去设置。
+//
+// 卡只认一个 `RecordingResultCardModel`:说什么、摆哪些胶囊都由它定,它又只由
 // 几个普通的值算出来。所以每一种情况都能单独画出来、单独测,不用真的录一场、
 // 存一把密钥、登录一座城。活的状态由 `DocumentEditorPage` 里的宿主视图喂进来。
 
@@ -14,9 +21,11 @@ import SwiftUI
 
 /// What the card says and offers.
 struct RecordingResultCardModel: Equatable {
-    /// The one line under the title.
+    /// What the recording ended up with. Nothing on the card says it in a
+    /// sentence; it decides which pills there are, and what the title and
+    /// the refine pill explain on hover.
     enum Summary: Equatable {
-        /// The transcript is below and the audio is kept on this Mac.
+        /// There is a transcript, and there is audio.
         case textAndAudio
         /// The transcript is below; the audio is already gone, as this
         /// recording's own retention setting asked.
@@ -44,8 +53,8 @@ struct RecordingResultCardModel: Equatable {
     /// "12 min" — nil for a recording too short to have a length worth saying.
     let duration: String?
     let summary: Summary
-    /// Nil hides the row: there is nothing to refine here, or the refined
-    /// transcript is already what is on screen.
+    /// Nil leaves the pill out: there is nothing to refine here, or the
+    /// refined transcript is already what is on screen.
     let refine: Refine?
     /// Where this recording stands with the city's archive; nil when it was
     /// never given an event.
@@ -128,8 +137,8 @@ extension RecordingResultCardModel {
         }
     }
 
-    /// The archive line shows under the same condition as the chip in the
-    /// tab bar: signed in, and this recording was given an event or is being
+    /// The archive status shows under the same condition as the chip in
+    /// the tab bar: signed in, and this recording was given an event or is being
     /// filed right now.
     static func city(
         signedIn: Bool,
@@ -143,12 +152,124 @@ extension RecordingResultCardModel {
     }
 }
 
-/// The card itself: a plain view of one model. Every button is handed in.
+/// How the refine pill looks and what pressing it does, for each place
+/// refining can stand. Keys rather than words, so the rule can be checked
+/// whatever language the test machine speaks.
+struct RefinePillFace: Equatable {
+    enum Press: Equatable {
+        case refine
+        case openSettings
+        case showRefined
+        /// On its way: nothing to press.
+        case nothing
+    }
+
+    let titleKey: String
+    let systemImage: String
+    let tone: PillTone
+    let mark: PillMark
+    /// The sentence that used to be printed beside the button.
+    let helpKeys: [String]
+    let press: Press
+    /// With no text yet, refining is the thing to do next: it takes the
+    /// filled look that Copy would have had.
+    let isPrimary: Bool
+
+    static func resolve(_ refine: RecordingResultCardModel.Refine, hasText: Bool) -> RefinePillFace {
+        switch refine {
+        case .available:
+            return RefinePillFace(
+                titleKey: "refine.action",
+                systemImage: "wand.and.stars",
+                tone: .normal,
+                mark: .none,
+                helpKeys: hasText
+                    ? ["recording.result.refine.detail"]
+                    : ["recording.result.summary.audio_only", "recording.result.refine.detail"],
+                press: .refine,
+                isPrimary: hasText == false
+            )
+        case .needsSetup:
+            return RefinePillFace(
+                titleKey: "refine.action",
+                systemImage: "wand.and.stars",
+                tone: .dimmed,
+                mark: .warning,
+                helpKeys: ["recording.result.refine.needs_setup"],
+                press: .openSettings,
+                isPrimary: false
+            )
+        case .inProgress:
+            return RefinePillFace(
+                titleKey: "editor.transcript.async.pending_title",
+                systemImage: "hourglass",
+                tone: .normal,
+                mark: .none,
+                helpKeys: ["recording.result.refine.in_progress"],
+                press: .nothing,
+                isPrimary: false
+            )
+        case .ready:
+            return RefinePillFace(
+                titleKey: "resources.async",
+                systemImage: "checkmark.circle",
+                tone: .on,
+                mark: .none,
+                helpKeys: ["recording.result.refine.ready"],
+                press: .showRefined,
+                isPrimary: false
+            )
+        case .failed:
+            return RefinePillFace(
+                titleKey: "editor.transcript.async.failed_title",
+                systemImage: "exclamationmark.triangle",
+                tone: .warning,
+                mark: .none,
+                helpKeys: ["recording.result.refine.failed", "recording.result.refine.see_why"],
+                press: .showRefined,
+                isPrimary: false
+            )
+        }
+    }
+
+    var title: String { String(localized: String.LocalizationValue(titleKey)) }
+
+    var help: String {
+        helpKeys
+            .map { String(localized: String.LocalizationValue($0)) }
+            .joined(separator: "\n")
+    }
+}
+
+/// The one word the card shows for where a recording stands with a city's
+/// archive. `CityFilingStatus.label` is the sentence ("排队中,稍后自动再试");
+/// here it is the tooltip, and the word stands beside the icon.
+enum ResultCardCityWord {
+    static func key(_ kind: CityFilingStatus.Kind) -> String {
+        switch kind {
+        case .notFiled: return "city.status.not_filed"
+        case .chosen: return "city.status.not_filed"
+        case .sending: return "city.status.sending"
+        case .waiting: return "recording.city.waiting"
+        case .filed: return "recording.city.filed"
+        case .changed: return "recording.city.changed"
+        case .eventGone: return "recording.city.event_gone"
+        case .failed: return "city.status.failed"
+        case .withdrawn: return "city.status.withdrawn"
+        }
+    }
+
+    static func word(_ kind: CityFilingStatus.Kind) -> String {
+        String(localized: String.LocalizationValue(key(kind)))
+    }
+}
+
+/// The card itself: a plain view of one model. Every action is handed in.
 struct RecordingResultCard: View {
     let model: RecordingResultCardModel
     let onCopy: () -> Void
     let onExport: () -> Void
-    /// The share panel; the archive line opens the same one.
+    /// The share panel; the archive status opens the same one.
     let onShare: () -> Void
     let onRefine: () -> Void
     let onOpenSettings: () -> Void
@@ -158,51 +279,45 @@ struct RecordingResultCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.xsm) {
             header
-            actions
-            if model.refine != nil || model.city != nil {
-                Divider().background(Color.borderGhost.opacity(0.4))
-            }
-            if let refine = model.refine {
-                refineRow(refine)
-            }
-            if let city = model.city {
-                cityLine(city)
+            PillStrip {
+                pills
+            } trailing: {
+                if let city = model.city {
+                    cityStatus(city)
+                }
             }
         }
         .padding(Spacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
         .surfaceCard(
-            fill: Color.bgElevated.opacity(0.45),
+            fill: Color.bgElevated.opacity(0.4),
             cornerRadius: Radius.md,
-            border: Color.borderGhost,
-            borderWidth: Stroke.thin
+            border: Color.borderSubtle,
+            borderWidth: Stroke.hairline
         )
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("recording.result.card")
     }
 
     private var header: some View {
-        HStack(alignment: .top, spacing: Spacing.sm) {
+        HStack(spacing: Spacing.sm) {
             Image(systemName: Icon.connected)
-                .font(.system(size: 18, weight: .medium))
+                .font(.titleMD)
                 .foregroundColor(.success)
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: Spacing.xs) {
-                Text(title)
-                    .font(.titleMD)
-                    .foregroundColor(.textPrimary)
-                    .accessibilityAddTraits(.isHeader)
-                Text(summaryText)
-                    .font(.body)
-                    .foregroundColor(.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            Text(title)
+                .font(.titleMD)
+                .foregroundColor(.textPrimary)
+                .lineLimit(1)
+                .accessibilityAddTraits(.isHeader)
+                // What the recording ended up with, for whoever asks.
+                .pillExplained(help: summaryText)
             Spacer(minLength: Spacing.sm)
             Button(action: onDismiss) {
                 Image(systemName: Icon.xmark)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(PillMetrics.markFont)
                     .foregroundColor(.textSecondary)
-                    .frame(width: 28, height: 28)
+                    .frame(width: PillMetrics.segmentWidth, height: PillMetrics.segmentWidth)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -212,125 +327,89 @@ struct RecordingResultCard: View {
         }
     }
 
-    /// One row when it fits; stacked when the window is narrow or the
-    /// language is long.
-    private var actions: some View {
-        MontereyHorizontalViewThatFits {
-            HStack(spacing: Spacing.sm) { actionButtons }
-        } fallback: {
-            VStack(alignment: .leading, spacing: Spacing.sm) { actionButtons }
-        }
-        .padding(.leading, Self.textInset)
-    }
-
+    /// Copy first and filled: it is what most people came to do. With no
+    /// text there is nothing to copy or share, and refining takes its place.
     @ViewBuilder
-    private var actionButtons: some View {
+    private var pills: some View {
         if model.hasText {
-            ResultCardButton(
-                title: String(localized: "transcript.copy_all"),
-                icon: Icon.copy,
-                kind: .primary,
+            PrimaryPill(
+                String(localized: "recording.word.copy"),
+                systemImage: Icon.copy,
+                help: String(localized: "transcript.copy_all"),
                 action: onCopy
             )
             .accessibilityIdentifier("recording.result.copy")
         }
-        ResultCardButton(
-            title: String(localized: "editor.export.menu"),
-            kind: .secondary,
+        ActionPill(
+            String(localized: "common.export.action"),
+            systemImage: "tray.and.arrow.up",
             action: onExport
         )
         .accessibilityIdentifier("recording.result.export")
         if model.hasText {
-            ResultCardButton(
-                title: String(localized: "session.share_link"),
-                kind: .secondary,
+            ActionPill(
+                String(localized: "recording.word.share"),
+                systemImage: Icon.export,
+                help: String(localized: "session.share_link"),
                 action: onShare
             )
             .accessibilityIdentifier("recording.result.share")
         }
-    }
-
-    private func refineRow(_ refine: RecordingResultCardModel.Refine) -> some View {
-        HStack(alignment: .center, spacing: Spacing.md) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(String(localized: "refine.name"))
-                    .font(.bodyMedium)
-                    .foregroundColor(.textPrimary)
-                Text(refineDetail(refine))
-                    .font(.bodySM)
-                    .foregroundColor(.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: Spacing.sm)
-            refineControl(refine)
+        if let refine = model.refine {
+            refinePill(RefinePillFace.resolve(refine, hasText: model.hasText))
+                .accessibilityIdentifier("recording.result.refine")
         }
-        .padding(.leading, Self.textInset)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("recording.result.refine")
     }
 
     @ViewBuilder
-    private func refineControl(_ refine: RecordingResultCardModel.Refine) -> some View {
-        switch refine {
-        case .available:
-            ResultCardButton(
-                title: String(localized: "refine.action"),
-                // With no text yet, refining is the thing to do next.
-                kind: model.hasText ? .secondary : .primary,
-                action: onRefine
-            )
-        case .needsSetup:
-            ResultCardButton(
-                title: String(localized: "recording.result.refine.open_settings"),
-                kind: .secondary,
-                action: onOpenSettings
-            )
-        case .inProgress:
-            ProgressView()
-                .controlSize(.small)
-                .accessibilityHidden(true)
-        case .ready:
-            ResultCardButton(
-                title: String(localized: "session.version.show_refined"),
-                kind: .secondary,
-                action: onShowRefined
-            )
-        case .failed:
-            ResultCardButton(
-                title: String(localized: "recording.result.refine.see_why"),
-                kind: .secondary,
-                action: onShowRefined
-            )
+    private func refinePill(_ face: RefinePillFace) -> some View {
+        if face.isPrimary {
+            PrimaryPill(face.title, systemImage: face.systemImage, help: face.help) {
+                press(face.press)
+            }
+        } else {
+            ActionPill(
+                face.title,
+                systemImage: face.systemImage,
+                tone: face.tone,
+                mark: face.mark,
+                help: face.help,
+                accessibilityLabel: String(localized: "refine.name"),
+                accessibilityValue: face.title
+            ) {
+                press(face.press)
+            }
+            .disabled(face.press == .nothing)
         }
     }
 
-    private func cityLine(_ status: CityFilingStatus) -> some View {
-        let described = status.described(event: model.cityEventTitle)
-        return Button(action: onShare) {
-            HStack(spacing: Spacing.xs) {
-                Image(systemName: status.symbol)
-                    .iconSizeSmall()
-                    .foregroundColor(status.tone.color)
-                    .accessibilityHidden(true)
-                Text(described)
-                    .font(.bodySM)
-                    .foregroundColor(.textSecondary)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .contentShape(Rectangle())
+    private func press(_ press: RefinePillFace.Press) {
+        switch press {
+        case .refine: onRefine()
+        case .openSettings: onOpenSettings()
+        case .showRefined: onShowRefined()
+        case .nothing: break
         }
-        .buttonStyle(.plain)
-        .padding(.leading, Self.textInset)
-        .help([described, status.reason].compactMap { $0 }.joined(separator: "\n"))
-        .accessibilityLabel(Text(described))
+    }
+
+    /// Where this recording stands with the city's archive: an icon and a
+    /// word at the far end of the strip. The sentence, the event and the
+    /// reason are the tooltip; a click opens the share panel, where filing
+    /// is done.
+    private func cityStatus(_ status: CityFilingStatus) -> some View {
+        let described = status.described(event: model.cityEventTitle)
+        return ActionPill(
+            ResultCardCityWord.word(status.kind),
+            systemImage: status.symbol,
+            style: .quiet,
+            iconTint: status.tone.color,
+            help: [described, status.reason].compactMap { $0 }.joined(separator: "\n"),
+            accessibilityLabel: described,
+            action: onShare
+        )
         .accessibilityHint(Text(String(localized: "city.status.open_share_hint")))
         .accessibilityIdentifier("recording.result.city")
     }
-
-    /// Everything under the title lines up with the title's text, past the
-    /// check mark.
-    private static let textInset: CGFloat = 18 + Spacing.sm
 
     private var title: String {
         guard let duration = model.duration else {
@@ -339,94 +418,25 @@ struct RecordingResultCard: View {
         return String(format: String(localized: "recording.result.title_format"), duration)
     }
 
-    private var summaryText: String {
+    /// Not printed: the title's tooltip. A recording with both text and
+    /// audio has nothing to add to "Recorded".
+    private var summaryText: String? {
         switch model.summary {
-        case .textAndAudio: return String(localized: "recording.result.summary.text_and_audio")
+        case .textAndAudio: return nil
         case .textOnly: return String(localized: "recording.result.summary.text_only")
         case .audioOnly: return String(localized: "recording.result.summary.audio_only")
         }
     }
-
-    private func refineDetail(_ refine: RecordingResultCardModel.Refine) -> String {
-        switch refine {
-        case .available: return String(localized: "recording.result.refine.detail")
-        case .needsSetup: return String(localized: "recording.result.refine.needs_setup")
-        case .inProgress: return String(localized: "recording.result.refine.in_progress")
-        case .ready: return String(localized: "recording.result.refine.ready")
-        case .failed: return String(localized: "recording.result.refine.failed")
-        }
-    }
 }
 
-/// The card's buttons, drawn from the design tokens like Home's: one filled,
-/// the rest outlined. A system prominent button goes grey whenever its window
-/// is not the key one — which is exactly how a recording stopped from the
-/// menu bar finds this card — and its white label is hard to read on the mint
-/// accent of the dark appearance.
-private struct ResultCardButton: View {
-    enum Kind {
-        case primary
-        case secondary
-    }
-
-    let title: String
-    var icon: String?
-    let kind: Kind
-    let action: () -> Void
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: Spacing.xs + 2) {
-                if let icon {
-                    Image(systemName: icon)
-                        .font(.system(size: 12, weight: .semibold))
-                        .accessibilityHidden(true)
-                }
-                Text(title)
-                    .font(.bodyMedium)
-                    .lineLimit(1)
-            }
-            .foregroundColor(kind == .primary ? .brandAccentForeground : .textPrimary)
-            .padding(.horizontal, Spacing.md)
-            .frame(minHeight: 34)
-            .background(fill)
-            .overlay(
-                RoundedRectangle(cornerRadius: Radius.sm)
-                    .strokeBorder(border, lineWidth: Stroke.thin)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
-            .contentShape(RoundedRectangle(cornerRadius: Radius.sm))
-        }
-        // A plain button keeps the system's own keyboard focus behaviour:
-        // reachable with full keyboard access, never taking focus on a click.
-        .buttonStyle(.plain)
-        .onHover { isHovering = $0 }
-        .animation(Motion.microInteraction, value: isHovering)
-        .accessibilityLabel(title)
-    }
-
-    private var fill: Color {
-        switch kind {
-        case .primary:
-            return isHovering ? .brandAccentHover : .brandAccent
-        case .secondary:
-            return Color.bgRoot.opacity(isHovering ? 0.95 : 0.6)
-        }
-    }
-
-    private var border: Color {
-        switch kind {
-        case .primary: return .clear
-        case .secondary: return .borderActive
-        }
-    }
-}
-
-/// The one button that replaced the 实时版 | 精修版 switch: it names the other
-/// version, the one you can go to.
+/// Which transcript is on screen, and the other one a recording may have.
+///
+/// 0.8.1 had a 实时版 | 精修版 switch; 0.8.2 one quiet button naming the
+/// version you could go to. It is now a pill that shows the version on
+/// screen — a control showing its value, like every other pill — and its menu
+/// lists both, the one on screen ticked.
 enum TranscriptVersionButtonPolicy {
-    /// The version the button leads to, given the one on screen; nil when
+    /// The version the pill leads to, given the one on screen; nil when
     /// what is on screen is not a transcript.
     static func destination(showing: NotebookTabDisplayType) -> NotebookTabDisplayType? {
         switch showing {
@@ -436,6 +446,21 @@ enum TranscriptVersionButtonPolicy {
         }
     }
 
+    /// The name of a version: what the pill shows for the one on screen,
+    /// and what its menu calls each.
+    static func titleKey(_ version: NotebookTabDisplayType) -> String? {
+        switch version {
+        case .realtimeTranscript: return "resources.realtime"
+        case .asyncTranscript: return "resources.async"
+        case .manualNote: return nil
+        }
+    }
+
+    static func title(_ version: NotebookTabDisplayType) -> String? {
+        titleKey(version).map { String(localized: String.LocalizationValue($0)) }
+    }
+
+    /// What the pill says on hover: where a click on the other version goes.
     static func labelKey(showing: NotebookTabDisplayType) -> String? {
         switch destination(showing: showing) {
         case .realtimeTranscript: return "session.version.show_live"
@@ -449,7 +474,7 @@ enum TranscriptVersionButtonPolicy {
     }
 
     /// A recording that never had live text (an imported file) has no other
-    /// version to go back to: the button would open an empty page.
+    /// version to go back to: the pill would open an empty page.
     static func isOffered(showing: NotebookTabDisplayType, hasLiveVersion: Bool) -> Bool {
         switch destination(showing: showing) {
         case .realtimeTranscript: return hasLiveVersion

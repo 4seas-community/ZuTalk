@@ -4,9 +4,10 @@
 // 活动多的时候(一个月一百多场,多的一天八场)靠翻日历来选。「开始录音」页、
 // 录音条、共享面板要换一场活动时,打开的都是这一张表。
 //
-// 它只负责选:选了哪一场(或「这场不交」)交还给打开它的地方,由那边决定是
+// 它只负责选:选了哪一场(或「不交」)交还给打开它的地方,由那边决定是
 // 记到下一场录音上,还是绑到一场已有的录音上。活动列表读的是存在本机的那
-// 一份,断网时照样能选,底下写着上次更新的时间。
+// 一份,断网时照样能选;底下左边那一颗写着上次更新的时刻,点它就刷新,没读
+// 到新的时带一个警示,原因在它的提示里。
 
 import SwiftUI
 
@@ -88,9 +89,10 @@ struct CityEventPickerSheet: View {
                     .iconSizeSmall()
                     .foregroundColor(.textTertiary)
                     .accessibilityHidden(true)
-                TextField(String(localized: "city.picker.search"), text: $query)
+                TextField(String(localized: "city.picker.search_word"), text: $query)
                     .textFieldStyle(.plain)
                     .font(.sans12)
+                    .help(String(localized: "city.picker.search"))
                     .accessibilityLabel(Text(String(localized: "city.picker.search")))
                     .accessibilityIdentifier(AccessibilityID.cityPickerSearch)
             }
@@ -227,33 +229,34 @@ struct CityEventPickerSheet: View {
 
     private var footer: some View {
         HStack(spacing: Spacing.sm) {
-            Text(updatedText)
-                .font(.sans11)
-                .foregroundColor(.textTertiary)
-                .lineLimit(1)
             if city.refreshingCalendar {
-                ProgressView().controlSize(.small)
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(height: PillMetrics.height)
             } else {
-                Button(String(localized: "city.picker.refresh")) {
+                // 状态和动作是同一颗:写着上次更新的时刻,点它就刷新。
+                ActionPill(
+                    updatedWord,
+                    systemImage: "arrow.clockwise",
+                    style: .quiet,
+                    mark: city.calendarProblem == nil ? .none : .warning,
+                    // 读不到新的不耽误选:存着的那一份还在。原因在这里。
+                    help: [updatedText, city.calendarProblem].compactMap { $0 }.joined(separator: "\n"),
+                    accessibilityLabel: String(localized: "city.picker.refresh")
+                ) {
                     city.refreshCalendar()
                 }
-                .buttonStyle(.link)
-                .font(.sans11)
                 .accessibilityIdentifier(AccessibilityID.cityPickerRefresh)
             }
-            if let problem = city.calendarProblem {
-                // 读不到新的不耽误选:存着的那一份还在。
-                Label(problem, systemImage: "exclamationmark.triangle")
-                    .font(.sans11)
-                    .foregroundColor(.warning)
-                    .lineLimit(1)
-                    .help(problem)
-            }
             Spacer(minLength: Spacing.sm)
-            Button(String(localized: "city.action.not_filing")) {
+            ActionPill(
+                String(localized: "home.card.dont_file"),
+                systemImage: "xmark.circle",
+                style: .quiet,
+                help: String(localized: "city.action.not_filing")
+            ) {
                 choose(nil)
             }
-            .buttonStyle(.link)
             .accessibilityIdentifier(AccessibilityID.cityPickerNotFiling)
             Button(String(localized: "common.cancel"), action: dismiss)
                 .keyboardShortcut(.cancelAction)
@@ -267,6 +270,14 @@ struct CityEventPickerSheet: View {
         }
         .padding(.horizontal, Spacing.md)
         .padding(.vertical, Spacing.sm + 2)
+    }
+
+    /// 那一颗上写的:上次更新的时刻;还没读到过就是「刷新」。
+    private var updatedWord: String {
+        guard city.calendar.fetchedAtEpoch > 0 else {
+            return String(localized: "city.picker.refresh")
+        }
+        return CityText.moment(epoch: city.calendar.fetchedAtEpoch, calendar: calendar)
     }
 
     private var updatedText: String {

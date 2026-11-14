@@ -4,7 +4,7 @@
 //! city-side checks know what to expect.
 
 use serde_json::{json, Value};
-use vt_city::publish::{Correction, Sentence, TakeInput, Translated};
+use vt_city::publish::{Correction, PartInput, Sentence, TakeInput, Translated, MIME_M4A};
 
 const LINES: [(i64, i64, &str, &str, &str, &str); 6] = [
     (
@@ -116,8 +116,39 @@ pub fn take(event_id: &str, channel_ids: &[String], started_ms: i64) -> TakeInpu
             ("host".to_string(), "Ada".to_string()),
             ("guest".to_string(), "Ben".to_string()),
         ],
-        marks_ms: vec![9_100, 21_000],
         channel_ids: channel_ids.to_vec(),
+    }
+}
+
+/// The sample's audio as two invented parts: twenty seconds, then ten. The
+/// files are named by a stand-in for their SHA-256; nothing here has bytes.
+#[allow(dead_code)]
+pub fn parts(take_id: &str) -> Vec<PartInput> {
+    [
+        (0, "a1", 161_803, 0, 20_000, "01234567899876543210"),
+        (1, "b2", 80_902, 20_000, 10_000, "5550005550"),
+    ]
+    .into_iter()
+    .map(|(n, digit, size, t0_ms, dur_ms, levels)| PartInput {
+        take_id: take_id.to_string(),
+        n,
+        file: digit.repeat(32),
+        size,
+        t0_ms,
+        dur_ms,
+        mime: MIME_M4A.to_string(),
+        levels: levels.to_string(),
+    })
+    .collect()
+}
+
+/// The second part again, exported a second time with other bytes.
+#[allow(dead_code)]
+pub fn part_again(take_id: &str) -> PartInput {
+    PartInput {
+        file: "c3".repeat(32),
+        size: 80_911,
+        ..parts(take_id).remove(1)
     }
 }
 
@@ -158,7 +189,11 @@ pub fn expected() -> Value {
             "t": t, "d": d, "sp": speaker, "text": text,
         })).collect::<Vec<_>>(),
         "names": {"host": "Ada", "guest": "Ben"},
-        "marks": [9_100, 21_000],
+        "parts": [
+            {"n": 0, "file": "a1".repeat(32), "size": 161_803, "t0": 0, "dur": 20_000, "mime": "audio/mp4", "lv": "01234567899876543210"},
+            {"n": 1, "file": "b2".repeat(32), "size": 80_902, "t0": 20_000, "dur": 10_000, "mime": "audio/mp4", "lv": "5550005550"},
+        ],
+        "part_again": {"n": 1, "file": "c3".repeat(32), "size": 80_911, "t0": 20_000, "dur": 10_000, "mime": "audio/mp4", "lv": "5550005550"},
         "languages": {
             "zh": LINES.iter().zip(CHINESE).map(|((t, ..), chinese)| (t.to_string(), json!(chinese))).collect::<serde_json::Map<_, _>>(),
             "en": by_language("en"),

@@ -85,10 +85,44 @@ enum RecordingPresentation {
         let trimmed = stored.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
+
+    /// The one line a recording goes by in a list: its title, else its first
+    /// words on one line. Nil when it has neither, and the row says so with
+    /// a placeholder.
+    nonisolated static func rowWords(title: String?, preview: String) -> String? {
+        if let title = title.flatMap(Self.title) { return title }
+        let words = preview
+            .split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { $0.isEmpty == false }
+            .joined(separator: " ")
+        return words.isEmpty ? nil : words
+    }
+
+    /// What a row says about a recording beyond its name, languages and
+    /// topic: one thing at most. A state that needs attention comes first;
+    /// then where the audio is, when that is another Mac; then that it was
+    /// brought in rather than recorded here.
+    enum RowMark: Equatable {
+        case status(Status)
+        case otherDevice(String)
+        case imported
+
+        nonisolated static func resolve(
+            status: Status?,
+            recordedOn: String?,
+            isImport: Bool
+        ) -> RowMark? {
+            if let status { return .status(status) }
+            if let recordedOn { return .otherDevice(recordedOn) }
+            return isImport ? .imported : nil
+        }
+    }
 }
 
-/// A recording's list entry text: its title when it has one, and what was
-/// said. Without a title the first words take the title's place.
+/// A recording's name in a list, on one line: its title, else what was said
+/// first, else a word for why there is nothing. A state that needs attention
+/// follows it as an icon and a word.
 struct RecordingRowText: View {
     let title: String?
     let preview: String
@@ -96,50 +130,20 @@ struct RecordingRowText: View {
     var status: RecordingPresentation.Status?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            if let title {
-                HStack(spacing: Spacing.sm) {
-                    Text(title)
-                        .font(.bodyMedium)
-                        .foregroundColor(.textPrimary)
-                        .lineLimit(1)
-                    statusBadge
-                }
-                if preview.isEmpty == false {
-                    Text(preview)
-                        .font(.bodySM)
-                        .foregroundColor(.textSecondary)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            } else if preview.isEmpty == false {
-                HStack(alignment: .firstTextBaseline, spacing: Spacing.sm) {
-                    Text(preview)
-                        .font(.bodyMedium)
-                        .foregroundColor(.textPrimary)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                    statusBadge
-                }
-            } else {
-                HStack(spacing: Spacing.sm) {
-                    Text(placeholder ?? String(localized: "recording.row.no_words"))
-                        .font(.bodyMedium)
-                        .foregroundColor(.textTertiary)
-                    statusBadge
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var statusBadge: some View {
-        if let status {
-            Label(status.text, systemImage: status.icon)
-                .font(.bodySM)
-                .foregroundColor(status.color)
+        let words = RecordingPresentation.rowWords(title: title, preview: preview)
+        HStack(spacing: Spacing.sm) {
+            Text(words ?? placeholder ?? String(localized: "recording.row.no_words"))
+                .font(.bodyMedium)
+                .foregroundColor(words == nil ? .textTertiary : .textPrimary)
                 .lineLimit(1)
-                .fixedSize()
+                .truncationMode(.tail)
+            if let status {
+                Label(status.text, systemImage: status.icon)
+                    .font(.bodySM)
+                    .foregroundColor(status.color)
+                    .lineLimit(1)
+                    .fixedSize()
+            }
         }
     }
 }

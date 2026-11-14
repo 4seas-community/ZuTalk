@@ -208,11 +208,22 @@ final class ProviderConnectionsViewModel: ObservableObject {
 
 }
 
+/// 一把密钥在设置里画出来的两样:存没存、载没载入(`snapshot`),和最近一次
+/// 验证的结论。纯数据,测试可以给任何一种。
+struct SettingsKeyModel: Equatable {
+    var snapshot: ProviderCredentialSnapshot
+    var verification: ProviderConnectionVerificationState = .unverified
+}
+
 struct ProviderSettingsView: View {
     /// 这份视图在「设置 › 高级」里出现两次,各管一把自己的密钥:`.captions` 是
     /// 出字和精修用的那一把,`.languageModel` 是整理标记用的那一把(可选)。
-    /// 邀请码不在这里,在「账号 › 转录和翻译」;引擎和模型的名字在同一页的
-    /// 「诊断信息」里。供应商的名字只在这一节出现,所以标题直接叫它的名字。
+    /// 邀请码不在这里,在「账号 › 出字」;引擎和模型的名字在同一页的「诊断
+    /// 信息」里。供应商的名字只在这一节出现,所以标题直接叫它的名字。
+    ///
+    /// 一把密钥一行:名字、状态(一个图标加一个词)、输入栏、保存。页面上没有
+    /// 句子。两处必须让人读得到的告知 —— 密钥未加密保存在这台 Mac 上;什么
+    /// 时候音频、哪些文字会发出去 —— 在各自标题旁边的 ⓘ 里。
     enum Scope {
         case captions
         case languageModel
@@ -225,9 +236,10 @@ struct ProviderSettingsView: View {
     @ObservedObject private var modelStore = LanguageModelPresentationStore.shared
     @ObservedObject private var assistance = LanguageModelAssistanceStore.shared
     @ObservedObject private var invite = CommunityInviteSession.shared
+    @Environment(\.settingsFixture) private var fixture
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Spacing.xl) {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
             switch scope {
             case .captions:
                 captionsContent
@@ -236,11 +248,7 @@ struct ProviderSettingsView: View {
             }
 
             if let operationError = viewModel.operationError {
-                Label(operationError, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundColor(.signalRed)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityElement(children: .combine)
+                SettingsProblem(operationError, tint: .signalRed)
                     .accessibilityLabel(String(
                         format: String(localized: "settings.credentials.operation_error_format"),
                         operationError
@@ -248,6 +256,8 @@ struct ProviderSettingsView: View {
             }
         }
         .onAppear {
+            // 画给测试看的时候不碰 store。
+            guard fixture == nil else { return }
             viewModel.refresh()
             modelStore.refresh()
             assistance.pushToCore()
@@ -286,11 +296,29 @@ struct ProviderSettingsView: View {
         )
     }
 
+    /// What the page draws for one key: the fixed picture when a test gave
+    /// one, otherwise the live session and its last verdict.
+    private func keyModel(for account: ProviderCredentialAccount) -> SettingsKeyModel {
+        if let fixture {
+            return fixture.keys[account] ?? SettingsKeyModel(snapshot: ProviderCredentialSnapshot(
+                account: account,
+                scope: account.scope,
+                isSaved: false,
+                isActive: false
+            ))
+        }
+        return SettingsKeyModel(
+            snapshot: viewModel.snapshot(for: account),
+            verification: verificationStore.state(for: account)
+        )
+    }
+
     @ViewBuilder
     private var captionsContent: some View {
         SettingsGroup(
             title: ownKeyTitle(captureAccounts),
-            subtitle: String(localized: "settings.advanced.capture_key_subtitle")
+            subtitle: String(localized: "settings.advanced.capture_key_subtitle"),
+            info: captureDisclosure
         ) {
             if let recoveryError = viewModel.recoveryError {
                 credentialRecoveryBanner(recoveryError)
@@ -304,21 +332,17 @@ struct ProviderSettingsView: View {
                     credentialRow(account)
                 }
             }
-
-            VStack(alignment: .leading, spacing: Spacing.sm) {
-                Label(
-                    String(localized: "settings.credentials.trust_boundary_notice"),
-                    systemImage: "externaldrive.fill.badge.checkmark"
-                )
-                Label(
-                    String(localized: "settings.services.no_egress_notice"),
-                    systemImage: "lock.shield.fill"
-                )
-            }
-            .font(Font.sans11)
-            .foregroundColor(.textSecondary)
-            .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    /// 出字那把密钥旁边 ⓘ 里的几句:什么时候用得到;密钥未加密存在这台 Mac
+    /// 上;存密钥本身什么都不发,什么时候音频才会发出去。
+    private var captureDisclosure: String {
+        [
+            String(localized: "settings.advanced.capture_key_subtitle"),
+            String(localized: "settings.credentials.trust_boundary_notice"),
+            String(localized: "settings.services.no_egress_notice"),
+        ].joined(separator: "\n")
     }
 
     /// Credentials the app needs before it can transcribe anything.
@@ -330,14 +354,18 @@ struct ProviderSettingsView: View {
         ProviderCredentialAccount.allCases.filter { $0.isRequiredForCapture == false }
     }
 
+    private var cleanupEnabled: Bool {
+        fixture?.cleanupEnabled ?? assistance.isEnabled
+    }
+
     /// The model credential gets its own card rather than another row beside
     /// the capture key.
     ///
     /// They are not peers. One is required and its traffic is audio the user
     /// already agreed to send; this one is optional, and configuring it is the
     /// moment a person decides whether their transcripts may leave the
-    /// machine. That decision deserves the sentence underneath, where it can
-    /// be read before the field is filled rather than after.
+    /// machine. What leaves and what never does is the ⓘ beside the card's
+    /// title, where it can be read before the field is filled.
     @ViewBuilder
     private var languageModelCard: some View {
         if languageModelAccounts.isEmpty == false {
@@ -346,43 +374,62 @@ struct ProviderSettingsView: View {
                 subtitle: String(
                     format: String(localized: "settings.services.model.subtitle_format"),
                     activeModelId
-                )
+                ),
+                info: modelDisclosure
             ) {
                 languageModelRows
                     .accessibilityIdentifier("settings.services.model")
             }
             .task {
-                guard invite.isEnabled, invite.isActive else { return }
+                guard fixture == nil, invite.isEnabled, invite.isActive else { return }
                 await invite.refreshQuota()
             }
         }
     }
 
+    /// 整理那把密钥旁边 ⓘ 里的几句:它是做什么的、用哪个模型;开着的时候发
+    /// 什么、关了以后怎样;只发标记的段落;录音从不发。邀请包含整理的时候,
+    /// 再加上段落经谁转交。
+    private var modelDisclosure: String {
+        var lines = [
+            String(
+                format: String(localized: "settings.services.model.subtitle_format"),
+                activeModelId
+            ),
+            String(localized: "settings.services.model.enable_detail"),
+            String(localized: "settings.services.model.egress_notice"),
+            String(localized: "settings.services.model.audio_notice"),
+        ]
+        if let offer = inviteCleanupOffer {
+            lines.append(inviteCleanupDetail(offer))
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private var inviteCleanupOffer: CommunityInvitePassageDigestOffer? {
+        guard fixture == nil else { return nil }
+        return invite.coversPassageDigest ? invite.passageDigestOffer : nil
+    }
+
     private var languageModelRows: some View {
         SettingsCard {
-            SettingsFullRow {
-                Toggle(isOn: Binding(
-                    get: { assistance.isEnabled },
-                    set: { assistance.setEnabled($0) }
-                )) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(String(localized: "settings.services.model.enable"))
-                            .font(Font.sans12)
-                            .foregroundColor(.textPrimary)
-                        Text(String(localized: "settings.services.model.enable_detail"))
-                            .font(.caption)
-                            .foregroundColor(.textSecondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+            SettingsRow(
+                String(localized: "settings.services.model.enable"),
+                description: String(localized: "settings.services.model.enable_detail")
+            ) {
+                SettingsSwitch(
+                    isOn: cleanupEnabled,
+                    label: String(localized: "settings.services.model.enable"),
+                    help: String(localized: "settings.services.model.enable_detail")
+                ) {
+                    assistance.setEnabled($0)
                 }
-                .toggleStyle(.switch)
-                .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityIdentifier("settings.services.model.enable")
             }
 
             SettingsRowDivider()
 
-            if let offer = invite.coversPassageDigest ? invite.passageDigestOffer : nil {
+            if let offer = inviteCleanupOffer {
                 inviteCleanupRow(offer)
                 SettingsRowDivider()
             }
@@ -394,34 +441,18 @@ struct ProviderSettingsView: View {
                 credentialRow(account)
             }
 
-            SettingsRowDivider()
-
-            SettingsFullRow {
-                VStack(alignment: .leading, spacing: Spacing.xs) {
-                    Label(
-                        String(localized: "settings.services.model.egress_notice"),
-                        systemImage: "paperplane"
-                    )
-                    .font(.caption)
-                    .foregroundColor(.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                    Text(String(localized: "settings.services.model.audio_notice"))
-                        .font(.caption)
-                        .foregroundColor(.textTertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    if let consoleURL = modelStore.engine.consoleURL {
-                        Link(
-                            String(localized: "settings.services.model.console_link"),
-                            destination: consoleURL
-                        )
-                        .font(.caption)
-                        .padding(.top, 2)
-                        .accessibilityIdentifier("settings.services.model.console_link")
+            if let consoleURL = modelStore.engine.consoleURL {
+                SettingsRowDivider()
+                SettingsFullRow {
+                    ActionPill(
+                        String(localized: "settings.services.model.console_link"),
+                        systemImage: "arrow.up.right",
+                        style: .quiet
+                    ) {
+                        NSWorkspace.shared.open(consoleURL)
                     }
+                    .accessibilityIdentifier("settings.services.model.console_link")
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
@@ -429,14 +460,12 @@ struct ProviderSettingsView: View {
     /// Whether a key the user saved is loaded. The core sends with it first,
     /// so while it is, the invitation's cleanup is never used.
     private var hasPersonalModelKey: Bool {
-        languageModelAccounts.contains { viewModel.snapshot(for: $0).isActive }
+        languageModelAccounts.contains { keyModel(for: $0).snapshot.isActive }
     }
 
     /// The model a marked passage would actually go to.
     private var activeModelId: String {
-        if hasPersonalModelKey == false,
-           invite.coversPassageDigest,
-           let offer = invite.passageDigestOffer {
+        if hasPersonalModelKey == false, let offer = inviteCleanupOffer {
             return offer.model
         }
         return modelStore.engine.modelId
@@ -444,42 +473,40 @@ struct ProviderSettingsView: View {
 
     /// The invitation includes cleanup. Said where the key field is, because
     /// the first thing an invited user wonders here is whether they need one —
-    /// and the second is where their passage goes if they do not.
+    /// and the second is where their passage goes if they do not: that
+    /// sentence is this status's tooltip, and one of the lines behind the ⓘ.
     private func inviteCleanupRow(_ offer: CommunityInvitePassageDigestOffer) -> some View {
         SettingsFullRow {
-            VStack(alignment: .leading, spacing: 2) {
-                Label(
-                    String(localized: "settings.services.model.invite_included"),
-                    systemImage: "gift.fill"
-                )
-                .font(Font.sans12)
-                .foregroundColor(.textPrimary)
-                Text(hasPersonalModelKey
-                    ? String(
-                        format: String(localized: "settings.services.model.invite_superseded_format"),
-                        modelStore.engine.providerDisplayName,
-                        modelStore.engine.providerDisplayName
-                    )
-                    : String(
-                        format: String(localized: "settings.services.model.invite_included_detail_format"),
-                        offer.provider,
-                        offer.remainingToday
-                    ))
-                    .font(.caption)
-                    .foregroundColor(.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .accessibilityElement(children: .combine)
+            SettingsStatus(
+                String(localized: "settings.services.model.invite_included"),
+                systemImage: "gift.fill",
+                tint: .brandAccent,
+                help: inviteCleanupDetail(offer)
+            )
             .accessibilityIdentifier("settings.services.model.invite_included")
         }
     }
 
+    private func inviteCleanupDetail(_ offer: CommunityInvitePassageDigestOffer) -> String {
+        hasPersonalModelKey
+            ? String(
+                format: String(localized: "settings.services.model.invite_superseded_format"),
+                modelStore.engine.providerDisplayName,
+                modelStore.engine.providerDisplayName
+            )
+            : String(
+                format: String(localized: "settings.services.model.invite_included_detail_format"),
+                offer.provider,
+                offer.remainingToday
+            )
+    }
+
     private func credentialRow(_ account: ProviderCredentialAccount) -> some View {
-        ProviderCredentialAutoSaveRow(
+        let model = keyModel(for: account)
+        return ProviderCredentialAutoSaveRow(
             account: account,
-            snapshot: viewModel.snapshot(for: account),
-            verificationState: verificationStore.state(for: account),
+            snapshot: model.snapshot,
+            verificationState: model.verification,
             onVerifyAndApply: viewModel.verifyAndApply,
             onVerifySaved: viewModel.verifySavedCredential,
             onRequestDeletion: {
@@ -488,24 +515,24 @@ struct ProviderSettingsView: View {
         )
     }
 
+    /// 存着的密钥文件读不出来:出了事的那一句,和唯一能做的事。怎么办的那句
+    /// 在 ⓘ 里。
     @ViewBuilder
     private func credentialRecoveryBanner(_ message: String) -> some View {
-        SettingsCard(title: String(localized: "settings.credentials.recovery_title")) {
+        SettingsCard(
+            title: String(localized: "settings.credentials.recovery_title"),
+            info: String(localized: "settings.credentials.recovery_hint")
+        ) {
             SettingsFullRow {
-                Text(message)
-                    .font(.caption)
-                    .foregroundColor(.signalAmber)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(String(localized: "settings.credentials.recovery_hint"))
-                    .font(.caption)
-                    .foregroundColor(.textTertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Button(String(localized: "settings.credentials.reset_file")) {
+                SettingsProblem(message)
+                ActionPill(
+                    String(localized: "settings.credentials.reset_file"),
+                    systemImage: "trash",
+                    tone: .warning,
+                    help: String(localized: "settings.credentials.reset_file_accessibility_hint")
+                ) {
                     viewModel.requestDeletion(.savedCredentialFile)
                 }
-                .buttonStyle(.bordered)
-                .frame(minHeight: 44)
-                .accessibilityHint(String(localized: "settings.credentials.reset_file_accessibility_hint"))
             }
         }
     }
@@ -550,6 +577,12 @@ struct ProviderSettingsView: View {
     }
 }
 
+/// 一把密钥的那一行。
+///
+/// 没存的时候(或者正在换):名字、状态、输入栏、「保存」。存了以后:名字、
+/// 状态、「验证」、更换、删除。状态是一个图标加一个词 —— 未保存、已保存、
+/// 已验证、无效;这把密钥此刻能做什么的那一句在状态的悬停提示里。验证没
+/// 通过的时候,多一行说出了什么事(出错可以写整句),怎么办在那一行的提示里。
 private struct ProviderCredentialAutoSaveRow: View {
     let account: ProviderCredentialAccount
     let snapshot: ProviderCredentialSnapshot
@@ -578,156 +611,165 @@ private struct ProviderCredentialAutoSaveRow: View {
 
     var body: some View {
         SettingsFullRow {
-            VStack(alignment: .leading, spacing: Spacing.sm) {
-                HStack(alignment: .center, spacing: Spacing.md) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(account.displayName)
-                            .font(Font.sans12)
-                            .foregroundColor(.textPrimary)
-                        statusLabel
-                    }
-
-                    Spacer(minLength: Spacing.md)
-
-                    if isConfigured, showsEditor == false {
-                        Button {
-                            verifySavedCredential()
-                        } label: {
-                            Label(
-                                String(localized: "settings.credentials.verify"),
-                                systemImage: "checkmark.shield"
-                            )
-                            .frame(minHeight: 44)
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(isWorking || verificationState == .checking)
-
-                        Button {
-                            beginReplacement()
-                        } label: {
-                            Image(systemName: "pencil")
-                                .frame(width: 44, height: 44)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(isWorking)
-                        .help(String(localized: "settings.credentials.replace"))
-                        .accessibilityLabel(String(
-                            format: String(localized: "settings.credentials.replace_accessibility_format"),
-                            account.displayName
-                        ))
-
-                        Button {
-                            onRequestDeletion(account)
-                        } label: {
-                            Image(systemName: "trash")
-                                .frame(width: 44, height: 44)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundColor(.signalRed)
-                        .disabled(isWorking)
-                        .help(String(localized: "settings.credentials.clear"))
-                        .accessibilityLabel(String(
-                            format: String(localized: "settings.credentials.clear_accessibility_format"),
-                            account.displayName
-                        ))
-                    }
-                }
+            HStack(alignment: .center, spacing: PillMetrics.spacing) {
+                Text(account.displayName)
+                    .font(PillMetrics.font)
+                    .foregroundColor(.textPrimary)
+                    .fixedSize()
+                statusLabel
 
                 if showsEditor {
-                    HStack(spacing: Spacing.sm) {
-                        SecureField(
-                            String(localized: "settings.credentials.enter_key"),
-                            text: $draft
-                        )
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 420)
-                        .frame(minHeight: 44)
-                        .focused($isFocused)
-                        .disabled(isWorking)
-                        .onSubmit(verifyAndCommitDraft)
-                        .accessibilityLabel(String(
-                            format: String(localized: "settings.credentials.field_accessibility_format"),
-                            account.displayName
-                        ))
-                        .accessibilityHint(String(
-                            localized: "settings.credentials.field_replacement_hint"
-                        ))
-
-                        Button(String(localized: "settings.credentials.verify_and_save")) {
-                            verifyAndCommitDraft()
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.regular)
-                        .frame(minHeight: 44)
-                        .disabled(
-                            isWorking
-                                || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                        )
-                        .accessibilityLabel(String(
-                            format: String(localized: "settings.credentials.verify_and_save_accessibility_format"),
-                            account.displayName
-                        ))
-                    }
-
-                    // Each account is checked by its own service; this said
-                    // "Soniox" under the language-model key too.
-                    Text(String(
-                        format: String(localized: "settings.credentials.verify_before_save_format"),
-                        account.displayName
-                    ))
-                        .font(.caption2)
-                        .foregroundColor(.textTertiary)
+                    editor
+                } else {
+                    Spacer(minLength: Spacing.sm)
+                    savedActions
                 }
+            }
 
-                // Sentences, not metadata: `.caption` is the monospaced label face.
-                Text(statusHint)
-                    .font(.sans11)
-                    .foregroundColor(.textTertiary)
-                    .fixedSize(horizontal: false, vertical: true)
+            if let failure = verificationFailure {
+                SettingsProblem(failure, tint: statusColor)
+                    .settingsExplained(statusHint)
+            }
 
-                if let errorMessage {
-                    Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption2)
-                        .foregroundColor(.signalRed)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .accessibilityElement(children: .combine)
-                }
+            if let errorMessage {
+                SettingsProblem(errorMessage, tint: .signalRed)
             }
         }
     }
 
+    /// The field and Save. The field is as tall as the pills beside it, like
+    /// every other field in Settings (`SettingsField`).
+    @ViewBuilder
+    private var editor: some View {
+        SettingsField(
+            String(localized: "settings.credentials.key_placeholder"),
+            text: $draft,
+            isSecure: true,
+            focus: $isFocused
+        )
+        .onSubmit(verifyAndCommitDraft)
+        .disabled(isWorking)
+        // Where the key is kept, and that it is kept unencrypted.
+        .help(String(localized: "settings.credentials.local_storage_hint"))
+        .accessibilityLabel(String(
+            format: String(localized: "settings.credentials.field_accessibility_format"),
+            account.displayName
+        ))
+        .accessibilityHint(String(
+            localized: "settings.credentials.field_replacement_hint"
+        ))
+
+        if isWorking {
+            ProgressView()
+                .controlSize(.small)
+                .frame(width: PillMetrics.height, height: PillMetrics.height)
+        } else {
+            // Each account is checked by its own service before it is
+            // saved; the tooltip says so, by name.
+            ActionPill(
+                String(localized: "common.save"),
+                systemImage: "checkmark",
+                help: String(
+                    format: String(localized: "settings.credentials.verify_before_save_format"),
+                    account.displayName
+                ),
+                accessibilityLabel: String(
+                    format: String(localized: "settings.credentials.verify_and_save_accessibility_format"),
+                    account.displayName
+                ),
+                action: verifyAndCommitDraft
+            )
+            .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        }
+
+        if isReplacingCredential, isWorking == false {
+            ActionPill(
+                String(localized: "common.cancel"),
+                systemImage: "xmark",
+                style: .quiet
+            ) {
+                draft = ""
+                errorMessage = nil
+                isReplacingCredential = false
+            }
+        }
+    }
+
+    /// Verify has its word. Replace and delete are the pencil and the bin,
+    /// named in their tooltips: three words do not fit beside the name and
+    /// the status in the narrowest window in every language.
+    @ViewBuilder
+    private var savedActions: some View {
+        ActionPill(
+            String(localized: "settings.credentials.verify"),
+            systemImage: "checkmark.shield",
+            action: verifySavedCredential
+        )
+        .disabled(isWorking || verificationState == .checking)
+
+        ActionPill(
+            nil,
+            systemImage: "pencil",
+            help: String(localized: "settings.credentials.replace"),
+            accessibilityLabel: String(
+                format: String(localized: "settings.credentials.replace_accessibility_format"),
+                account.displayName
+            ),
+            action: beginReplacement
+        )
+        .disabled(isWorking)
+
+        ActionPill(
+            nil,
+            systemImage: "trash",
+            iconTint: .signalRed,
+            help: String(localized: "settings.credentials.clear"),
+            accessibilityLabel: String(
+                format: String(localized: "settings.credentials.clear_accessibility_format"),
+                account.displayName
+            )
+        ) {
+            onRequestDeletion(account)
+        }
+        .disabled(isWorking)
+    }
+
     private var statusLabel: some View {
-        Label(statusTitle, systemImage: statusIcon)
-            .font(.sans11)
-            .foregroundColor(statusColor)
+        SettingsStatus(statusWord, systemImage: statusIcon, tint: statusColor, help: statusHint)
             .accessibilityLabel(statusAccessibilityLabel)
     }
 
-    private var statusTitle: String {
+    /// The one word. A check that failed for a reason other than the key
+    /// itself (no network, no balance) leaves the word about the key as it
+    /// was and says what happened on the line below.
+    private var statusWord: String {
         switch verificationState {
         case .checking:
             return String(localized: "settings.credentials.verifying")
         case .ready:
-            return String(
-                format: String(localized: "settings.credentials.verification.ready_format"),
-                account.displayName
-            )
-        case .invalidCredential,
-             .organizationBalanceExhausted,
+            return String(localized: "settings.credentials.status.verified")
+        case .invalidCredential:
+            return String(localized: "settings.credentials.status.invalid")
+        case .organizationBalanceExhausted,
              .organizationMonthlyBudgetExhausted,
              .projectMonthlyBudgetExhausted,
              .quotaExhausted,
              .networkUnavailable,
              .rateLimited,
-             .serviceUnavailable:
-            return ProviderConnectionVerificationFailure(verificationState, account: account)
-                .localizedDescription
-        case .unverified:
+             .serviceUnavailable,
+             .unverified:
             break
         }
-        return presentationState.localizedStatusTitle
+        return presentationState == .savedLoadedUnverified
+            ? String(localized: "settings.credentials.status.saved")
+            : presentationState.localizedStatusTitle
+    }
+
+    /// The sentence for a check that did not pass; nil while there is none.
+    private var verificationFailure: String? {
+        guard verificationState.failureHintFormatKey != nil else { return nil }
+        return ProviderConnectionVerificationFailure(verificationState, account: account)
+            .localizedDescription
     }
 
     private var statusIcon: String {
@@ -816,6 +858,14 @@ private struct ProviderCredentialAutoSaveRow: View {
     }
 
     private var statusAccessibilityLabel: String {
+        // A verdict is the status: read it rather than only "saved".
+        if case .ready = verificationState {
+            return String(
+                format: String(localized: "settings.credentials.verification.ready_format"),
+                account.displayName
+            )
+        }
+        if let verificationFailure { return verificationFailure }
         let key: String.LocalizationValue = switch presentationState {
         case .savedLoadedUnverified:
             "settings.credentials.accessibility_applied_format"
@@ -867,7 +917,7 @@ private struct ProviderCredentialAutoSaveRow: View {
                 errorMessage = nil
                 isReplacingCredential = false
             } catch is ProviderConnectionVerificationFailure {
-                // The status line and hint already show this verdict.
+                // The status and the line under it already show this verdict.
                 errorMessage = nil
             } catch {
                 errorMessage = error.localizedDescription

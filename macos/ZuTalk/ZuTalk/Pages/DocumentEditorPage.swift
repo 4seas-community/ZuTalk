@@ -282,6 +282,7 @@ struct DocumentEditorPage: View {
                 .audioDestroyConfirmation(
                     isPresented: $isConfirmingAudioDestroy,
                     recordingTitle: recordingDisplayTitle,
+                    filedAudio: AudioDestroyQuestion.hasFiledAudio(sessionId: effectiveSessionId),
                     onConfirm: {
                         guard let sessionId = effectiveSessionId else { return }
                         SessionResourcesViewModel.destroyAudioAndAnnounce(sessionId: sessionId)
@@ -370,10 +371,10 @@ struct DocumentEditorPage: View {
                     .accessibilityHidden(surface.showsTranscriptLayer == false)
                 } else if showTranscript && isShowingCaptureSettings == false {
                     // 用户点了 Transcript tab 但 doc 没 session(纯 scratchpad)
-                    EmptyState(
-                        illustration: { Arcanum003WaveformRuler() },
-                        title: String(localized: "editor.empty.no_transcript_title"),
-                        description: String(localized: "editor.empty.no_transcript_desc")
+                    OneSentenceState(
+                        systemImage: "waveform",
+                        sentence: String(localized: "editor.empty.no_transcript_title"),
+                        detail: String(localized: "editor.empty.no_transcript_desc")
                     )
                 }
 
@@ -425,7 +426,7 @@ struct DocumentEditorPage: View {
         }
         .sheet(isPresented: $isRenamingRecording) {
             RenameSheet(
-                title: String(localized: "session.rename.title"),
+                title: String(localized: "recording.word.rename"),
                 placeholder: String(localized: "library.rename.recording_placeholder"),
                 initialText: editorSession?.title ?? "",
                 allowsEmpty: true
@@ -556,10 +557,10 @@ struct DocumentEditorPage: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                EmptyState(
-                    illustration: { Arcanum003WaveformRuler() },
-                    title: String(localized: "editor.empty.no_doc_title"),
-                    description: String(localized: "editor.empty.no_doc_desc")
+                OneSentenceState(
+                    systemImage: "doc",
+                    sentence: String(localized: "editor.empty.no_doc_title"),
+                    detail: String(localized: "editor.empty.no_doc_desc")
                 )
             }
         }
@@ -599,12 +600,13 @@ struct DocumentEditorPage: View {
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if routeLoadError != nil {
-                EmptyState(
-                    icon: "exclamationmark.triangle",
-                    title: String(localized: "editor.route.load_failed"),
-                    description: String(localized: "session.settings.load_failed"),
-                    action: (
-                        label: String(localized: "session.settings.retry"),
+                OneSentenceState(
+                    systemImage: "exclamationmark.triangle",
+                    sentence: String(localized: "session.settings.load_failed"),
+                    tint: .signalAmber,
+                    action: .init(
+                        title: String(localized: "session.settings.retry"),
+                        systemImage: "arrow.clockwise",
                         handler: { Task { await loadNotebookRoute() } }
                     )
                 )
@@ -617,12 +619,13 @@ struct DocumentEditorPage: View {
         case .asyncNeedsSession:
             // The transcript layer is session-scoped, so the editor layer owns
             // this state rather than falling through to a blank surface.
-            EmptyState(
-                illustration: { Arcanum003WaveformRuler() },
-                title: String(localized: "editor.transcript.async.no_session_title"),
-                description: String(localized: "editor.transcript.async.no_session_desc"),
-                action: (
-                    label: String(localized: "resources.tab"),
+            OneSentenceState(
+                systemImage: "waveform",
+                sentence: String(localized: "editor.transcript.async.no_session_title"),
+                detail: String(localized: "editor.transcript.async.no_session_desc"),
+                action: .init(
+                    title: String(localized: "resources.tab"),
+                    systemImage: "list.bullet.rectangle",
                     handler: showResources
                 )
             )
@@ -636,10 +639,10 @@ struct DocumentEditorPage: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
         case .missingDocument:
-            EmptyState(
-                illustration: { Arcanum003WaveformRuler() },
-                title: String(localized: "editor.empty.no_doc_title"),
-                description: String(localized: "editor.empty.no_doc_desc")
+            OneSentenceState(
+                systemImage: "doc",
+                sentence: String(localized: "editor.empty.no_doc_title"),
+                detail: String(localized: "editor.empty.no_doc_desc")
             )
 
         // Drawn by their own layers in the ZStack; the editor layer is behind
@@ -1299,10 +1302,12 @@ private struct EditorRouteLoadWarning: View {
             .font(.bodySM)
             .foregroundColor(.signalAmber)
             Spacer(minLength: 0)
-            Button(String(localized: "home.workspace.retry"), action: onRetry)
-                .buttonStyle(.plain)
-                .font(.bodyMedium)
-                .frame(minHeight: 36)
+            ActionPill(
+                String(localized: "home.workspace.retry"),
+                systemImage: "arrow.clockwise",
+                style: .quiet,
+                action: onRetry
+            )
         }
         .padding(.horizontal, Spacing.lg)
         .background(Color.bgElevated.opacity(0.24))
@@ -1315,7 +1320,7 @@ private struct EditorRouteLoadWarning: View {
 /// Notebook-scoped tab bar. The three document-backed items come from
 /// NotebookTabViewModel; capture settings is a fourth UI-only surface and never
 /// receives a synthetic tab ID or Loro document ID.
-private struct DocumentTabBar: View {
+struct DocumentTabBar: View {
     let tabs: [NotebookTabViewModel]
     let activeTabId: String?
     let captureSettingsNotebookId: String?
@@ -1347,8 +1352,9 @@ private struct DocumentTabBar: View {
     @ObservedObject private var captureStore = ActiveBilingualTranscriptStore.shared
 
     /// A recording's page has two tabs — its transcript and its notes. Which
-    /// transcript (live or refined) is one quiet button at the far end, not
-    /// two more tabs; everything else about the recording sits behind ⋯.
+    /// transcript (live or refined) is a pill at the far end showing the
+    /// version on screen, not two more tabs; everything else about the
+    /// recording sits behind ⋯.
     private var isRecordingPage: Bool { isTopicContext == false && sessionId != nil }
 
     /// This page's recording is the one being made right now. Then the page
@@ -1437,7 +1443,7 @@ private struct DocumentTabBar: View {
                         destination: effectiveTab(other),
                         onSelect: onSelect
                     )
-                    .padding(.trailing, Spacing.sm)
+                    .padding(.trailing, PillMetrics.spacing)
                 }
                 // Whether this recording reached the city's archive, beside
                 // the menu that holds Share…; it opens that same panel. Not
@@ -1505,37 +1511,39 @@ private struct DocumentTabBar: View {
         )
     }
 
-    /// What people come to a recording's ⋯ for: take the text away, name
-    /// it, file it, and — last, past a divider — the things that remove.
+    /// What people come to a recording's ⋯ for, each in a word: take the
+    /// text away, name it, file it, and — last, past a divider — the things
+    /// that remove. What each removal costs is said by the question it asks
+    /// before doing it, not by a longer name here.
     private var recordingMenu: some View {
-        Menu {
+        MorePill(String(localized: "session.menu.label")) {
             Button(action: onCopyAll) {
-                Label(String(localized: "transcript.copy_all"), systemImage: Icon.copy)
+                Label(String(localized: "recording.word.copy"), systemImage: Icon.copy)
             }
             if let onShare {
                 Button(action: onShare) {
-                    Label(String(localized: "session.share_link"), systemImage: "square.and.arrow.up")
+                    Label(String(localized: "recording.word.share"), systemImage: Icon.export)
                 }
             }
             Button(action: onExport) {
-                Label(String(localized: "editor.export.menu"), systemImage: "tray.and.arrow.up")
+                Label(String(localized: "common.export.action"), systemImage: "tray.and.arrow.up")
             }
             Divider()
             Button(action: onRename) {
-                Label(String(localized: "session.menu.rename"), systemImage: "pencil")
+                Label(String(localized: "recording.word.rename"), systemImage: "pencil")
             }
             Button(action: onFileIntoTopic) {
-                Label(String(localized: "session.menu.file_into_topic"), systemImage: "folder")
+                Label(String(localized: "sidebar.notebook"), systemImage: "folder")
             }
             Button(action: onSelectSessionSettings) {
-                Label(String(localized: "session.menu.settings"), systemImage: "slider.horizontal.3")
+                Label(String(localized: "session.tab.settings"), systemImage: "slider.horizontal.3")
             }
             Divider()
             if let onDestroyAudio {
                 // Greyed with its reason rather than hidden: an item that
                 // comes and goes reads as something else being wrong.
                 Button(role: .destructive, action: onDestroyAudio) {
-                    Label(String(localized: "session.menu.destroy_audio"), systemImage: "waveform.slash")
+                    Label(String(localized: "recording.word.delete_audio"), systemImage: "waveform.slash")
                 }
                 .disabled(destroyAudioBlockedReason != nil)
                 if let destroyAudioBlockedReason {
@@ -1543,17 +1551,9 @@ private struct DocumentTabBar: View {
                 }
             }
             Button(role: .destructive, action: onDeleteRecording) {
-                Label(String(localized: "session.menu.delete"), systemImage: "trash")
+                Label(String(localized: "common.delete"), systemImage: "trash")
             }
-        } label: {
-            Image(systemName: "ellipsis.circle")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(.textSecondary)
         }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-        .help(String(localized: "session.menu.label"))
-        .accessibilityLabel(String(localized: "session.menu.label"))
         .accessibilityIdentifier("session.menu")
     }
 
@@ -1581,45 +1581,51 @@ private struct DocumentTabBar: View {
     }
 }
 
-/// 「看精修稿」 or 「看边录边出的那一版」: one quiet button that names the other
-/// version, the one you can go to. It was a two-way 实时版 | 精修版 switch,
-/// which asked people to know what the two were before they had seen either;
-/// the page now opens on the refined transcript when there is one, and this
-/// is the way back.
+/// Which transcript is on screen, as a pill: 「精修稿」 or 「边录边出的那一版」.
+/// Its menu lists both, the one on screen ticked, and picking the other goes
+/// there. It was a two-way 实时版 | 精修版 switch, then a text link naming
+/// the other version; a control that shows its own value is what the rest
+/// of the app's pills are, and it is found without being read.
 private struct TranscriptVersionSwitch: View {
     /// The version on screen.
     let showing: NotebookTabDisplayType
     /// The other version's tab, with how it stands right now.
     let destination: NotebookTabViewModel
     let onSelect: (NotebookTabViewModel) -> Void
-    @State private var isHovering = false
 
     var body: some View {
-        if let label = TranscriptVersionButtonPolicy.label(showing: showing) {
-            Button {
-                onSelect(destination)
-            } label: {
-                HStack(spacing: 4) {
-                    if destination.status == .pending {
-                        ProgressView().controlSize(.mini)
-                    } else if destination.status == .failed {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 9))
-                            .foregroundColor(.signalAmber)
-                    }
-                    Text(label)
-                        .font(.bodySM)
-                        .lineLimit(1)
-                }
-                .foregroundColor(isHovering ? .textPrimary : .textSecondary)
-                .frame(minHeight: 28)
-                .contentShape(Rectangle())
+        if let current = TranscriptVersionButtonPolicy.title(showing),
+           let other = TranscriptVersionButtonPolicy.title(destination.displayType) {
+            MenuPill(
+                current,
+                systemImage: "square.stack",
+                // A refine that failed is worth a glance before opening.
+                tone: destination.status == .failed ? .warning : .normal,
+                help: TranscriptVersionButtonPolicy.label(showing: showing),
+                accessibilityLabel: String(localized: "recording.word.version")
+            ) {
+                let here = PillMenuItem(current, isOn: true)
+                let there = PillMenuItem(otherTitle(other)) { onSelect(destination) }
+                // Always the live version first, so the menu does not
+                // reorder itself as the page changes.
+                return showing == .realtimeTranscript ? [here, there] : [there, here]
             }
-            .buttonStyle(.plain)
-            .onHover { isHovering = $0 }
             .accessibilityIdentifier(destination.displayType == .realtimeTranscript
                 ? "session.transcript.live"
                 : "session.transcript.refined")
+        }
+    }
+
+    /// The other version, with a word after it while it is being made or
+    /// after it failed.
+    private func otherTitle(_ name: String) -> String {
+        switch destination.status {
+        case .pending:
+            return name + " · " + String(localized: "resources.status.pending")
+        case .failed:
+            return name + " · " + String(localized: "resources.status.failed")
+        case .ready, .live:
+            return name
         }
     }
 }
@@ -1843,6 +1849,120 @@ private struct NotebookTabButton: View {
 
 // MARK: - Async transcript
 
+/// How the refined transcript stands: the word and icon its bar shows, and
+/// the sentence that word is short for.
+struct RefinedStatus {
+    var word: String
+    var systemImage: String
+    var tint: Color = .textTertiary
+    var isBusy = false
+    /// The tooltip: the longer way of saying the word.
+    var help: String?
+    /// A reason worth a click to read — the service's error text.
+    var detail: String?
+}
+
+/// The bar over a refined transcript: a status — an icon and a word — and
+/// the one thing to do about it. What used to be spelled out here in a
+/// sentence, and under it in a paragraph, is the status's tooltip, or one
+/// click away in the ⓘ. A plain view of what it is handed, so each state
+/// can be drawn and checked without a recording behind it.
+struct RefinedStatusBar: View {
+    struct Retry {
+        var title: String
+        var hint: String
+        var isBusy: Bool
+    }
+
+    let sessionId: String
+    let status: RefinedStatus
+    /// The refined text came without speakers or languages.
+    var showsMetadataNotice = false
+    var isReadOnly = false
+    let action: AsyncTranscriptPrimaryAction
+    var isRequesting = false
+    var retry: Retry?
+    let onStart: () -> Void
+    let onOpenSettings: () -> Void
+    let onRetry: () -> Void
+
+    var body: some View {
+        HStack(spacing: PillMetrics.spacing) {
+            StatusWord(
+                status.word,
+                systemImage: status.systemImage,
+                tint: status.tint,
+                isBusy: status.isBusy,
+                help: status.help
+            )
+            .accessibilityIdentifier("async.transcription.status.\(sessionId)")
+            if let detail = status.detail {
+                // Why it failed, in the service's own words.
+                InfoButton(detail, accessibilityLabel: status.word)
+            }
+            if showsMetadataNotice {
+                InfoButton(String(localized: "editor.transcript.async.metadata_missing_notice"))
+                    .accessibilityIdentifier("async.transcript.metadata-missing")
+            }
+            if isReadOnly {
+                StatusWord(
+                    String(localized: "recording.word.read_only"),
+                    systemImage: "lock.fill",
+                    help: String(localized: "capture.transcript.read_only")
+                )
+            }
+            Spacer(minLength: Spacing.md)
+            switch action {
+            case .addPersonalKey:
+                // Post-stop upload requires a saved personal key. Keep the
+                // setup action visible for an already queued task too: the
+                // worker will continue once that key becomes available.
+                ActionPill(
+                    String(localized: "refine.action"),
+                    systemImage: "wand.and.stars",
+                    tone: .dimmed,
+                    mark: .warning,
+                    help: String(localized: "community_invite.async.needs_personal_key"),
+                    action: onOpenSettings
+                )
+                .accessibilityIdentifier("async.transcription.add-key.\(sessionId)")
+            case .start:
+                PrimaryPill(
+                    String(localized: "refine.action"),
+                    systemImage: "wand.and.stars",
+                    help: String(localized: "recording.result.refine.detail"),
+                    action: onStart
+                )
+                .disabled(isRequesting)
+                .accessibilityIdentifier("async.transcription.start.\(sessionId)")
+            case .audioElsewhere(let device):
+                StatusWord(
+                    RecordingOrigin.badge(device),
+                    systemImage: "laptopcomputer",
+                    help: RecordingOrigin.audioElsewhereHint(device)
+                )
+                .accessibilityIdentifier("async.transcription.audio-elsewhere.\(sessionId)")
+            case .none:
+                EmptyView()
+            }
+            if let retry {
+                ActionPill(
+                    retry.title,
+                    systemImage: "arrow.clockwise",
+                    help: retry.hint,
+                    action: onRetry
+                )
+                .disabled(retry.isBusy)
+                .accessibilityIdentifier("async.transcription.retry-projection.\(sessionId)")
+            }
+        }
+        .padding(.horizontal, NotebookRealtimeTranscriptLayout.horizontalInset + Spacing.md)
+        .padding(.vertical, Spacing.sm)
+        .background(Color.bgSunken.opacity(0.2))
+        .accessibilityElement(children: .contain)
+    }
+}
+
 /// Session-filtered projection of the builtin Async Transcript document.
 /// Rust owns the durable Loro document; this view only derives stable rows.
 private struct AsyncTranscriptView: View {
@@ -1873,19 +1993,18 @@ private struct AsyncTranscriptView: View {
     var body: some View {
         VStack(spacing: 0) {
             asyncStatusBar
-            if AsyncTranscriptMetadataNoticePolicy.shouldShow(for: lines) {
-                AsyncTranscriptMetadataNotice()
-            }
             Divider().background(Color.borderGhost.opacity(0.25))
             Group {
                 switch contentPhase {
                 case .loading:
-                    AsyncTranscriptLoadingView(statusText: asyncStatusText)
+                    // The bar above says what is being waited for.
+                    AsyncTranscriptLoadingView(statusText: asyncStatus.word)
                 case .empty:
-                    EmptyState(
-                        illustration: { Arcanum003WaveformRuler() },
-                        title: emptyStateTitle,
-                        description: emptyStateDescription
+                    OneSentenceState(
+                        systemImage: asyncStatus.systemImage,
+                        sentence: emptyStateSentence,
+                        tint: asyncStatus.tint,
+                        detail: emptyStateDetail
                     )
                 case .transcript:
                     ScrollView {
@@ -1970,98 +2089,27 @@ private struct AsyncTranscriptView: View {
     }
 
     private var asyncStatusBar: some View {
-        HStack(spacing: Spacing.sm) {
-            if isRetryingProjection
-                || isRepairingStoredProjection
-                || (hasProjectionLoadFailure == false
-                    && (asyncProjectionState == .projecting || isProviderPending)) {
-                ProgressView()
-                    .controlSize(.small)
-                    .accessibilityHidden(true)
-            } else {
-                Image(systemName: asyncStatusIcon)
-                    .foregroundColor(asyncStatusColor)
-                    .accessibilityHidden(true)
-            }
-            Text(asyncStatusText)
-                .font(.captionMedium)
-                .foregroundColor(.textSecondary)
-            Spacer(minLength: Spacing.md)
-            if lines.isEmpty == false, isTranscriptEditable == false {
-                Label(
-                    String(localized: "capture.transcript.read_only"),
-                    systemImage: "lock.fill"
+        let failed = asyncProjectionState == .failed
+            || storedProjectionRepairFailed
+            || hasProjectionLoadFailure
+        return RefinedStatusBar(
+            sessionId: sessionId,
+            status: asyncStatus,
+            showsMetadataNotice: AsyncTranscriptMetadataNoticePolicy.shouldShow(for: lines),
+            isReadOnly: lines.isEmpty == false && isTranscriptEditable == false,
+            action: primaryAction,
+            isRequesting: isRequestingAsyncTranscription,
+            retry: failed
+                ? .init(
+                    title: retryActionLabel,
+                    hint: retryActionHint,
+                    isBusy: isRetryingProjection || isRepairingStoredProjection
                 )
-                .font(.caption)
-                .foregroundColor(.textSecondary)
-            }
-            switch primaryAction {
-            case .addPersonalKey:
-                // Post-stop upload requires a saved personal key. Keep the
-                // setup action visible for an already queued task too: the
-                // worker will continue once that key becomes available.
-                Button {
-                    MainNavigationStore.shared.openSettings(section: .account)
-                } label: {
-                    Label(
-                        String(localized: "editor.transcript.async.invite_add_key"),
-                        systemImage: "key"
-                    )
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .frame(minHeight: 44)
-                .help(String(localized: "community_invite.async.needs_personal_key"))
-                .accessibilityHint(Text(String(
-                    localized: "community_invite.async.needs_personal_key"
-                )))
-                .accessibilityIdentifier("async.transcription.add-key.\(sessionId)")
-            case .start:
-                Button {
-                    requestAsyncTranscription()
-                } label: {
-                    Label(
-                        String(localized: "editor.transcript.async.start"),
-                        systemImage: "waveform.badge.plus"
-                    )
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .frame(minHeight: 44)
-                .disabled(isRequestingAsyncTranscription)
-                .accessibilityIdentifier("async.transcription.start.\(sessionId)")
-            case .audioElsewhere(let device):
-                Label(RecordingOrigin.audioElsewhereHint(device), systemImage: "laptopcomputer")
-                    .font(.caption)
-                    .foregroundColor(.textSecondary)
-                    .accessibilityIdentifier("async.transcription.audio-elsewhere.\(sessionId)")
-            case .none:
-                EmptyView()
-            }
-            if asyncProjectionState == .failed
-                || storedProjectionRepairFailed
-                || hasProjectionLoadFailure {
-                Button {
-                    retryProjection()
-                } label: {
-                    Label(
-                        retryActionLabel,
-                        systemImage: "arrow.clockwise"
-                    )
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .frame(minHeight: 44)
-                .disabled(isRetryingProjection || isRepairingStoredProjection)
-                .help(retryActionHint)
-                .accessibilityHint(Text(retryActionHint))
-                .accessibilityIdentifier("async.transcription.retry-projection.\(sessionId)")
-            }
-        }
-        .padding(.horizontal, Spacing.xl + Spacing.lg)
-        .frame(minHeight: 52)
-        .background(Color.bgSunken.opacity(0.2))
-        .accessibilityElement(children: .contain)
+                : nil,
+            onStart: requestAsyncTranscription,
+            onOpenSettings: { MainNavigationStore.shared.openSettings(section: .account) },
+            onRetry: retryProjection
+        )
     }
 
     private var isRequestingAsyncTranscription: Bool {
@@ -2099,65 +2147,101 @@ private struct AsyncTranscriptView: View {
         }
     }
 
-    private var asyncStatusText: String {
+    private typealias Status = RefinedStatus
+
+    private var asyncStatus: Status {
+        let failedIcon = "exclamationmark.triangle.fill"
         if isRetryingProjection || isRepairingStoredProjection {
-            return String(localized: "editor.transcript.async.status.projecting")
+            return Status(
+                word: String(localized: "editor.transcript.async.status.projecting"),
+                systemImage: "arrow.triangle.2.circlepath",
+                isBusy: true
+            )
         }
-        if documentReadError != nil {
-            return String(localized: "editor.route.load_failed")
+        if let documentReadError {
+            return Status(
+                word: String(localized: "resources.status.failed"),
+                systemImage: failedIcon,
+                tint: .signalAmber,
+                help: String(localized: "editor.route.load_failed"),
+                detail: documentReadError
+            )
         }
         if storedProjectionRepairFailed || hasProjectionLoadFailure {
-            return String(localized: "editor.transcript.async.status.projection_failed")
+            return Status(
+                word: String(localized: "editor.transcript.async.status.projection_failed"),
+                systemImage: failedIcon,
+                tint: .signalAmber,
+                help: String(localized: "editor.transcript.async.projection_failed_desc")
+            )
         }
         if lines.isEmpty == false {
-            return String(localized: "editor.transcript.async.status.ready")
+            return Status(
+                word: String(localized: "resources.async"),
+                systemImage: "checkmark.circle.fill",
+                tint: .signalGreen,
+                help: String(localized: "editor.transcript.async.status.ready")
+            )
         }
         switch asyncProjectionState {
         case .some(.pending):
-            return String(localized: "editor.transcript.async.status.projection_pending")
+            return Status(
+                word: String(localized: "editor.transcript.async.status.projection_pending"),
+                systemImage: "clock.fill",
+                help: String(localized: "editor.transcript.async.projection_pending_desc")
+            )
         case .some(.projecting):
-            return String(localized: "editor.transcript.async.status.projecting")
+            return Status(
+                word: String(localized: "editor.transcript.async.status.projecting"),
+                systemImage: "arrow.triangle.2.circlepath",
+                isBusy: true,
+                help: String(localized: "editor.transcript.async.projection_pending_desc")
+            )
         case .some(.ready):
-            return String(localized: "editor.transcript.async.status.ready")
+            return Status(
+                word: String(localized: "editor.transcript.async.status.ready"),
+                systemImage: "checkmark.circle.fill",
+                tint: .signalGreen
+            )
         case .some(.failed):
-            return String(localized: "editor.transcript.async.status.projection_failed")
+            return Status(
+                word: String(localized: "editor.transcript.async.status.projection_failed"),
+                systemImage: failedIcon,
+                tint: .signalAmber,
+                help: String(localized: "editor.transcript.async.projection_failed_desc")
+            )
         case .some(.none):
-            switch asyncProviderState {
-            case "pending", "reserved", "enqueued":
-                return String(localized: "editor.transcript.async.status.provider_pending")
-            case "failed":
-                return String(localized: "editor.transcript.async.status.provider_failed")
-            default:
-                return String(localized: "editor.transcript.async.status.off")
+            if isProviderPending || status == .pending {
+                return Status(
+                    word: String(localized: "editor.transcript.async.pending_title"),
+                    systemImage: "hourglass",
+                    isBusy: isProviderPending,
+                    help: [
+                        String(localized: "editor.transcript.async.status.provider_pending"),
+                        String(localized: "editor.transcript.async.pending_desc"),
+                    ].joined(separator: "\n")
+                )
             }
+            if asyncProviderState == "failed" || status == .failed {
+                return Status(
+                    word: String(localized: "editor.transcript.async.failed_title"),
+                    systemImage: failedIcon,
+                    tint: .signalAmber,
+                    help: String(localized: "editor.transcript.async.status.provider_failed"),
+                    detail: providerFailureDetail
+                )
+            }
+            return Status(
+                word: String(localized: "editor.transcript.async.empty_title"),
+                systemImage: "wand.and.stars",
+                help: String(localized: "editor.transcript.async.status.off")
+            )
         case nil:
-            return String(localized: "editor.transcript.async.status.loading")
-        }
-    }
-
-    private var asyncStatusIcon: String {
-        if storedProjectionRepairFailed || hasProjectionLoadFailure {
-            return "exclamationmark.triangle.fill"
-        }
-        if lines.isEmpty == false { return "checkmark.circle.fill" }
-        switch asyncProjectionState {
-        case .some(.ready): return "checkmark.circle.fill"
-        case .some(.failed): return "exclamationmark.triangle.fill"
-        case .some(.pending): return "clock.fill"
-        case .some(.projecting): return "arrow.triangle.2.circlepath"
-        case .some(.none):
-            return asyncProviderState == "failed" ? "exclamationmark.circle.fill" : "icloud.slash"
-        case nil: return "clock"
-        }
-    }
-
-    private var asyncStatusColor: Color {
-        if storedProjectionRepairFailed || hasProjectionLoadFailure { return .signalAmber }
-        if lines.isEmpty == false { return .signalGreen }
-        switch asyncProjectionState {
-        case .some(.ready): return .signalGreen
-        case .some(.failed): return .signalAmber
-        default: return .textTertiary
+            return Status(
+                word: String(localized: "editor.transcript.async.status.loading"),
+                systemImage: "clock",
+                isBusy: hasProjectionLoadFailure == false
+            )
         }
     }
 
@@ -2244,7 +2328,9 @@ private struct AsyncTranscriptView: View {
         }
     }
 
-    private var emptyStateTitle: String {
+    /// The one sentence an empty refined view prints. The bar above has
+    /// the state in a word; this says it once, in full.
+    private var emptyStateSentence: String {
         if documentReadError != nil {
             return String(localized: "editor.route.load_failed")
         }
@@ -2253,35 +2339,30 @@ private struct AsyncTranscriptView: View {
         }
         switch asyncProjectionState {
         case .some(.pending), .some(.projecting):
-            return String(localized: "editor.transcript.async.pending_title")
+            return String(localized: "editor.transcript.async.projection_pending_desc")
         case .some(.failed):
             return String(localized: "editor.transcript.async.projection_failed_title")
         case .some(.none) where status == .pending || isProviderPending:
-            return String(localized: "editor.transcript.async.pending_title")
-        case .some(.none) where status == .failed || asyncProviderState == "failed":
-            return String(localized: "editor.transcript.async.failed_title")
-        default:
-            return String(localized: "editor.transcript.async.empty_title")
-        }
-    }
-
-    private var emptyStateDescription: String {
-        if let documentReadError { return documentReadError }
-        if storedProjectionRepairFailed || hasProjectionLoadFailure {
-            return String(localized: "editor.transcript.async.projection_failed_desc")
-        }
-        switch asyncProjectionState {
-        case .some(.pending), .some(.projecting):
-            return String(localized: "editor.transcript.async.projection_pending_desc")
-        case .some(.failed):
-            return String(localized: "editor.transcript.async.projection_failed_desc")
-        case .some(.none) where status == .pending || isProviderPending:
             return String(localized: "editor.transcript.async.pending_desc")
         case .some(.none) where status == .failed || asyncProviderState == "failed":
-            return providerFailureDescription
+            return String(localized: "recording.result.refine.failed")
         default:
             return String(localized: "editor.transcript.async.empty_desc")
         }
+    }
+
+    /// What used to be the paragraph under the title: the tooltip now.
+    private var emptyStateDetail: String? {
+        if let documentReadError { return documentReadError }
+        if storedProjectionRepairFailed || hasProjectionLoadFailure
+            || asyncProjectionState == .failed {
+            return String(localized: "editor.transcript.async.projection_failed_desc")
+        }
+        if asyncProjectionState == NotebookAsyncProjectionState.none,
+           status == .failed || asyncProviderState == "failed" {
+            return providerFailureDetail
+        }
+        return nil
     }
 
     private var isProviderPending: Bool {
@@ -2299,32 +2380,12 @@ private struct AsyncTranscriptView: View {
             ?? String(localized: "editor.transcript.async.retry_projection_hint")
     }
 
-    private var providerFailureDescription: String {
-        let summary = String(localized: "editor.transcript.async.failed_desc")
+    /// The service's own account of why refining failed, when it gave one.
+    private var providerFailureDetail: String? {
         guard let detail = taskErrorMessage?.trimmingCharacters(
             in: .whitespacesAndNewlines
-        ), detail.isEmpty == false else { return summary }
-        return "\(summary)\n\n\(detail)"
-    }
-}
-
-private struct AsyncTranscriptMetadataNotice: View {
-    var body: some View {
-        HStack(alignment: .top, spacing: Spacing.sm) {
-            Image(systemName: "info.circle")
-                .accessibilityHidden(true)
-            Text(String(localized: "editor.transcript.async.metadata_missing_notice"))
-                .font(.caption)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
-        }
-        .foregroundColor(.textSecondary)
-        .padding(.horizontal, NotebookRealtimeTranscriptLayout.horizontalInset)
-        .padding(.vertical, Spacing.sm)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.bgSunken.opacity(0.12))
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("async.transcript.metadata-missing")
+        ), detail.isEmpty == false else { return nil }
+        return detail
     }
 }
 
@@ -2442,17 +2503,10 @@ private struct AsyncTranscriptLoadingView: View {
     let statusText: String
 
     var body: some View {
-        VStack(spacing: Spacing.md) {
-            ProgressView()
-                .controlSize(.small)
-                .accessibilityHidden(true)
-            Text(statusText)
-                .font(.caption)
-                .foregroundColor(.textSecondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(Text(statusText))
+        ProgressView()
+            .controlSize(.small)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .accessibilityLabel(Text(statusText))
     }
 }
 
@@ -2481,7 +2535,7 @@ private struct SessionNotesContextHeader: View {
             Image(systemName: "doc.text")
                 .font(.system(size: 11, weight: .medium))
                 .foregroundColor(.brandAccent)
-            Text(String(localized: "session.notes.context"))
+            Text(String(localized: "session.notes.title"))
                 .font(.caption)
                 .foregroundColor(.textSecondary)
             Spacer(minLength: 0)
@@ -2489,16 +2543,22 @@ private struct SessionNotesContextHeader: View {
         .padding(.horizontal, Spacing.xl)
         .padding(.vertical, Spacing.sm)
         .background(Color.bgSunken.opacity(0.18))
+        // Whose notes these are, for whoever asks.
+        .pillExplained(help: String(localized: "session.notes.context"))
         .accessibilityIdentifier("session.notes.context")
     }
 }
 
-/// A finished recording's settings tab is about that recording only: what it
+/// A finished recording's details tab is about that recording only: what it
 /// has (audio, transcripts, notes) and what it was recorded with. It used to
 /// carry, between the two, the editor for the *next* recording's defaults,
 /// and people could not tell which recording they were changing. Those
 /// defaults live where a recording is started and in the topic's own options
 /// (docs/product/interface-layers.md).
+///
+/// Three groups, each under one word — files, info, setup — and every row a
+/// name and a value or a control. The sentences that used to sit under the
+/// headings are their tooltips.
 private struct SessionSettingsView: View {
     let notebookId: String
     let session: SessionInfo
@@ -2506,22 +2566,8 @@ private struct SessionSettingsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: Spacing.lg) {
                 sessionResourceSection
-
-                Divider()
-                    .padding(.horizontal, Spacing.xl)
-                    .background(Color.borderGhost.opacity(0.45))
-
-                // The same centred column as the two sections around it; on
-                // a wide window the heading used to sit alone at the far left.
-                Text(String(localized: "session.settings.workspace.snapshot"))
-                    .font(.headline)
-                    .foregroundColor(.textPrimary)
-                    .padding(.horizontal, Spacing.xl)
-                    .padding(.top, Spacing.xl)
-                    .frame(maxWidth: 860, alignment: .leading)
-                    .frame(maxWidth: .infinity, alignment: .top)
 
                 SessionSettingsSnapshotView(
                     notebookId: notebookId,
@@ -2529,6 +2575,11 @@ private struct SessionSettingsView: View {
                     isEmbedded: true
                 )
             }
+            // One centred column for all three groups.
+            .padding(.horizontal, Spacing.xl)
+            .padding(.vertical, Spacing.lg)
+            .frame(maxWidth: 860, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .top)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.bgRoot)
@@ -2571,86 +2622,73 @@ private struct SessionSettingsSnapshotView: View {
 
     private var snapshotContent: some View {
         VStack(alignment: .leading, spacing: Spacing.lg) {
-            VStack(alignment: .leading, spacing: Spacing.xs) {
-                Text(String(localized: "session.settings.subtitle"))
-                    .font(.bodySM)
-                    .foregroundColor(.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
             settingsSection(
-                title: String(localized: "session.settings.section.session"),
+                title: String(localized: "recording.details.info"),
                 rows: sessionRows
             )
 
-            if isLoading {
-                HStack(spacing: Spacing.sm) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text(String(localized: "editor.transcript.async.status.loading"))
-                        .font(.bodySM)
-                        .foregroundColor(.textSecondary)
-                }
-                .frame(maxWidth: .infinity, minHeight: 80)
-            } else if let loadError {
-                VStack(alignment: .leading, spacing: Spacing.sm) {
-                    Label(
-                        String(localized: "session.settings.load_failed"),
-                        systemImage: "exclamationmark.triangle.fill"
-                    )
-                    .font(.bodyMedium)
-                    .foregroundColor(.signalAmber)
-                    Text(loadError)
-                        .font(.caption)
-                        .foregroundColor(.textSecondary)
-                        .textSelection(.enabled)
-                    Button(String(localized: "session.settings.retry")) {
-                        Task { await load() }
-                    }
-                    .buttonStyle(.bordered)
-                }
-                .padding(Spacing.md)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.bgElevated.opacity(0.32))
-                .clipShape(RoundedRectangle(cornerRadius: Radius.md))
-            } else {
-                if captureRun == nil {
-                    snapshotNotice(
-                        key: session.sessionType.lowercased() == "import"
-                            ? "session.settings.snapshot.imported_missing"
-                            : "session.settings.snapshot.missing",
-                        systemImage: "questionmark.circle",
-                        color: .textSecondary
-                    )
-                } else if captureRun?.providerErrorType == "profile_snapshot_corrupt" {
-                    snapshotNotice(
-                        key: "session.settings.snapshot.corrupt",
-                        systemImage: "exclamationmark.triangle.fill",
-                        color: .signalAmber
-                    )
-                }
-
-                settingsSection(
-                    title: String(localized: "session.settings.section.capture"),
-                    rows: captureRows
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                GroupHeader(
+                    String(localized: "recording.details.setup"),
+                    // What these rows are: what this recording used, not a
+                    // default anyone can change here.
+                    help: String(localized: "session.settings.subtitle")
                 )
+                if isLoading {
+                    StatusWord(
+                        String(localized: "editor.transcript.async.status.loading"),
+                        systemImage: "clock",
+                        isBusy: true
+                    )
+                } else if let loadError {
+                    HStack(spacing: PillMetrics.spacing) {
+                        StatusWord(
+                            String(localized: "session.settings.load_failed"),
+                            systemImage: "exclamationmark.triangle.fill",
+                            tint: .signalAmber,
+                            help: loadError
+                        )
+                        ActionPill(
+                            String(localized: "session.settings.retry"),
+                            systemImage: "arrow.clockwise"
+                        ) {
+                            Task { await load() }
+                        }
+                    }
+                } else {
+                    if captureRun == nil {
+                        snapshotNotice(
+                            key: session.sessionType.lowercased() == "import"
+                                ? "session.settings.snapshot.imported_missing"
+                                : "session.settings.snapshot.missing",
+                            systemImage: "questionmark.circle",
+                            color: .textTertiary
+                        )
+                    } else if captureRun?.providerErrorType == "profile_snapshot_corrupt" {
+                        snapshotNotice(
+                            key: "session.settings.snapshot.corrupt",
+                            systemImage: "exclamationmark.triangle.fill",
+                            color: .signalAmber
+                        )
+                    }
+                    rowList(captureRows)
+                }
             }
 
             HStack(spacing: Spacing.sm) {
                 Image(systemName: "number")
                     .foregroundColor(.textTertiary)
+                    .accessibilityHidden(true)
                 Text(session.id)
                     .font(.caption.monospaced())
                     .foregroundColor(.textTertiary)
                     .textSelection(.enabled)
                 Spacer(minLength: 0)
             }
-            .padding(.top, Spacing.sm)
         }
-        .padding(.horizontal, Spacing.xl)
-        .padding(.vertical, Spacing.lg)
-        .frame(maxWidth: 860, alignment: .leading)
+        .padding(.horizontal, isEmbedded ? 0 : Spacing.xl)
+        .padding(.vertical, isEmbedded ? 0 : Spacing.lg)
+        .frame(maxWidth: isEmbedded ? .infinity : 860, alignment: .leading)
         .frame(maxWidth: .infinity, alignment: .top)
     }
 
@@ -2695,15 +2733,9 @@ private struct SessionSettingsSnapshotView: View {
     }
 
     private var captureRows: [SessionSettingsRowModel] {
-        guard let captureRun else {
-            return [
-                SessionSettingsRowModel(
-                    icon: "archivebox",
-                    label: String(localized: "session.settings.section.capture"),
-                    value: String(localized: "session.settings.value.unknown")
-                ),
-            ]
-        }
+        // Nothing was recorded about the setup: the one line above says so,
+        // and a row reading "unknown" would only say it twice.
+        guard let captureRun else { return [] }
         var rows = [
             SessionSettingsRowModel(
                 icon: "rectangle.split.2x1",
@@ -2764,54 +2796,44 @@ private struct SessionSettingsSnapshotView: View {
         return rows
     }
 
+    /// A group: one word, then its rows. No box around it; space and the
+    /// word are what set it apart.
     private func settingsSection(
         title: String,
         rows: [SessionSettingsRowModel]
     ) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(title)
-                .font(.headline)
-                .foregroundColor(.textPrimary)
-                .padding(.horizontal, Spacing.md)
-                .padding(.vertical, Spacing.sm)
-
-            Divider()
-                .background(Color.borderGhost.opacity(0.45))
-
-            ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                SessionSettingsRow(row: row)
-                if index < rows.count - 1 {
-                    Divider()
-                        .padding(.leading, 48)
-                        .background(Color.borderGhost.opacity(0.35))
-                }
-            }
+        VStack(alignment: .leading, spacing: Spacing.xs) {
+            GroupHeader(title)
+            rowList(rows)
         }
-        .background(Color.bgElevated.opacity(0.3))
-        .overlay(
-            RoundedRectangle(cornerRadius: Radius.md)
-                .strokeBorder(Color.borderGhost.opacity(0.55), lineWidth: Stroke.thin)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: Radius.md))
     }
 
+    private func rowList(_ rows: [SessionSettingsRowModel]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(rows) { row in
+                SessionSettingsRow(row: row)
+            }
+        }
+    }
+
+    /// The one line a group with nothing to list may print.
     private func snapshotNotice(
         key: String.LocalizationValue,
         systemImage: String,
         color: Color
     ) -> some View {
-        Label(String(localized: key), systemImage: systemImage)
-            .font(.bodySM)
-            .foregroundColor(color)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(Spacing.md)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.bgElevated.opacity(0.28))
-            .overlay(
-                RoundedRectangle(cornerRadius: Radius.md)
-                    .strokeBorder(color.opacity(0.3), lineWidth: Stroke.thin)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+        HStack(spacing: PillMetrics.iconSpacing) {
+            Image(systemName: systemImage)
+                .font(PillMetrics.iconFont)
+                .foregroundColor(color)
+                .accessibilityHidden(true)
+            Text(String(localized: key))
+                .font(PillMetrics.font)
+                .foregroundColor(.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(minHeight: PillMetrics.height, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 
     @MainActor
@@ -2843,13 +2865,13 @@ private struct SessionSettingsSnapshotView: View {
             .formatted(date: .long, time: .shortened)
     }
 
+    /// The languages by name, as everywhere else: a code is ours, not a
+    /// word the reader knows.
     private var languageText: String {
-        let codes = ([session.sourceLanguage] + session.targetLanguages)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() }
-            .filter { $0.isEmpty == false }
-        return codes.isEmpty
-            ? String(localized: "session.settings.value.unknown")
-            : codes.joined(separator: " · ")
+        let names = RecordingPresentation.languageList(
+            [session.sourceLanguage] + session.targetLanguages
+        )
+        return names.isEmpty ? String(localized: "session.settings.value.unknown") : names
     }
 
     private var statusText: String {
@@ -2937,25 +2959,8 @@ private struct SessionSettingsRow: View {
     let row: SessionSettingsRowModel
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: Spacing.md) {
-            Image(systemName: row.icon)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundColor(.textTertiary)
-                .frame(width: 18)
-                .accessibilityHidden(true)
-            Text(row.label)
-                .font(.bodySM)
-                .foregroundColor(.textSecondary)
-                .frame(width: 150, alignment: .leading)
-            Text(row.value)
-                .font(.bodyMedium)
-                .foregroundColor(.textPrimary)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(.horizontal, Spacing.md)
-        .padding(.vertical, Spacing.sm + 2)
-        .accessibilityElement(children: .combine)
+        DetailRow(row.label, systemImage: row.icon, value: row.value)
+            .accessibilityElement(children: .combine)
     }
 }
 

@@ -560,3 +560,305 @@ final class RecordingBarStatusLineTests: XCTestCase {
         XCTAssertFalse(hud.contains("hud.recording.paused"))
     }
 }
+
+// MARK: - 0.8.3: share panels, the caption window's bar, the menu bar
+//
+// docs/product/interface-layers.md 「界面怎么写」: no sentences on the surface,
+// and a disclosure moves — into a tooltip, an ⓘ, a confirmation — but is never
+// deleted. These pin both halves for the windows area.
+
+@MainActor
+final class WindowsAreaInterfaceTests: XCTestCase {
+    private static let sourceRoot = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .appendingPathComponent("ZuTalk", isDirectory: true)
+
+    private static let languages = ["en", "th", "ja", "ko", "fr", "es", "de", "zh-Hans"]
+
+    private func source(_ relativePath: String) throws -> String {
+        try String(
+            contentsOf: Self.sourceRoot.appendingPathComponent(relativePath),
+            encoding: .utf8
+        )
+    }
+
+    private func keys(_ language: String) throws -> Set<String> {
+        let text = try source("Resources/\(language).lproj/Localizable.strings")
+        var keys: Set<String> = []
+        for line in text.split(separator: "\n") {
+            guard line.hasPrefix("\""), let end = line.range(of: "\" = \"") else { continue }
+            keys.insert(String(line[line.index(after: line.startIndex)..<end.lowerBound]))
+        }
+        return keys
+    }
+
+    // MARK: Disclosures
+
+    func testThePanelShowsAtMostThreeFactsAndEachCarriesItsSentence() throws {
+        for keeps in [false, true] {
+            let facts = LiveSharePanelState(phase: .idle, keepsAfterEnd: keeps).facts
+            XCTAssertEqual(facts.count, 3)
+            XCTAssertEqual(facts[0], .noAudio)
+            XCTAssertEqual(facts[1], .encrypted)
+            XCTAssertEqual(
+                facts[2].detailKey,
+                keeps ? "share.live.stop_note_kept" : "share.live.stop_note",
+                "what happens on stop follows the keep choice"
+            )
+        }
+        XCTAssertEqual(ShareFact.noAudio.detailKey, "share.audio_never")
+        XCTAssertEqual(ShareFact.encrypted.detailKey, "share.encrypted")
+        XCTAssertEqual(ShareFact.linkExpires.detailKey, "share.recording.link_detail")
+
+        let all: [ShareFact] = [
+            .noAudio, .encrypted, .linkEncrypted, .linkExpires,
+            .afterStop(keeps: false), .afterStop(keeps: true),
+        ]
+        for language in Self.languages {
+            let defined = try keys(language)
+            for fact in all {
+                XCTAssertTrue(defined.contains(fact.labelKey), "\(language) lacks \(fact.labelKey)")
+                XCTAssertTrue(defined.contains(fact.detailKey), "\(language) lacks \(fact.detailKey)")
+            }
+        }
+    }
+
+    func testTheInfoTextSaysEachSentenceOnce() {
+        let text = ShareFact.fullText([.linkEncrypted, .linkExpires])
+        XCTAssertEqual(text, ShareFact.linkExpires.detail, "both facts come from one sentence")
+        XCTAssertEqual(
+            ShareFact.fullText([.noAudio, .encrypted]).components(separatedBy: "\n").count,
+            2
+        )
+    }
+
+    /// Every sentence that used to be printed on the two panels is still
+    /// referenced by them — as a tooltip, an ⓘ or a confirmation.
+    func testNoDisclosureLeftTheSharePanels() throws {
+        let panel = try source("Pages/ShareHostPanel.swift")
+        for key in [
+            "share.audio_never", "share.encrypted", "share.live.intro",
+            "share.live.stop_note", "share.live.stop_note_kept",
+            "share.live.keep_on_detail", "share.live.keep_off_detail",
+            "share.live.lock_on_detail", "share.live.lock_off_detail",
+            "share.live.replace_detail", "share.live.other_body",
+            "share.copy.detail", "share.recording.link_detail",
+            "share.recording.revoke_confirm_body",
+            "nearby.live.choice_off_detail", "nearby.live.choice_on_detail",
+            "nearby.send.detail", "nearby.send.none",
+        ] {
+            XCTAssertTrue(panel.contains("\"\(key)\""), "\(key) must stay reachable")
+        }
+        XCTAssertFalse(panel.contains("struct ShareChoice"), "a switch with a sentence under it")
+        XCTAssertFalse(panel.contains("struct ShareAssurances"), "two sentences in a row")
+        XCTAssertTrue(panel.contains("CityShareSection(request: request)"), "the city block stays mounted")
+
+        let store = try source("App/ShareActivityStore.swift")
+        XCTAssertTrue(store.contains("\"share.live.ended_with_recording\""))
+        XCTAssertTrue(store.contains("\"share.live.ended_with_recording_kept\""))
+    }
+
+    func testBarButtonSaysOnlyTheCountWhileItIsLive() {
+        XCTAssertEqual(
+            LiveShareText.barLabel(live: false, viewers: 0),
+            String(localized: "share.live.bar")
+        )
+        XCTAssertEqual(
+            LiveShareText.barLabel(live: true, viewers: 3),
+            String(format: String(localized: "share.live.viewers_format"), Int64(3))
+        )
+        XCTAssertEqual(
+            LiveShareText.displayed("https://host.example/l/abc#secret"),
+            "host.example/l/abc#…",
+            "the key is never printed"
+        )
+    }
+
+    // MARK: The caption window's bar
+
+    func testMoreMenuHoldsWhatLeftTheBarAndShowsTheShortcuts() {
+        let state = SubtitleOverlayMenu.State(
+            theme: .dark,
+            placement: .restored,
+            fontIsAutomatic: true,
+            backdropOpacity: 0.6,
+            backdropAdjustable: true
+        )
+        var picked: [String] = []
+        let items = SubtitleOverlayMenu.items(
+            state: state,
+            actions: SubtitleOverlayMenu.Actions(
+                toggleFontAutomatic: { picked.append("auto") },
+                setTheme: { picked.append("theme:\($0.rawValue)") },
+                setBackdropOpacity: { picked.append("backdrop:\($0)") },
+                toggleFilled: { picked.append("fill") },
+                toggleBanner: { picked.append("banner") }
+            )
+        )
+        let actions = items.filter { $0.role == .action }
+        XCTAssertEqual(actions.count, 5, "automatic size, dark, light, fill, banner")
+        XCTAssertEqual(actions.map(\.isOn), [true, true, false, false, false])
+        XCTAssertEqual(actions.map(\.shortcut), [nil, nil, nil, .fill, .banner])
+        XCTAssertEqual(
+            actions.compactMap(\.identifier),
+            [
+                AccessibilityID.floatingSubtitleFontAuto,
+                AccessibilityID.floatingSubtitleMaximize,
+                AccessibilityID.floatingSubtitleBanner,
+            ],
+            "the identifiers of the controls that moved"
+        )
+        let slider = items.first {
+            if case .slider = $0.role { return true }
+            return false
+        }
+        XCTAssertEqual(
+            slider?.role,
+            .slider(value: 0.6, range: SubtitleOverlayBackdropPolicy.opacityRange)
+        )
+        for item in items where item.role != .separator {
+            XCTAssertFalse(item.title.isEmpty)
+        }
+        actions.forEach { $0.action() }
+        slider?.setValue(0.7)
+        XCTAssertEqual(picked, ["auto", "theme:dark", "theme:light", "fill", "banner", "backdrop:0.7"])
+
+        let menu = SubtitleOverlayMenuPresenter.menu(for: items, target: nil, action: nil, sliderAction: nil)
+        let fill = menu.items.first { $0.identifier?.rawValue == AccessibilityID.floatingSubtitleMaximize }
+        XCTAssertEqual(fill?.keyEquivalent, "f")
+        XCTAssertEqual(fill?.keyEquivalentModifierMask, [.control, .command])
+        let banner = menu.items.first { $0.identifier?.rawValue == AccessibilityID.floatingSubtitleBanner }
+        XCTAssertEqual(banner?.keyEquivalent, "b")
+        XCTAssertEqual(menu.items.filter { $0.view is SubtitleOverlayMenuSliderRow }.count, 1)
+
+        var filled = state
+        filled.placement = .filled
+        let restore = SubtitleOverlayMenu.items(state: filled, actions: .init())
+            .first { $0.identifier == AccessibilityID.floatingSubtitleMaximize }
+        XCTAssertEqual(restore?.title, String(localized: "subtitle.overlay.restore"))
+    }
+
+    func testPlacementShortcutsAnswerWithoutTheBar() throws {
+        func key(_ characters: String, _ flags: NSEvent.ModifierFlags) throws -> NSEvent {
+            try XCTUnwrap(NSEvent.keyEvent(
+                with: .keyDown, location: .zero, modifierFlags: flags, timestamp: 0,
+                windowNumber: 0, context: nil, characters: characters,
+                charactersIgnoringModifiers: characters, isARepeat: false, keyCode: 0
+            ))
+        }
+        XCTAssertEqual(SubtitleOverlayShortcut.matching(try key("f", [.control, .command])), .fill)
+        XCTAssertEqual(SubtitleOverlayShortcut.matching(try key("b", [.control, .command, .capsLock])), .banner)
+        XCTAssertNil(SubtitleOverlayShortcut.matching(try key("f", [.command])))
+        XCTAssertNil(SubtitleOverlayShortcut.matching(try key("f", [.control, .command, .shift])))
+        XCTAssertNil(SubtitleOverlayShortcut.matching(try key("x", [.control, .command])))
+
+        let overlay = try source("WindowSystem/Surfaces/SubtitleOverlayController.swift")
+        XCTAssertTrue(overlay.contains("SubtitleOverlayPanel("), "the panel that answers the shortcuts")
+        XCTAssertFalse(overlay.contains(".keyboardShortcut("), "a shortcut on a button the hover bar may not be showing")
+    }
+
+    /// What the hover bar carries: the sentence, the recording controls, pin,
+    /// ⋯ and close; the layout switch and the size. Nothing else.
+    func testHoverBarKeepsOnlyWhatAPresenterReachesFor() throws {
+        let overlay = try source("WindowSystem/Surfaces/SubtitleOverlayController.swift")
+        let start = try XCTUnwrap(overlay.range(of: "private func controlRows("))
+        let end = try XCTUnwrap(overlay.range(of: "private var moreButton"))
+        let rows = String(overlay[start.lowerBound..<end.lowerBound])
+        for kept in ["captureStatus(", "SubtitleOverlayRecordingControls(", "pinButton",
+                     "moreButton", "closeButton", "modePicker", "fontControls"] {
+            XCTAssertTrue(rows.contains(kept), "\(kept) stays on the bar")
+        }
+        for moved in ["themeButton", "backdropOpacityControl", "fontAutoButton",
+                      "maximizeButton", "bannerButton"] {
+            XCTAssertFalse(overlay.contains(moved), "\(moved) is an item of the ⋯ menu now")
+        }
+        XCTAssertTrue(overlay.contains("measuredControlBarHeight = proxy.size.height"),
+                      "the bar still measures itself for the hover band")
+        XCTAssertTrue(overlay.contains(".labelsHidden()"), "the layout switch is 144 pt of segments, no label")
+    }
+
+    func testCaptionSettingsCanBeShownWithoutChangingTheRealOnes() {
+        let suite = "WindowsAreaInterfaceTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = SubtitleOverlayPresentationSettings(defaults: defaults)
+        XCTAssertEqual(settings.theme, .dark)
+        XCTAssertTrue(settings.isPinned)
+
+        settings.theme = .light
+        settings.displayMode = .conversation
+        settings.togglePinned()
+        XCTAssertEqual(defaults.string(forKey: SubtitleOverlayTheme.defaultsKey), "light")
+        XCTAssertEqual(
+            defaults.string(forKey: SubtitleOverlayPresentationSettings.displayModeDefaultsKey),
+            "conversation"
+        )
+        XCTAssertEqual(defaults.object(forKey: SubtitleOverlayWindowPolicy.pinnedDefaultsKey) as? Bool, false)
+    }
+
+    // MARK: The menu bar
+
+    /// One sentence and its one action; what the action leads to is said to
+    /// whoever asks.
+    func testSuppressedPopoverPrintsOneSentence() throws {
+        let view = try source("MenuBar/MenuBarSuppressedView.swift")
+        XCTAssertEqual(
+            view.components(separatedBy: "Text(descriptor.body)").count - 1,
+            1,
+            "only as what VoiceOver says after the action's name"
+        )
+        XCTAssertTrue(view.contains(".help(descriptor.body)"))
+        XCTAssertTrue(view.contains(".accessibilityHint(Text(descriptor.body))"))
+        for reason in [MenuBarSuppressionReason.privacy, .userDisabled, .onboarding] {
+            let descriptor = MenuBarSuppressedView.Descriptor.descriptor(for: reason)
+            XCTAssertFalse(descriptor.title.isEmpty)
+            XCTAssertFalse(descriptor.body.isEmpty)
+            XCTAssertNotNil(descriptor.action)
+        }
+
+        let recording = try source("MenuBar/MenuBarRecordingView.swift")
+        XCTAssertEqual(
+            recording.components(separatedBy: "\"menubar.recording.live_transcript\"").count - 1,
+            1
+        )
+        XCTAssertTrue(
+            recording.contains(".accessibilityLabel(Text(String(localized: \"menubar.recording.live_transcript\")))"),
+            "the preview's title is only its accessibility label"
+        )
+        let processing = try source("MenuBar/MenuBarProcessingView.swift")
+        XCTAssertEqual(
+            processing.components(separatedBy: "Text(\"\\(Int(info.progress * 100))%\")").count - 1,
+            1,
+            "the figure sits on the status line, once"
+        )
+    }
+
+    func testNewLabelsAreShortInEveryLanguage() throws {
+        let labels = [
+            "share.fact.no_audio", "share.fact.encrypted", "share.fact.deleted_on_stop",
+            "share.fact.kept_24h", "share.fact.expires_24h", "share.live.keep_short",
+            "share.live.start_short", "share.live.stop_short", "share.live.replace_short",
+            "share.qr.show", "share.copy.sent", "subtitle.overlay.menu.banner",
+            "subtitle.overlay.menu.backdrop",
+        ]
+        for language in Self.languages {
+            let text = try source("Resources/\(language).lproj/Localizable.strings")
+            for key in labels {
+                let line = try XCTUnwrap(
+                    text.split(separator: "\n").first { $0.hasPrefix("\"\(key)\" = ") },
+                    "\(language) lacks \(key)"
+                )
+                let value = line.dropFirst(key.count + 6).dropLast(2)
+                XCTAssertLessThanOrEqual(value.count, 40, "\(language) \(key) is a label: \(value)")
+                // German and Spanish labels may end in an abbreviation's stop.
+                XCTAssertFalse(value.hasSuffix("。") || value.hasSuffix("!") || value.hasSuffix("?"),
+                               "\(language) \(key) is not a sentence")
+            }
+            XCTAssertFalse(
+                text.contains("\"subtitle.overlay.font_auto.off\""),
+                "nothing reads the off state any more: the menu item is ticked or not"
+            )
+        }
+    }
+}

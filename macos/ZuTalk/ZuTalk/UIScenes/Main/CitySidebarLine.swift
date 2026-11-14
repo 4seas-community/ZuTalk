@@ -5,8 +5,9 @@
 // 看不出还有东西没到城里 —— 得想起来去设置里翻。这一行一直挂在那,直到那
 // 一场交上了或者人处理了;点它就到「设置 › 城」那张表。
 //
-// 只在登录了、而且确实有排着队的、正在交的、没交上的、或活动被删的时候
-// 出现。全都好就什么都没有:没事的时候侧栏不多一行字。
+// 只在登录了、而且确实有排着队的、正在交的、没交上的、活动被删的、或者音频
+// 还在交、城没收下的时候出现。全都好就什么都没有:没事的时候侧栏不多一行字。
+// 这一行是状态:一个图标,一句「档案馆:…」;各有几场在悬停提示里。
 //
 // 它自己是一个视图、自己盯着 `CityStore`:侧栏所在的 `MainShellView` 一重画
 // 就是整个窗口。
@@ -21,7 +22,7 @@ struct CitySidebarLine: View {
 
     var body: some View {
         if city.account != nil {
-            let tally = CityFilingTally.count(city.filingList, busy: city.busySessions)
+            let tally = city.tally
             if let attention = tally.attention {
                 Button(action: onOpen) {
                     Label {

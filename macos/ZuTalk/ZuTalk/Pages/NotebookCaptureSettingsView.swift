@@ -39,11 +39,20 @@ enum NotebookCaptureSettingsScope: Equatable {
     }
 }
 
+/// A topic's options: the defaults its next recordings start with.
+///
+/// The page is rows of a name and a control (docs/product/interface-layers.md
+/// 「界面怎么写」) — languages, sound, terms and background, audio. Nothing is
+/// explained in place: what used to be a paragraph under each card is the
+/// tooltip of the row's name or of its pill, and the two things a person has
+/// to be able to read before choosing — what each audio choice deletes, and
+/// what recording the Mac's own sound needs — sit behind the ⓘ beside the
+/// pill. That these are defaults for the next recordings is the page's
+/// header, one word, with the full sentence as its tooltip.
 struct NotebookCaptureSettingsView: View {
     let notebookId: String
     @ObservedObject private var capture = ActiveBilingualTranscriptStore.shared
     @ObservedObject private var editor: NotebookCaptureProfileEditorModel
-    @ObservedObject private var engineStore = NotebookCaptureEnginePresentationStore.shared
     @ObservedObject private var inputDevices = AudioInputDeviceStore.shared
     let scope: NotebookCaptureSettingsScope
     /// Session Settings owns the page-level scroller so its resources,
@@ -82,7 +91,6 @@ struct NotebookCaptureSettingsView: View {
         .background(Color.bgRoot)
         .task(id: notebookId) {
             inputDevices.refreshInBackground()
-            engineStore.refresh()
             loadContextBrowser()
         }
         .onReceive(NotificationCenter.default.publisher(
@@ -95,35 +103,29 @@ struct NotebookCaptureSettingsView: View {
     private var settingsContent: some View {
         VStack(alignment: .leading, spacing: Spacing.lg) {
             header
+            persistenceFailureDetail
 
             if capture.isCaptureActive {
+                // A status, so it stays a sentence: what a recording in
+                // progress has frozen, and what can still be changed.
                 Label(
                     String(localized: "capture.settings.active_locked"),
                     systemImage: "exclamationmark.circle.fill"
                 )
-                .font(.captionMedium)
+                .font(.bodySM)
                 .foregroundColor(.signalAmber)
-                .padding(Spacing.md)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.signalAmber.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+                .fixedSize(horizontal: false, vertical: true)
             }
 
-            VStack(alignment: .leading, spacing: Spacing.lg) {
+            // What a recording in progress freezes is disabled control by
+            // control — each pill dims itself — so the names stay readable
+            // and the ⓘ beside a frozen choice can still be opened.
+            PlainRowGroup {
                 languagesSection
+                audioInputSection
                 contextBrowserSection
-            }
-            .disabled(editor.canEdit == false)
-            .opacity(editor.canEdit ? 1 : 0.62)
-
-            audioInputSection
-
-            VStack(alignment: .leading, spacing: Spacing.lg) {
-                postStopRemoteProcessingSection
                 retentionSection
             }
-            .disabled(editor.canEdit == false)
-            .opacity(editor.canEdit ? 1 : 0.62)
 
             // Only a topic has a channel; a recording filed under none has
             // nowhere to inherit one from.
@@ -138,86 +140,64 @@ struct NotebookCaptureSettingsView: View {
 
     private var draft: NotebookCaptureProfileDTO { editor.draft }
 
+    /// Languages, terms and audio keep what a recording started with; they
+    /// cannot be edited while one runs, or before the saved options load.
+    private var isFrozen: Bool { editor.canEdit == false }
+
+    /// One word says what the page is — defaults — and the sentence about
+    /// whose defaults, and that changes save themselves, is its tooltip.
     private var header: some View {
-        MontereyHorizontalViewThatFits {
-            HStack(alignment: .top, spacing: Spacing.md) {
-                headerCopy
-                Spacer()
-                settingsActions
+        let title = String(localized: "topics.options.header")
+        // The status sits beside the title while there is room; a failure
+        // with its Retry is wider, and drops under it in a narrow window.
+        return MontereyHorizontalViewThatFits {
+            PlainPageHeader(title, help: scope.settingsDescription) {
+                persistenceStatus
             }
         } fallback: {
-            VStack(alignment: .leading, spacing: Spacing.sm) {
-                headerCopy
-                settingsActions
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                PlainPageHeader(title, help: scope.settingsDescription)
+                persistenceStatus
             }
         }
+        .accessibilityIdentifier("capture.settings.header")
     }
 
-    private var settingsActions: some View {
-        persistenceStatus
-    }
-
-    private var headerCopy: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(String(localized: "capture.settings.title"))
-                .font(.headline)
-                .foregroundColor(.textPrimary)
-            Text(scope.settingsDescription)
-                .font(.caption)
-                .foregroundColor(.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
+    // MARK: 声音
 
     private var audioInputSection: some View {
-        settingsCard(
-            title: String(localized: "settings.audio_input.title"),
-            icon: "waveform.and.mic"
-        ) {
-            Text(String(localized: "settings.audio_input.subtitle"))
-                .font(.caption)
-                .foregroundColor(.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            HStack(spacing: Spacing.sm) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(String(localized: "settings.audio_input.device"))
-                        .font(.captionMedium)
-                        .foregroundColor(.textPrimary)
-                    Text(String(localized: "settings.audio_input.local_scope"))
-                        .font(.system(size: 10))
-                        .foregroundColor(.textTertiary)
-                        .fixedSize(horizontal: false, vertical: true)
+        VStack(alignment: .leading, spacing: Spacing.xs) {
+            PlainRow(String(localized: "topics.options.sound")) {
+                PillStrip {
+                    HStack(spacing: 2) {
+                        AudioInputPicker(notebookId: notebookId)
+                        if inputDevices.isSystemAudioSelected {
+                            // Recording the Mac's own sound needs a macOS
+                            // permission, and without it the recording is
+                            // silent: where to grant it has to be findable.
+                            InfoButton(
+                                String(localized: "settings.audio_input.system_audio_hint"),
+                                accessibilityLabel: String(localized: "settings.audio_input.title")
+                            )
+                        }
+                    }
                 }
-
-                Spacer(minLength: Spacing.sm)
-
-                AudioInputPicker(notebookId: notebookId)
             }
-            .padding(Spacing.md)
-            .background(Color.bgSunken.opacity(0.35))
-            .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
-
-            Text(audioInputHint)
-                .font(.caption)
-                .foregroundColor(.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
 
             if let status = audioInputStatus {
-                Label(status.text, systemImage: status.systemImage)
-                    .font(.captionMedium)
-                    .foregroundColor(status.color)
-                    .fixedSize(horizontal: false, vertical: true)
+                PlainRowDetail {
+                    Label(status.text, systemImage: status.systemImage)
+                        .font(.bodySM)
+                        .foregroundColor(status.color)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }
 
-    private var audioInputHint: String {
-        inputDevices.isSystemAudioSelected
-            ? String(localized: "settings.audio_input.system_audio_hint")
-            : String(localized: "settings.audio_input.channel_one_hint")
-    }
-
+    /// What stands in the way of choosing a source, or of the chosen one
+    /// working: a status or an error, one sentence, shown only while it is
+    /// true. What is merely worth knowing is the pill's tooltip.
     private var audioInputStatus: (text: String, systemImage: String, color: Color)? {
         if capture.isAudioInputSwitching {
             return (
@@ -262,172 +242,169 @@ struct NotebookCaptureSettingsView: View {
                 .signalAmber
             )
         }
-        if capture.isCaptureActive, capture.notebookId == notebookId {
-            return (
-                String(localized: "settings.audio_input.active_switch_hint"),
-                "arrow.left.arrow.right",
-                .textSecondary
-            )
-        }
         return nil
     }
 
-    /// 这个主题录音时说哪些语言。以前只能在主题的「实时」标签里改 ——
-    /// 一个看起来是「看直播」的地方;现在和主题的其余设置放在一起。
+    // MARK: 语言
+
+    /// 这个主题录音时说哪些语言。和首页那张卡是同一排胶囊:× 拿掉,＋ 搜索
+    /// 添加,三种语言时前面的图标改「说的 / 另外译成」,右键菜单调顺序。
     private var languagesSection: some View {
-        settingsCard(
-            title: String(localized: "home.record.languages.picker"),
-            icon: "character.bubble"
+        PlainRow(
+            String(localized: "topics.options.languages"),
+            help: languagesExplanation
         ) {
-            Text(String(localized: "capture.settings.languages.ordered_detail"))
-                .font(.caption)
-                .foregroundColor(.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
             CaptureLanguageEditor(editor: editor)
+                .modifier(FrozenWhileRecording(isFrozen: isFrozen))
         }
         .accessibilityIdentifier("capture.settings.languages")
     }
+
+    private var languagesExplanation: String {
+        [
+            String(localized: "capture.settings.languages.ordered_detail"),
+            CaptureLanguageEditor.rolesSummary(
+                selected: draft.selectedLanguages,
+                translatedOnly: draft.subtitleOnlyLanguages
+            ),
+        ]
+        .compactMap { $0 }
+        .joined(separator: "\n")
+    }
+
+    // MARK: 保存状态
 
     @ViewBuilder
     private var persistenceStatus: some View {
         switch editor.persistenceState {
         case .loading:
-            settingsStatusLabel(
+            PlainStatus(
                 String(localized: "capture.settings.autosave.loading"),
-                systemImage: "arrow.clockwise",
-                color: .textSecondary
+                systemImage: "arrow.clockwise"
             )
         case .saving:
-            settingsStatusLabel(
+            PlainStatus(
                 String(localized: "capture.settings.autosave.saving"),
-                systemImage: "arrow.triangle.2.circlepath",
-                color: .textSecondary
+                systemImage: "arrow.triangle.2.circlepath"
             )
         case .saved:
-            settingsStatusLabel(
+            PlainStatus(
                 String(localized: "capture.settings.autosave.saved"),
                 systemImage: "checkmark.circle.fill",
-                color: .signalGreen
+                tint: .signalGreen
             )
         case .loadFailed(let message):
             settingsFailureStatus(
                 title: String(localized: "capture.settings.autosave.load_failed"),
-                message: message,
-                actionTitle: String(localized: "capture.settings.autosave.retry"),
-                action: editor.retry
+                message: message
             )
         case .saveFailed(let message):
             settingsFailureStatus(
                 title: String(localized: "capture.settings.autosave.save_failed"),
-                message: message,
-                actionTitle: String(localized: "capture.settings.autosave.retry"),
-                action: editor.retry
+                message: message
             )
         }
     }
 
-    private func settingsStatusLabel(
-        _ title: String,
-        systemImage: String,
-        color: Color
-    ) -> some View {
-        Label(title, systemImage: systemImage)
-            .font(.captionMedium)
-            .foregroundColor(color)
-            .accessibilityLabel(Text(title))
+    /// An error and its one action.
+    private func settingsFailureStatus(title: String, message: String) -> some View {
+        HStack(spacing: Spacing.sm) {
+            PlainStatus(
+                title,
+                systemImage: "exclamationmark.triangle.fill",
+                tint: .signalAmber,
+                help: message
+            )
+            ActionPill(
+                String(localized: "capture.settings.autosave.retry"),
+                systemImage: "arrow.clockwise",
+                action: editor.retry
+            )
+            .disabled(capture.isCaptureActive)
+        }
     }
 
-    private func settingsFailureStatus(
-        title: String,
-        message: String,
-        actionTitle: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        VStack(alignment: .trailing, spacing: Spacing.xs) {
-            Label(title, systemImage: "exclamationmark.triangle.fill")
-                .font(.captionMedium)
-                .foregroundColor(.signalAmber)
+    /// What the system said went wrong, under the header while the failure
+    /// lasts: an error has to be readable and copyable, not only hoverable.
+    @ViewBuilder
+    private var persistenceFailureDetail: some View {
+        switch editor.persistenceState {
+        case .loadFailed(let message), .saveFailed(let message):
             Text(message)
-                .font(.caption2)
+                .font(.bodySM)
                 .foregroundColor(.textTertiary)
                 .lineLimit(2)
-                .multilineTextAlignment(.trailing)
                 .textSelection(.enabled)
                 .help(message)
-            Button(actionTitle, action: action)
-                .buttonStyle(.link)
-                .font(.caption)
-                .disabled(capture.isCaptureActive)
+        case .loading, .saving, .saved:
+            EmptyView()
         }
-        .frame(maxWidth: 280, alignment: .trailing)
     }
 
+    // MARK: 专有词与背景
+
     private var contextSection: some View {
-        settingsCard(
-            title: String(localized: "capture.settings.context.title"),
-            icon: "books.vertical.fill"
-        ) {
-            Text(String(localized: "capture.settings.context.pack_detail"))
-                .font(.caption)
-                .foregroundColor(.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            HStack(spacing: Spacing.sm) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(String(localized: "capture.settings.context.current"))
-                        .font(.system(size: 10))
-                        .foregroundColor(.textTertiary)
-                    Text(selectedContextPack.map(contextPackDisplayTitle)
-                         ?? String(localized: "capture.settings.context.no_selection"))
-                        .font(.captionMedium)
-                        .foregroundColor(.textPrimary)
-                        .lineLimit(1)
-                }
-
-                Spacer(minLength: Spacing.sm)
-
-                Menu {
-                    ForEach(capture.contextPacks) { pack in
-                        Button {
-                            selectContextPack(pack.id)
-                        } label: {
-                            if capture.selectedContextPackId == pack.id {
-                                Label(contextPackDisplayTitle(pack), systemImage: "checkmark")
-                            } else {
-                                Text(contextPackDisplayTitle(pack))
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            PlainRow(
+                String(localized: "capture.settings.context.title"),
+                help: String(localized: "capture.settings.context.pack_detail")
+            ) {
+                PillStrip {
+                    // Which set this topic's recordings use: the value is on
+                    // the pill, the others are in its menu.
+                    MenuPill(
+                        selectedContextPack.map(contextPackDisplayTitle)
+                            ?? String(localized: "capture.settings.context.no_selection"),
+                        titleIsName: selectedContextPack?.isPrivate == false,
+                        systemImage: "books.vertical",
+                        tone: capture.contextPacks.isEmpty ? .dimmed : .normal,
+                        help: String(localized: "capture.settings.context.pack_detail"),
+                        accessibilityLabel: String(localized: "capture.settings.context.title")
+                    ) {
+                        capture.contextPacks.map { pack in
+                            PillMenuItem(
+                                contextPackDisplayTitle(pack),
+                                isOn: capture.selectedContextPackId == pack.id
+                            ) {
+                                selectContextPack(pack.id)
                             }
                         }
                     }
-                } label: {
-                    Text(String(localized: "capture.settings.context.choose"))
-                }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                .disabled(capture.contextPacks.isEmpty)
-                .accessibilityLabel(Text(String(localized: "capture.settings.context.choose")))
-            }
-            .padding(Spacing.md)
-            .background(Color.bgSunken.opacity(0.35))
-            .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+                    .disabled(capture.contextPacks.isEmpty || isFrozen)
+                    .accessibilityIdentifier("capture.settings.context.pack")
 
-            HStack(spacing: Spacing.md) {
-                Button(String(localized: "capture.settings.context.manage")) {
-                    isManagingKnowledge = true
+                    ActionPill(
+                        String(localized: "topics.options.edit"),
+                        systemImage: "square.and.pencil",
+                        help: String(localized: "capture.settings.context.manage"),
+                        accessibilityLabel: String(localized: "capture.settings.context.manage")
+                    ) {
+                        isManagingKnowledge = true
+                    }
+                    .disabled(isFrozen)
+                    .accessibilityIdentifier("capture.settings.context.manage")
+
+                    ActionPill(
+                        String(localized: "topics.options.preview"),
+                        systemImage: "eye",
+                        style: .quiet,
+                        help: String(localized: "capture.settings.context.preview"),
+                        accessibilityLabel: String(localized: "capture.settings.context.preview")
+                    ) {
+                        requestContextPreview()
+                    }
+                    .disabled(selectedContextPack == nil || isFrozen)
+                    .accessibilityIdentifier("capture.settings.context.preview")
                 }
-                .accessibilityIdentifier("capture.settings.context.manage")
-                Button(String(localized: "capture.settings.context.preview")) {
-                    requestContextPreview()
-                }
-                .buttonStyle(.plain)
-                .font(.caption)
-                .disabled(selectedContextPack == nil)
             }
             .sheet(isPresented: $isManagingKnowledge, onDismiss: loadContextBrowser) {
                 KnowledgeLibrarySheet()
             }
 
             if isReviewingContext {
-                contextReview
+                PlainRowDetail {
+                    contextReview
+                }
             }
         }
     }
@@ -435,97 +412,70 @@ struct NotebookCaptureSettingsView: View {
     @ViewBuilder
     private var contextBrowserSection: some View {
         if isLoadingContextPacks {
-            settingsCard(
-                title: String(localized: "capture.settings.context.title"),
-                icon: "doc.text.magnifyingglass"
-            ) {
+            PlainRow(String(localized: "capture.settings.context.title")) {
                 ProgressView()
                     .controlSize(.small)
                     .accessibilityLabel(Text(String(localized: "capture.settings.autosave.loading")))
             }
         } else if let contextLoadError {
-            settingsCard(
-                title: String(localized: "capture.settings.context.title"),
-                icon: "exclamationmark.triangle.fill"
-            ) {
-                Text(contextLoadError)
-                    .font(.caption)
-                    .foregroundColor(.signalAmber)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .textSelection(.enabled)
-                Button(String(localized: "capture.settings.autosave.retry")) {
-                    loadContextBrowser()
+            // An error and its one action.
+            VStack(alignment: .leading, spacing: Spacing.xs) {
+                PlainRow(String(localized: "capture.settings.context.title")) {
+                    ActionPill(
+                        String(localized: "capture.settings.autosave.retry"),
+                        systemImage: "arrow.clockwise"
+                    ) {
+                        loadContextBrowser()
+                    }
+                    .disabled(isFrozen)
                 }
-                .buttonStyle(.bordered)
+                PlainRowDetail {
+                    Label(contextLoadError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.bodySM)
+                        .foregroundColor(.signalAmber)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .textSelection(.enabled)
+                }
             }
         } else if capture.loadedContextNotebookId == notebookId {
             contextSection
         }
     }
 
+    // MARK: 音频
+
+    /// What happens to the audio once there is text. The pill shows the
+    /// choice; what each choice deletes, and that a recording keeps the one
+    /// it started with, is behind the ⓘ — two of the three delete audio for
+    /// good, so it has to be readable before choosing.
     private var retentionSection: some View {
-        settingsCard(
-            title: String(localized: "capture.settings.retention.title"),
-            icon: "internaldrive"
-        ) {
-            Text(String(localized: "capture.settings.retention.subtitle"))
-                .font(.caption)
-                .foregroundColor(.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
+        let current = AudioPrivacyOptionSummary(level: draft.privacyLevel)
+        let name = String(localized: "capture.settings.retention.title")
+        return PlainRow(String(localized: "topics.options.audio")) {
+            PillStrip {
+                HStack(spacing: 2) {
+                    MenuPill(
+                        current.title,
+                        systemImage: current.systemImage,
+                        help: current.storageText,
+                        accessibilityLabel: name
+                    ) {
+                        NotebookAudioRetentionLevel.allCases.map { level in
+                            PillMenuItem(
+                                AudioPrivacyOptionSummary(level: level).title,
+                                isOn: editor.draft.privacyLevel == level
+                            ) {
+                                editor.update { $0.privacyLevel = level }
+                            }
+                        }
+                    }
+                    .disabled(isFrozen)
+                    .accessibilityIdentifier("capture.settings.retention")
 
-            ForEach(NotebookAudioRetentionLevel.allCases) { level in
-                retentionOptionRow(AudioPrivacyOptionSummary(level: level))
-            }
-        }
-    }
-
-    private func retentionOptionRow(_ option: AudioPrivacyOptionSummary) -> some View {
-        let isSelected = draft.privacyLevel == option.level
-        return Button {
-            editor.update { $0.privacyLevel = option.level }
-        } label: {
-            HStack(alignment: .top, spacing: Spacing.sm) {
-                Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                    .font(.system(size: 12))
-                    .foregroundColor(isSelected ? .brandAccent : .textTertiary)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(option.title)
-                        .font(.captionMedium)
-                        .foregroundColor(.textPrimary)
-                    Text(option.storageText)
-                        .font(.caption)
-                        .foregroundColor(.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    InfoButton(AudioPrivacyOptionSummary.disclosure, accessibilityLabel: name)
+                        .accessibilityIdentifier("capture.settings.retention.info")
                 }
-                Spacer(minLength: Spacing.sm)
             }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text(option.title))
-        .accessibilityValue(Text(isSelected
-                                 ? String(localized: "capture.settings.context.selected")
-                                 : String(localized: "capture.settings.context.not_selected")))
-        .accessibilityHint(Text(option.storageText))
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-
-    private var postStopRemoteProcessingSection: some View {
-        settingsCard(
-            title: String(localized: "capture.settings.after_stop.title"),
-            icon: "waveform.badge.plus"
-        ) {
-            Text(String(localized: engineStore.engine.postStopUsesAsyncFileApi == true
-                ? "capture.settings.after_stop.detail"
-                : "capture.settings.after_stop.unavailable_detail"))
-                .font(.caption)
-                .foregroundColor(.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Text("\(String(localized: "capture.settings.after_stop.engine")) · \(engineStore.engine.postStopSummary) · \(engineStore.engine.postStopExecutionSummary)")
-                .font(.system(size: 10))
-                .foregroundColor(.textTertiary)
-                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -539,15 +489,23 @@ struct NotebookCaptureSettingsView: View {
     private var contextReview: some View {
         if let preview = capture.contextPreview, preview.notebookId == notebookId {
             VStack(alignment: .leading, spacing: Spacing.sm) {
-                Label(
-                    String(
-                        format: String(localized: "capture.settings.context.preview_count"),
-                        preview.scalarCount
-                    ),
-                    systemImage: "eye.fill"
-                )
-                .font(.captionMedium)
-                .foregroundColor(.textPrimary)
+                HStack(spacing: Spacing.sm) {
+                    PlainStatus(
+                        String(
+                            format: String(localized: "capture.settings.context.preview_count"),
+                            preview.scalarCount
+                        ),
+                        systemImage: "eye"
+                    )
+                    Spacer(minLength: Spacing.sm)
+                    ActionPill(
+                        String(localized: "common.close"),
+                        systemImage: "xmark",
+                        style: .quiet
+                    ) {
+                        isReviewingContext = false
+                    }
+                }
 
                 ScrollView {
                     Text(preview.containsSendableContext == false
@@ -566,7 +524,7 @@ struct NotebookCaptureSettingsView: View {
                 ForEach(preview.sources) { source in
                     Label {
                         Text("\(source.title) · \(source.scalarCount)")
-                            .font(.caption)
+                            .font(.bodySM)
                     } icon: {
                         Image(systemName: source.included ? "checkmark.circle" : "minus.circle")
                     }
@@ -575,40 +533,11 @@ struct NotebookCaptureSettingsView: View {
 
                 ForEach(Array(preview.omittedReasons.enumerated()), id: \.offset) { _, reason in
                     Label(reason, systemImage: "exclamationmark.triangle")
-                        .font(.caption)
+                        .font(.bodySM)
                         .foregroundColor(.signalAmber)
                 }
-
-                Button(String(localized: "common.close")) {
-                    isReviewingContext = false
-                }
-                .buttonStyle(.bordered)
             }
-            .padding(Spacing.md)
-            .background(Color.bgElevated.opacity(0.32))
-            .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
         }
-    }
-
-    private func settingsCard<Content: View>(
-        title: String,
-        icon: String,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: Spacing.md) {
-            Label(title, systemImage: icon)
-                .font(.captionMedium)
-                .foregroundColor(.textSecondary)
-            content()
-        }
-        .padding(Spacing.lg)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .surfaceCard(
-            fill: Color.bgElevated.opacity(0.3),
-            cornerRadius: Radius.md,
-            border: Color.borderGhost.opacity(0.3),
-            borderWidth: 0.5
-        )
     }
 
     private func requestContextPreview() {
@@ -665,3 +594,19 @@ struct NotebookCaptureSettingsView: View {
 
 }
 
+/// Takes a control out of use while its setting is frozen, and shows it: the
+/// language pills do not dim themselves the way the other pills do.
+private struct FrozenWhileRecording: ViewModifier {
+    let isFrozen: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isFrozen {
+            content
+                .disabled(true)
+                .opacity(0.5)
+        } else {
+            content
+        }
+    }
+}

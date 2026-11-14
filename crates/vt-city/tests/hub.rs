@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpListener;
-use vt_city::hub::{city_tag, event_tag, Hub, PostOutcome};
+use tokio::net::{TcpListener, TcpStream};
+use vt_city::hub::{city_tag, event_tag, file_name, Hub, PostOutcome, FILE_MAX_BYTES};
 use vt_city::identity::Identity;
 use vt_city::{record, CityError};
 
@@ -26,35 +26,12 @@ async fn serve(
         while let Ok((mut socket, _)) = listener.accept().await {
             let (log, answer) = (log.clone(), answer.clone());
             tokio::spawn(async move {
-                let mut bytes = Vec::new();
-                let mut chunk = [0u8; 8192];
-                let (head_end, length) = loop {
-                    let read = socket.read(&mut chunk).await.unwrap_or(0);
-                    if read == 0 {
-                        return;
-                    }
-                    bytes.extend_from_slice(&chunk[..read]);
-                    if let Some(at) = bytes.windows(4).position(|window| window == b"\r\n\r\n") {
-                        let head = String::from_utf8_lossy(&bytes[..at]).to_lowercase();
-                        let length = head
-                            .lines()
-                            .find_map(|line| line.strip_prefix("content-length:"))
-                            .and_then(|value| value.trim().parse::<usize>().ok())
-                            .unwrap_or(0);
-                        break (at + 4, length);
-                    }
+                let Some((head, body)) = read_request(&mut socket).await else {
+                    return;
                 };
-                while bytes.len() < head_end + length {
-                    let read = socket.read(&mut chunk).await.unwrap_or(0);
-                    if read == 0 {
-                        break;
-                    }
-                    bytes.extend_from_slice(&chunk[..read]);
-                }
-                let head = String::from_utf8_lossy(&bytes[..head_end]).to_string();
                 let mut words = head.split_whitespace();
                 let (method, target) = (words.next().unwrap_or(""), words.next().unwrap_or(""));
-                let body = String::from_utf8_lossy(&bytes[head_end..]).to_string();
+                let body = String::from_utf8_lossy(&body).to_string();
                 log.lock()
                     .unwrap()
                     .push((format!("{method} {target}"), body.clone()));
@@ -62,6 +39,80 @@ async fn serve(
                 let response = format!(
                     "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{reply}",
                     reply.len()
+                );
+                let _ = socket.write_all(response.as_bytes()).await;
+            });
+        }
+    });
+    (Hub::new(&base, reqwest::Client::new()).unwrap(), seen)
+}
+
+/// One whole request: its head as sent, and its body to the stated length.
+async fn read_request(socket: &mut TcpStream) -> Option<(String, Vec<u8>)> {
+    let mut bytes = Vec::new();
+    let mut chunk = [0u8; 8192];
+    let (head_end, length) = loop {
+        let read = socket.read(&mut chunk).await.unwrap_or(0);
+        if read == 0 {
+            return None;
+        }
+        bytes.extend_from_slice(&chunk[..read]);
+        if let Some(at) = bytes.windows(4).position(|window| window == b"\r\n\r\n") {
+            let head = String::from_utf8_lossy(&bytes[..at]).to_lowercase();
+            let length = head
+                .lines()
+                .find_map(|line| line.strip_prefix("content-length:"))
+                .and_then(|value| value.trim().parse::<usize>().ok())
+                .unwrap_or(0);
+            break (at + 4, length);
+        }
+    };
+    while bytes.len() < head_end + length {
+        let read = socket.read(&mut chunk).await.unwrap_or(0);
+        if read == 0 {
+            break;
+        }
+        bytes.extend_from_slice(&chunk[..read]);
+    }
+    let head = String::from_utf8_lossy(&bytes[..head_end]).to_string();
+    Some((head, bytes[head_end..].to_vec()))
+}
+
+/// What the file store was asked: the request line, its headers in lower
+/// case, and the bytes that came with it.
+struct FileAsk {
+    line: String,
+    head: String,
+    body: Vec<u8>,
+}
+
+/// A stand-in for the file store: one status per request, with any extra
+/// header lines, and a record of every request in full.
+async fn serve_files(
+    answer: impl Fn(&str) -> (u16, &'static str) + Send + Sync + 'static,
+) -> (Hub, Arc<Mutex<Vec<FileAsk>>>) {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let seen: Arc<Mutex<Vec<FileAsk>>> = Arc::default();
+    let log = seen.clone();
+    let answer = Arc::new(answer);
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            let (log, answer) = (log.clone(), answer.clone());
+            tokio::spawn(async move {
+                let Some((head, body)) = read_request(&mut socket).await else {
+                    return;
+                };
+                let line = head.lines().next().unwrap_or("").to_string();
+                let line = line.trim_end_matches(" HTTP/1.1").to_string();
+                let (status, headers) = answer(&line);
+                log.lock().unwrap().push(FileAsk {
+                    line,
+                    head: head.to_lowercase(),
+                    body,
+                });
+                let response = format!(
+                    "HTTP/1.1 {status} X\r\n{headers}Content-Length: 0\r\nConnection: close\r\n\r\n"
                 );
                 let _ = socket.write_all(response.as_bytes()).await;
             });
@@ -421,4 +472,132 @@ async fn a_card_starts_with_the_inception_and_adds_what_readers_need() {
         asked(&seen)[1],
         format!("GET {own_tag}?since=0&wait=0&kinds=id/did")
     );
+}
+
+#[tokio::test]
+async fn a_file_is_asked_after_by_its_first_byte() {
+    let name = file_name(b"part zero");
+    let (has, seen) = serve_files(|_| (206, "Content-Range: bytes 0-0/9\r\n")).await;
+    assert_eq!(has.file_exists(&name).await, Ok(true));
+    {
+        let asks = seen.lock().unwrap();
+        assert_eq!(asks.len(), 1);
+        assert_eq!(asks[0].line, format!("GET /files/{name}"));
+        assert!(asks[0].head.contains("range: bytes=0-0"));
+    }
+    // A server that ignores the range and answers with the whole file has it too.
+    let (whole, _) = serve_files(|_| (200, "")).await;
+    assert_eq!(whole.file_exists(&name).await, Ok(true));
+    let (lacks, _) = serve_files(|_| (404, "")).await;
+    assert_eq!(lacks.file_exists(&name).await, Ok(false));
+    // Anything else is not an answer to the question.
+    let (broken, _) = serve_files(|_| (502, "")).await;
+    assert_eq!(
+        broken.file_exists(&name).await,
+        Err(CityError::Http { status: 502 })
+    );
+    // A name that is not a fingerprint is never put in an address.
+    let (hub, seen) = serve_files(|_| (200, "")).await;
+    for bad in ["", "abc", "../hub/ev%3Aabababababababab", &"AB".repeat(32)] {
+        assert!(matches!(
+            hub.file_exists(bad).await,
+            Err(CityError::Malformed(_))
+        ));
+    }
+    assert!(seen.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn a_file_is_uploaded_whole_with_its_length_stated() {
+    let bytes: Vec<u8> = (0..70_000u32).map(|n| (n % 251) as u8).collect();
+    let name = file_name(&bytes);
+    let (hub, seen) = serve_files(|_| (200, "")).await;
+    assert_eq!(hub.file_put(&name, bytes.clone()).await, Ok(()));
+    let asks = seen.lock().unwrap();
+    assert_eq!(asks.len(), 1);
+    assert_eq!(asks[0].line, format!("PUT /files/{name}"));
+    assert!(asks[0].head.contains("content-length: 70000"));
+    // The server takes no chunked uploads and no credential.
+    assert!(!asks[0].head.contains("transfer-encoding"));
+    assert!(!asks[0].head.contains("authorization"));
+    assert!(!asks[0].head.contains("cookie"));
+    assert_eq!(asks[0].body, bytes);
+}
+
+#[tokio::test]
+async fn what_the_server_would_refuse_is_never_uploaded() {
+    let (hub, seen) = serve_files(|_| (200, "")).await;
+    let bytes = b"a part".to_vec();
+    assert!(matches!(
+        hub.file_put("not a name", bytes.clone()).await,
+        Err(CityError::Malformed(_))
+    ));
+    // Bytes that are not the file the name promises: the server would take
+    // them all and then answer 400.
+    assert!(matches!(
+        hub.file_put(&file_name(b"another part"), bytes).await,
+        Err(CityError::Malformed(_))
+    ));
+    assert!(matches!(
+        hub.file_put(&file_name(b""), Vec::new()).await,
+        Err(CityError::Malformed(_))
+    ));
+    let large = vec![0u8; FILE_MAX_BYTES as usize + 1];
+    assert_eq!(
+        hub.file_put(&file_name(&large), large).await,
+        Err(CityError::FileTooBig)
+    );
+    assert!(seen.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn each_refusal_of_a_file_is_told_apart() {
+    let bytes = b"a part".to_vec();
+    let name = file_name(&bytes);
+    for (status, headers, expect) in [
+        (403, "", CityError::Unclaimed),
+        (413, "", CityError::FileTooBig),
+        (
+            429,
+            "Retry-After: 4711\r\n",
+            CityError::DailyCap {
+                retry_after_secs: Some(4711),
+            },
+        ),
+        (
+            429,
+            "",
+            CityError::DailyCap {
+                retry_after_secs: None,
+            },
+        ),
+        (
+            429,
+            "Retry-After: Fri, 13 Nov 2026 00:00:00 GMT\r\n",
+            CityError::DailyCap {
+                retry_after_secs: None,
+            },
+        ),
+        (507, "", CityError::ServerFull),
+        (400, "", CityError::BadFile),
+        (500, "", CityError::Http { status: 500 }),
+        (404, "", CityError::Http { status: 404 }),
+    ] {
+        let (hub, _) = serve_files(move |_| (status, headers)).await;
+        assert_eq!(
+            hub.file_put(&name, bytes.clone()).await,
+            Err(expect),
+            "{status} {headers}"
+        );
+    }
+
+    // Nothing listens here: bind a port, then let it go.
+    let gone = TcpListener::bind("127.0.0.1:0")
+        .await
+        .unwrap()
+        .local_addr()
+        .unwrap();
+    let nobody = Hub::new(&format!("http://{gone}"), reqwest::Client::new()).unwrap();
+    assert_eq!(nobody.file_put(&name, bytes).await, Err(CityError::Offline));
+    assert_eq!(nobody.file_exists(&name).await, Err(CityError::Offline));
 }

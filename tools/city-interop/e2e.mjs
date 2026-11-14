@@ -6,8 +6,11 @@
    city's own libraries, then lets the Rust example `link_publish` do what
    ZuTalk will do — sign in through the device-link relay while this script
    plays the device that is already signed in, find the city and the event,
-   publish a recording, correct a sentence. Afterwards the hub is read back
-   and judged with the city's reducers.
+   publish a recording, correct a sentence, add its audio a part at a time.
+   Afterwards the hub is read back and judged with the city's reducers, and
+   the audio is fetched from the server's file store the way a player would.
+
+   The audio is a tone made on the spot (audio.mjs; needs macOS's afconvert).
 
      CITY_SRC=<city checkout> CITY_E2E_DIR=<empty scratch dir> node tools/city-interop/e2e.mjs
 
@@ -15,12 +18,14 @@
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { request } from "node:http";
+import { createHash } from "node:crypto";
 import { createInterface } from "node:readline";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import * as city from "./city.mjs";
+import * as audio from "./audio.mjs";
 
 const { record, tape, ev, arc, polis, link, box, did, seed } = city;
 const here = dirname(fileURLToPath(import.meta.url)), repo = join(here, "..", "..");
@@ -35,6 +40,7 @@ const ok = (cond, what, extra) => { checks++; if (!cond) fail(what, extra); };
 const same = (a, b, what) => { checks++; if (!isDeepStrictEqual(a, b)) fail(what, "got:  " + JSON.stringify(a) + "\n  want: " + JSON.stringify(b)); };
 
 const freePort = () => new Promise((done) => { const s = createServer(); s.listen(0, "127.0.0.1", () => { const { port } = s.address(); s.close(() => done(port)); }); });
+const sound = audio.parts(join(scratch, `audio-${Date.now()}`));
 const chain = (p, signer = p.signer) => {
   let dep = p.id;
   return async (type, body, links, at) => { const x = await record.make(signer, p.id, type, body, { deps: [dep], links, at }); dep = x.id; return x; };
@@ -106,7 +112,7 @@ async function scenario(label, makeHost) {
 
   /* ---- vt-city signs in, finds its way, publishes ---- */
   const rust = spawn("cargo", ["run", "--quiet", "--manifest-path", join(repo, "Cargo.toml"), "-p", "vt-city", "--example", "link_publish"],
-    { env: { ...process.env, CITY_BASE: `http://${name}`, CITY_RESOLVE: `city.localhost=127.0.0.1:${port}`, CITY_EVENT: "Morning circle" }, stdio: ["ignore", "pipe", "pipe"] });
+    { env: { ...process.env, CITY_BASE: `http://${name}`, CITY_RESOLVE: `city.localhost=127.0.0.1:${port}`, CITY_EVENT: "Morning circle", CITY_AUDIO: audio.asEnv(sound) }, stdio: ["ignore", "pipe", "pipe"] });
   children.push(rust);
   let rustErr = "";
   rust.stderr.on("data", (d) => { rustErr += d; });
@@ -173,7 +179,7 @@ async function scenario(label, makeHost) {
   const fixed = want.sentences.map((s) => (s.t === want.fixed.t ? { ...s, text: want.fixed.text } : s));
   same(tp.segs.map(({ t, d, sp, text }) => ({ t, d, sp, text })), fixed, "sentences, the corrected one corrected");
   same(Object.fromEntries(tp.names), want.names, "speaker names");
-  same(tp.marks, want.marks, "highlights");
+  ok(tp.marks.length === 0 && !onEvent.some((r) => r.e.type === "tape/mark"), "no highlight was filed");
   for (const [lang, lines] of Object.entries(want.languages)) {
     const expect = { ...lines, ...(want.fixed[lang] ? { [want.fixed.t]: want.fixed[lang] } : {}) };
     const got = tape.trLines(tp, lang);
@@ -186,6 +192,42 @@ async function scenario(label, makeHost) {
   same([block?.kind, block?.take, block?.dur, block?.title, block?.state], ["audio", pub.take, want.duration_ms, want.title, "open"], "the archive item");
   same(block.in.map((x) => x.chan).sort(), [event.id, channel.id].sort(), "placed in the event and in the channel");
   ok(arc.visible(a, block, owner.id), "another resident sees it");
+
+  /* ---- the audio: claimed on the event's tag, then stored, then served ---- */
+  {
+    const sent = steps.audio;
+    same(sent.unclaimed, "Err(Unclaimed)", "bytes no record claims are turned away");
+    same(sent.parts.map((p) => [p.n, p.file]), sound.map((p) => [p.n, p.file]), "each part is named by the SHA-256 of its bytes");
+    for (const p of sent.parts) {
+      same([p.before, p.early], [false, "Err(Unclaimed)"], `part ${p.n}: the file is refused before its record is on the event's tag`);
+      same([p.posted.took, p.posted.refused], [1, []], `part ${p.n}: the tag keeps the part's record (the take it already had)`);
+      same([p.after, p.again], [true, "Ok(())"], `part ${p.n}: stored once the record is there; sending it again changes nothing`);
+    }
+    ok(onEvent.filter((r) => r.e.type === "tape/part").every((r) => r.e.by === host.id) && !onCity.some((r) => r.e.type === "tape/part"), "the parts are on the event tag only, signed by the take's author");
+    same(audio.read(tp), audio.signed(sound), "the city reads both parts as signed, in order");
+    same(tp.dur, sound.reduce((n, p) => n + p.dur, 0), "and they add up to the audio's length");
+    same([0, 2_999, 3_000, 4_200].map((ms) => { const at = tape.locate(tp, ms); return [at.part.file, at.at]; }),
+      [[sound[0].file, 0], [sound[0].file, 2_999], [sound[1].file, 0], [sound[1].file, 1_200]], "a player finds any moment in its part");
+    for (const p of sound) {
+      const whole = await audio.fetched(origin, p.file);
+      same([whole.status, whole.type], [200, "audio/mp4"], `part ${p.n}: served as AAC in MPEG-4`);
+      ok(whole.bytes.equals(p.bytes), `part ${p.n}: the bytes served are the bytes uploaded`);
+      ok(whole.cache.includes("immutable"), `part ${p.n}: served to be cached for good`);
+      const first = await audio.fetched(origin, p.file, { range: "bytes=0-0" });
+      same([first.status, first.range, first.bytes.length], [206, `bytes 0-0/${p.size}`, 1], `part ${p.n}: a player can ask for a range`);
+    }
+    /* Anyone can ask; nobody but the take's author, with a record, can add. */
+    const stray = Buffer.from("more bytes nobody claimed");
+    const put = await fetch(`${origin}/files/${createHash("sha256").update(stray).digest("hex")}`, { method: "PUT", body: stray });
+    const why = await put.json().catch(() => ({}));
+    same([put.status, String(why.type || "").split("#")[1]], [403, "unclaimed"], "a PUT without a claim is refused as unclaimed");
+    /* The same bytes as a part, claimed by someone else's record under the host's take: not a claim. */
+    const squatter = await record.make(forger.signer, forger.id, "tape/part", { n: 9, file: createHash("sha256").update(stray).digest("hex"), size: stray.length, t0: 0, dur: 1000, mime: "audio/mp4", lv: "" }, { deps: [forger.id], links: [pub.take], at: NOW });
+    await post(evTag, [forger.inception, squatter.rec], "a stranger's part record (the tag checks signatures only)");
+    const squat = await fetch(`${origin}/files/${squatter.rec.e.body.file}`, { method: "PUT", body: stray });
+    same(squat.status, 403, "a part signed by someone other than the take's author claims nothing");
+    same((await audio.fetched(origin, squatter.rec.e.body.file)).status, 404, "and nothing was stored for it");
+  }
   server.kill();
 }
 

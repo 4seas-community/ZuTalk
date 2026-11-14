@@ -168,6 +168,20 @@ enum NotebookResourceStatusPresentation {
         case .destroyed: .textSecondary
         }
     }
+
+    /// The icon beside the word. Colour is never the only signal: each
+    /// status has its own shape.
+    static func symbol(_ status: NotebookResourceStatus) -> String {
+        switch status {
+        case .unknown: "questionmark.circle"
+        case .missing: "minus.circle"
+        case .pending: "clock"
+        case .ready: "checkmark.circle"
+        case .empty: "circle.dashed"
+        case .failed: "exclamationmark.triangle"
+        case .destroyed: "xmark.circle"
+        }
+    }
 }
 
 private enum NotebookResourceLoadOutcome: @unchecked Sendable {
@@ -724,13 +738,34 @@ final class SessionResourcesViewModel: ObservableObject {
     }
 }
 
+/// The words of the question asked before a recording's audio is destroyed.
+enum AudioDestroyQuestion {
+    static func message(filedAudio: Bool) -> String {
+        let base = String(localized: "resources.audio.destroy.confirm_message")
+        guard filedAudio else { return base }
+        return CityText.joinSentences([base, String(localized: "resources.audio.destroy.confirm_filed")])
+    }
+
+    /// Whether any of this recording's audio is on a city's server.
+    @MainActor
+    static func hasFiledAudio(sessionId: String?) -> Bool {
+        guard let sessionId else { return false }
+        return (CityStore.shared.filings[sessionId]?.audioPartsFiled ?? 0) > 0
+    }
+}
+
 extension View {
     /// The one question asked before a recording's audio is destroyed and its
     /// text kept, wherever that is offered: among the recording's files, and
     /// in its ⋯ menu.
+    ///
+    /// `filedAudio`: this recording's audio was filed to a city's archive.
+    /// Destroying the audio here does not take that copy back, and the
+    /// question must not let anyone think it does.
     func audioDestroyConfirmation(
         isPresented: Binding<Bool>,
         recordingTitle: String,
+        filedAudio: Bool = false,
         onConfirm: @escaping () -> Void
     ) -> some View {
         confirmationDialog(
@@ -748,14 +783,18 @@ extension View {
             )
             Button(String(localized: "common.cancel"), role: .cancel) {}
         } message: {
-            Text(String(localized: "resources.audio.destroy.confirm_message"))
+            Text(AudioDestroyQuestion.message(filedAudio: filedAudio))
         }
     }
 }
 
-/// Expanded, Session-scoped equivalent of the Topic resource disclosure. It
-/// intentionally lives at the top of Session Settings so the user sees what
-/// exists before changing defaults for a future recording.
+/// What one recording has: its audio, its two transcripts, its notes. The
+/// first group of the recording's details tab.
+///
+/// Every row is a name, how that thing stands (an icon and a word) and what
+/// can be done with it, as pills. The heading is one word; the paragraph
+/// that used to sit under it is its tooltip, and what deleting the audio
+/// keeps is said by the question asked before it is deleted.
 struct SessionResourceSettingsView: View {
     let sessionId: String
     let sessionTitle: String
@@ -766,24 +805,15 @@ struct SessionResourceSettingsView: View {
     @State private var isConfirmingAudioDestroy = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Spacing.md) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(String(localized: "session.settings.resources.title"))
-                    .font(.headline)
-                    .foregroundColor(.textPrimary)
-                Text(String(localized: "session.settings.resources.subtitle"))
-                    .font(.caption)
-                    .foregroundColor(.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+        VStack(alignment: .leading, spacing: Spacing.xs) {
+            GroupHeader(
+                String(localized: "recording.details.files"),
+                help: String(localized: "session.settings.resources.subtitle")
+            )
 
             resourceContent
         }
-        .padding(.horizontal, Spacing.xl)
-        .padding(.top, Spacing.xl)
-        .padding(.bottom, Spacing.lg)
-        .frame(maxWidth: 860, alignment: .leading)
-        .frame(maxWidth: .infinity, alignment: .top)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .task(id: sessionId) {
             viewModel.load(sessionId: sessionId)
         }
@@ -794,6 +824,7 @@ struct SessionResourceSettingsView: View {
         .audioDestroyConfirmation(
             isPresented: $isConfirmingAudioDestroy,
             recordingTitle: displayTitle,
+            filedAudio: AudioDestroyQuestion.hasFiledAudio(sessionId: sessionId),
             onConfirm: destroyAudio
         )
         .accessibilityIdentifier("session.settings.resources.\(sessionId)")
@@ -802,199 +833,47 @@ struct SessionResourceSettingsView: View {
     @ViewBuilder
     private var resourceContent: some View {
         if viewModel.isLoading, viewModel.item == nil {
-            HStack(spacing: Spacing.sm) {
-                ProgressView().controlSize(.small)
-                Text(String(localized: "editor.transcript.async.status.loading"))
-                    .font(.bodySM)
-                    .foregroundColor(.textSecondary)
-            }
-            .frame(maxWidth: .infinity, minHeight: 92)
-            .resourceCardStyle()
+            StatusWord(
+                String(localized: "editor.transcript.async.status.loading"),
+                systemImage: "clock",
+                isBusy: true
+            )
         } else if let item = viewModel.item {
-            VStack(spacing: Spacing.xs) {
-                resourceRow(
-                    title: String(localized: "resources.audio"),
-                    icon: "waveform",
-                    status: item.audio,
-                    detail: audioDetail(item),
-                    onOpen: item.audio == .ready ? { onOpen(.audio) } : nil
-                ) {
-                    if item.audio == .ready {
-                        if viewModel.isDestroyingAudio {
-                            ProgressView()
-                                .controlSize(.small)
-                                .frame(width: 28, height: 28)
-                                .accessibilityLabel(
-                                    Text(String(localized: "resources.audio.destroy"))
-                                )
-                        } else {
-                            Button {
-                                if isAudioDeletionBlocked {
-                                    ToastCenter.shared.info(
-                                        audioDeletionBlockMessage
-                                            ?? String(localized: "resources.audio.destroy.failed")
-                                    )
-                                } else {
-                                    isConfirmingAudioDestroy = true
-                                }
-                            } label: {
-                                Image(systemName: isAudioDeletionBlocked ? "lock" : "trash")
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundColor(
-                                        isAudioDeletionBlocked ? .textTertiary : .signalRed
-                                    )
-                            }
-                            .buttonStyle(.plain)
-                            .frame(width: 28, height: 28)
-                            .help(audioDeletionBlockMessage
-                                ?? String(localized: "resources.audio.destroy"))
-                            .accessibilityLabel(String(localized: "resources.audio.destroy"))
-                            .accessibilityIdentifier(
-                                "session.settings.audio.destroy.\(sessionId)"
-                            )
-                        }
+            SessionResourceRows(
+                item: item,
+                isDestroyingAudio: viewModel.isDestroyingAudio,
+                audioDeletionBlockMessage: audioDeletionBlockMessage,
+                onOpen: onOpen,
+                onDestroyAudio: {
+                    if let blocked = audioDeletionBlockMessage {
+                        ToastCenter.shared.info(blocked)
+                    } else {
+                        isConfirmingAudioDestroy = true
                     }
-                    if item.audio == .destroyed {
-                        Button {
-                            AudioDestructionVerification.verify(sessionId: sessionId)
-                        } label: {
-                            Image(systemName: "checkmark.shield")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(.textSecondary)
-                        }
-                        .buttonStyle(.plain)
-                        .frame(width: 28, height: 28)
-                        .help(String(localized: "resources.audio.verify"))
-                        .accessibilityLabel(String(localized: "resources.audio.verify"))
-                        .accessibilityIdentifier("session.settings.audio.verify.\(sessionId)")
-                    }
-                }
-
-                resourceRow(
-                    title: String(localized: "resources.realtime"),
-                    icon: "captions.bubble",
-                    status: item.realtimeTranscript,
-                    onOpen: { onOpen(.realtimeTranscript) }
-                )
-
-                resourceRow(
-                    title: String(localized: "resources.async"),
-                    icon: "text.document",
-                    status: item.asyncTranscript,
-                    onOpen: { onOpen(.asyncTranscript) }
-                )
-
-                resourceRow(
-                    title: String(localized: "resources.note"),
-                    icon: "square.and.pencil",
-                    // `.ready` means the stable Session-note editor is
-                    // available, not that the note already contains text.
-                    // There is intentionally no mutating "open to inspect"
-                    // read here because opening materializes an empty document.
-                    status: .ready,
-                    detail: String(localized: "session.settings.resources.note.detail"),
-                    onOpen: { onOpen(.manualNote) }
-                )
-
-                if isAudioDeletionBlocked {
-                    Label(
-                        audioDeletionBlockMessage
-                            ?? String(localized: "resources.audio.destroy.failed"),
-                        systemImage: "lock.fill"
-                    )
-                    .font(.caption)
-                    .foregroundColor(.signalAmber)
-                    .padding(.horizontal, Spacing.md)
-                    .padding(.top, Spacing.xs)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-            .padding(Spacing.sm)
-            .resourceCardStyle()
+                },
+                onVerifyAudio: { AudioDestructionVerification.verify(sessionId: sessionId) }
+            )
         } else {
-            VStack(alignment: .leading, spacing: Spacing.sm) {
-                Label(
+            HStack(spacing: PillMetrics.spacing) {
+                StatusWord(
                     String(localized: "resources.load_failed"),
-                    systemImage: "exclamationmark.triangle.fill"
+                    systemImage: "exclamationmark.triangle.fill",
+                    tint: .signalAmber,
+                    help: viewModel.loadError
                 )
-                .font(.bodyMedium)
-                .foregroundColor(.signalAmber)
-                if let detail = viewModel.loadError {
-                    Text(detail)
-                        .font(.caption)
-                        .foregroundColor(.textSecondary)
-                        .textSelection(.enabled)
-                }
-                Button(String(localized: "session.settings.retry")) {
+                ActionPill(
+                    String(localized: "session.settings.retry"),
+                    systemImage: "arrow.clockwise"
+                ) {
                     viewModel.load(sessionId: sessionId)
                 }
-                .buttonStyle(.bordered)
             }
-            .padding(Spacing.md)
-            .frame(maxWidth: .infinity, minHeight: 92, alignment: .leading)
-            .resourceCardStyle()
         }
-    }
-
-    private func resourceRow<Actions: View>(
-        title: String,
-        icon: String,
-        status: NotebookResourceStatus,
-        detail: String? = nil,
-        onOpen: (() -> Void)?,
-        @ViewBuilder actions: () -> Actions = { EmptyView() }
-    ) -> some View {
-        HStack(spacing: Spacing.sm) {
-            Button(action: { onOpen?() }) {
-                HStack(spacing: Spacing.sm) {
-                    Image(systemName: icon)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.textSecondary)
-                        .frame(width: 18)
-                    Text(title)
-                        .font(.bodySM)
-                        .foregroundColor(.textPrimary)
-                    if let detail {
-                        Text(detail)
-                            .font(.caption)
-                            .foregroundColor(.textTertiary)
-                    }
-                    Spacer(minLength: Spacing.sm)
-                    Circle()
-                        .fill(NotebookResourceStatusPresentation.color(status))
-                        .frame(width: 6, height: 6)
-                    Text(NotebookResourceStatusPresentation.text(status))
-                        .font(.caption)
-                        .foregroundColor(NotebookResourceStatusPresentation.color(status))
-                    if onOpen != nil {
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundColor(.textTertiary)
-                    }
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(onOpen == nil)
-            .accessibilityLabel(
-                "\(title), \(NotebookResourceStatusPresentation.text(status))"
-            )
-
-            actions()
-        }
-        .padding(.horizontal, Spacing.md)
-        .padding(.vertical, Spacing.sm)
-        .background(Color.bgRoot.opacity(0.5))
-        .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
     }
 
     private var displayTitle: String {
         let trimmed = sessionTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? String(localized: "resources.untitled_recording") : trimmed
-    }
-
-    private var isAudioDeletionBlocked: Bool {
-        audioDeletionBlockMessage != nil
     }
 
     private var audioDeletionBlockMessage: String? {
@@ -1008,21 +887,6 @@ struct SessionResourceSettingsView: View {
         return nil
     }
 
-    private func audioDetail(_ item: NotebookResourceItem) -> String? {
-        switch item.audio {
-        case .ready: String(localized: "resources.audio.saved")
-        case .missing: String(localized: "resources.audio.not_saved")
-        case .destroyed:
-            item.audioDestroyedAt.map {
-                String(
-                    format: String(localized: "resources.audio.destroyed_at"),
-                    $0.formatted(date: .abbreviated, time: .shortened)
-                )
-            }
-        case .unknown, .pending, .empty, .failed: nil
-        }
-    }
-
     private func destroyAudio() {
         Task { @MainActor in
             SessionResourcesViewModel.announceAudioDestroy(
@@ -1032,14 +896,127 @@ struct SessionResourceSettingsView: View {
     }
 }
 
-private extension View {
-    func resourceCardStyle() -> some View {
-        background(Color.bgElevated.opacity(0.3))
-            .overlay(
-                RoundedRectangle(cornerRadius: Radius.md)
-                    .strokeBorder(Color.borderGhost.opacity(0.5), lineWidth: Stroke.thin)
+/// The four rows themselves: a plain view of one recording's files, so each
+/// state can be drawn and checked without a recording behind it.
+struct SessionResourceRows: View {
+    let item: NotebookResourceItem
+    var isDestroyingAudio = false
+    /// Why the audio cannot be deleted just now; nil when it can.
+    var audioDeletionBlockMessage: String?
+    let onOpen: (NotebookResourceDestination) -> Void
+    let onDestroyAudio: () -> Void
+    let onVerifyAudio: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            DetailRow(String(localized: "resources.audio"), systemImage: "waveform") {
+                status(item.audio, word: audioWord, help: audioDetail)
+                audioActions
+            }
+
+            DetailRow(String(localized: "resources.realtime"), systemImage: "captions.bubble") {
+                status(item.realtimeTranscript)
+                openPill(.realtimeTranscript)
+            }
+
+            DetailRow(String(localized: "resources.async"), systemImage: "wand.and.stars") {
+                status(item.asyncTranscript)
+                openPill(.asyncTranscript)
+            }
+
+            // There is always somewhere to write notes: opening it is what
+            // makes the document, so nothing here reads it to report on it.
+            DetailRow(String(localized: "resources.note"), systemImage: "square.and.pencil") {
+                // No status of its own; its pill still lines up with the rest.
+                Color.clear.frame(width: Self.statusWidth, height: 1)
+                openPill(.manualNote)
+            }
+        }
+    }
+
+    private func status(
+        _ status: NotebookResourceStatus,
+        word: String? = nil,
+        help: String? = nil
+    ) -> some View {
+        StatusWord(
+            word ?? NotebookResourceStatusPresentation.text(status),
+            systemImage: NotebookResourceStatusPresentation.symbol(status),
+            tint: NotebookResourceStatusPresentation.color(status),
+            help: help
+        )
+        // The words differ in length; the pills after them should not move.
+        .frame(minWidth: Self.statusWidth, alignment: .leading)
+    }
+
+    private static let statusWidth: CGFloat = 96
+
+    private func openPill(_ destination: NotebookResourceDestination) -> some View {
+        ActionPill(String(localized: "recording.word.open"), systemImage: "arrow.right") {
+            onOpen(destination)
+        }
+    }
+
+    /// The audio file's own actions, as pills: export it, delete it, and —
+    /// once deleted — check that it is really gone.
+    @ViewBuilder
+    private var audioActions: some View {
+        if item.audio == .ready {
+            ActionPill(
+                String(localized: "common.export.action"),
+                systemImage: "tray.and.arrow.up"
+            ) {
+                onOpen(.audio)
+            }
+            if isDestroyingAudio {
+                StatusWord(
+                    String(localized: "recording.word.delete_audio"),
+                    systemImage: "trash",
+                    isBusy: true
+                )
+            } else {
+                // Not disabled while it cannot be done: a click says why.
+                ActionPill(
+                    String(localized: "recording.word.delete_audio"),
+                    systemImage: audioDeletionBlockMessage == nil ? "trash" : "lock",
+                    tone: audioDeletionBlockMessage == nil ? .normal : .dimmed,
+                    iconTint: audioDeletionBlockMessage == nil ? .signalRed : nil,
+                    help: audioDeletionBlockMessage ?? String(localized: "resources.audio.destroy"),
+                    action: onDestroyAudio
+                )
+                .accessibilityIdentifier("session.settings.audio.destroy.\(item.id)")
+            }
+        }
+        if item.audio == .destroyed {
+            ActionPill(
+                String(localized: "recording.word.verify"),
+                systemImage: "checkmark.shield",
+                help: String(localized: "resources.audio.verify"),
+                action: onVerifyAudio
             )
-            .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+            .accessibilityIdentifier("session.settings.audio.verify.\(item.id)")
+        }
+    }
+
+    /// Audio is saved or it is not; "not generated yet" is a transcript's
+    /// word, and would read as if audio were still on its way.
+    private var audioWord: String? {
+        switch item.audio {
+        case .ready: return String(localized: "resources.audio.saved")
+        case .missing: return String(localized: "resources.audio.not_saved")
+        case .unknown, .pending, .empty, .failed, .destroyed: return nil
+        }
+    }
+
+    /// When the audio was deleted: the status's tooltip.
+    private var audioDetail: String? {
+        guard item.audio == .destroyed else { return nil }
+        return item.audioDestroyedAt.map {
+            String(
+                format: String(localized: "resources.audio.destroyed_at"),
+                $0.formatted(date: .abbreviated, time: .shortened)
+            )
+        }
     }
 }
 
@@ -1099,20 +1076,22 @@ struct NotebookResourcesView: View {
                         icon: "exclamationmark.triangle",
                         title: loadError,
                         actionTitle: String(localized: "home.workspace.retry"),
+                        actionIcon: "arrow.clockwise",
                         action: { viewModel.load(notebookId: notebookId) }
                     )
                 } else if viewModel.items.isEmpty {
+                    // The Record pill is in the header above; the empty
+                    // state does not offer a second one.
                     resourceMessage(
                         icon: "waveform",
-                        title: String(localized: "topic.workspace.empty"),
-                        actionTitle: String(localized: "topic.workspace.record"),
-                        action: onStartCapture
+                        title: String(localized: "topic.workspace.empty")
                     )
                 } else if visibleItems.isEmpty {
                     resourceMessage(
                         icon: "magnifyingglass",
                         title: String(localized: "topic.workspace.no_match"),
                         actionTitle: String(localized: "home.catalog.search.clear"),
+                        actionIcon: "xmark",
                         action: {
                             searchText = ""
                             isSearchFocused = true
@@ -1216,9 +1195,12 @@ struct NotebookResourcesView: View {
             .accessibilityAddTraits(.isHeader)
     }
 
+    /// ⋯, Import and — the one filled pill of the page — Record. Record is
+    /// brand green like Home's Start, not red: red is for the recording in
+    /// progress.
     private var topicHeaderActions: some View {
-        HStack(spacing: Spacing.sm) {
-            Menu {
+        HStack(spacing: PillMetrics.spacing) {
+            MorePill(String(localized: "topic.actions")) {
                 TopicActionsMenu(
                     topicID: notebookId,
                     title: notebookTitle ?? "",
@@ -1227,50 +1209,35 @@ struct NotebookResourcesView: View {
                     deleting: $deletingTopic,
                     collaborating: $collaboratingTopic
                 )
-            } label: {
-                Image(systemName: "ellipsis.circle")
-                    .font(.system(size: 15, weight: .regular))
-                    .foregroundColor(.textSecondary)
-                    .frame(width: 36, height: 36)
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help(String(localized: "topic.actions"))
-            .accessibilityLabel(Text(String(localized: "topic.actions")))
             .topicActionSheets(
                 renaming: $renamingTopic,
                 deleting: $deletingTopic,
                 collaborating: $collaboratingTopic
             )
 
-            Button(action: chooseAudioFile) {
-                Label(
-                    viewModel.isImportingAudio
-                        ? String(localized: "home.import.in_progress")
-                        : String(localized: "home.import.action"),
-                    systemImage: "square.and.arrow.down"
-                )
-                .frame(minHeight: 36)
+            ActionPill(
+                viewModel.isImportingAudio
+                    ? String(localized: "record.page.importing")
+                    : String(localized: "home.import.sheet.confirm"),
+                systemImage: "square.and.arrow.down",
+                help: String(localized: "home.import.action")
+            ) {
+                chooseAudioFile()
             }
-            .buttonStyle(.bordered)
             .disabled(viewModel.isImportingAudio)
             .accessibilityIdentifier("topic.import")
 
             // While anything records, its controls are in the recording bar
             // above; a second Record here could only fail.
             if capture.isCaptureActive == false {
-                Button(action: onStartCapture) {
-                    Label(
-                        commands.isStarting
-                            ? String(localized: "capture.toolbar.starting")
-                            : String(localized: "topic.workspace.record"),
-                        systemImage: commands.isStarting ? "ellipsis" : "record.circle"
-                    )
-                    .frame(minHeight: 36)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.signalRed)
+                PrimaryPill(
+                    commands.isStarting
+                        ? String(localized: "capture.toolbar.starting")
+                        : String(localized: "topic.workspace.record"),
+                    systemImage: commands.isStarting ? "ellipsis" : "record.circle",
+                    action: onStartCapture
+                )
                 .disabled(commands.isStarting)
                 .accessibilityIdentifier("topic.record")
             }
@@ -1304,7 +1271,7 @@ struct NotebookResourcesView: View {
                 .font(.system(size: 11, weight: .medium))
                 .foregroundColor(.textSecondary)
             TextField(
-                String(localized: "topic.workspace.search_placeholder"),
+                String(localized: "home.search.placeholder"),
                 text: $searchText
             )
             .textFieldStyle(.plain)
@@ -1349,21 +1316,19 @@ struct NotebookResourcesView: View {
         }
     }
 
+    /// Choosing several recordings to copy their transcripts together. On
+    /// while choosing; the same pill ends it.
     private var topicSelectionButton: some View {
-        Button {
+        TogglePill(
+            isOn: isSelectingSessions,
+            on: .init(String(localized: "common.done"), systemImage: "checkmark"),
+            off: .init(String(localized: "recording.word.select"), systemImage: "checklist"),
+            help: String(localized: "topic.research.selection.title"),
+            accessibilityLabel: String(localized: "topic.research.select")
+        ) {
             isSelectingSessions.toggle()
             if isSelectingSessions == false { selectedSessionIds = [] }
-        } label: {
-            Label(
-                isSelectingSessions
-                    ? String(localized: "common.done")
-                    : String(localized: "topic.research.select"),
-                systemImage: isSelectingSessions ? "checkmark" : "checklist"
-            )
-            .frame(minHeight: 36)
         }
-        .buttonStyle(.plain)
-        .foregroundColor(.textPrimary)
         .disabled(viewModel.items.isEmpty)
         .accessibilityIdentifier("topic.research.select")
     }
@@ -1390,45 +1355,41 @@ struct NotebookResourcesView: View {
         .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
     }
 
+    /// How many are chosen: a status, not a heading with a line under it.
     private var researchSelectionSummary: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(String(localized: "topic.research.selection.title"))
-                .font(.bodyMedium)
-                .foregroundColor(.textPrimary)
-            Text(
-                String(
-                    format: String(localized: "topic.research.selection.count_format"),
-                    Int64(selectedSessionIds.count)
-                )
-            )
-            .font(.caption)
-            .foregroundColor(.textSecondary)
-        }
+        StatusWord(
+            String(
+                format: String(localized: "topic.research.selection.count_format"),
+                Int64(selectedSessionIds.count)
+            ),
+            systemImage: "checklist",
+            tint: .brandAccent,
+            help: String(localized: "topic.research.selection.title")
+        )
     }
 
     private var researchSelectionActions: some View {
-        HStack(spacing: Spacing.sm) {
-            Button {
+        HStack(spacing: PillMetrics.spacing) {
+            ActionPill(
+                String(localized: "recording.word.select_all"),
+                systemImage: "checkmark.circle",
+                help: String(localized: "topic.research.select_all")
+            ) {
                 selectedSessionIds = Set(visibleItems.map(\.id))
-            } label: {
-                Text(String(localized: "topic.research.select_all"))
-                    .frame(minHeight: 36)
             }
-            .buttonStyle(.plain)
             .disabled(visibleItems.isEmpty)
 
-            Button {
+            // Tinted, not filled: the page's one filled pill is Record.
+            ActionPill(
+                viewModel.isPreparingResearchBundle
+                    ? String(localized: "topic.research.copy.preparing")
+                    : String(localized: "recording.word.copy"),
+                systemImage: Icon.copy,
+                tone: .on,
+                help: String(localized: "topic.research.copy")
+            ) {
                 viewModel.copyResearchBundle(sessionIds: selectedSessionIds)
-            } label: {
-                Label(
-                    viewModel.isPreparingResearchBundle
-                        ? String(localized: "topic.research.copy.preparing")
-                        : String(localized: "topic.research.copy"),
-                    systemImage: "doc.on.doc"
-                )
-                .frame(minHeight: 36)
             }
-            .buttonStyle(.borderedProminent)
             .disabled(
                 selectedSessionIds.isEmpty
                     || viewModel.isPreparingResearchBundle
@@ -1443,11 +1404,13 @@ struct NotebookResourcesView: View {
                 .font(.bodySM)
                 .foregroundColor(.signalAmber)
             Spacer(minLength: 0)
-            Button(String(localized: "home.workspace.retry")) {
+            ActionPill(
+                String(localized: "home.workspace.retry"),
+                systemImage: "arrow.clockwise",
+                style: .quiet
+            ) {
                 viewModel.load(notebookId: notebookId)
             }
-            .buttonStyle(.plain)
-            .frame(minHeight: 36)
         }
         .padding(.horizontal, Spacing.md)
         .background(Color.bgElevated.opacity(0.25))
@@ -1480,26 +1443,22 @@ struct NotebookResourcesView: View {
         MainNavigationStore.shared.openSession(session.id)
     }
 
-    /// User-facing "prove it": recompute the receipt, report it, and reveal
-    /// the audio storage folder in Finder so the user can look for themselves.
+    /// The one sentence of an empty list or a failed load, and its one
+    /// action.
     private func resourceMessage(
         icon: String,
         title: String,
         actionTitle: String? = nil,
+        actionIcon: String = "arrow.right",
         action: (() -> Void)? = nil
     ) -> some View {
-        VStack(spacing: Spacing.md) {
-            Image(systemName: icon)
-                .font(.system(size: 28, weight: .light))
-                .foregroundColor(.textTertiary)
-            Text(title)
-                .font(.body)
-                .foregroundColor(.textSecondary)
-            if let actionTitle, let action {
-                Button(actionTitle, action: action)
-                    .buttonStyle(.bordered)
+        OneSentenceState(
+            systemImage: icon,
+            sentence: title,
+            action: actionTitle.flatMap { title in
+                action.map { .init(title: title, systemImage: actionIcon, handler: $0) }
             }
-        }
+        )
         .frame(maxWidth: .infinity, minHeight: 260)
     }
 }
@@ -1556,20 +1515,12 @@ private struct NotebookResourceBlock: View {
                     isRecording: item.isRecording
                 )
 
-                Menu {
-                    Button {
-                        isRenaming = true
-                    } label: {
-                        Label(String(localized: "library.rename.recording"), systemImage: "pencil")
-                    }
-                    Button {
-                        onMove()
-                    } label: {
-                        Label(
-                            String(localized: "resources.move"),
-                            systemImage: "arrow.right.doc.on.clipboard"
-                        )
-                    }
+                // The same words, in the same order, as the ⋯ on the
+                // recording's own page.
+                MorePill(String(
+                    format: String(localized: "home.catalog.row.actions_format"),
+                    displayTitle
+                )) {
                     // 录好的才共享;正在录的从录音条直播。
                     Button {
                         ShareActivityStore.shared.presentRecordingShare(
@@ -1577,14 +1528,25 @@ private struct NotebookResourceBlock: View {
                             title: item.title.isEmpty ? item.preview : item.title
                         )
                     } label: {
-                        Label(String(localized: "share.recording.menu"), systemImage: "square.and.arrow.up")
+                        Label(String(localized: "recording.word.share"), systemImage: Icon.export)
                     }
                     .disabled(item.isRecording)
+                    Divider()
+                    Button {
+                        isRenaming = true
+                    } label: {
+                        Label(String(localized: "recording.word.rename"), systemImage: "pencil")
+                    }
+                    Button {
+                        onMove()
+                    } label: {
+                        Label(String(localized: "sidebar.notebook"), systemImage: "folder")
+                    }
                     // 音频、两份转录稿、销毁音频与核验:在录音自己的页面上。
                     Button {
                         MainNavigationStore.shared.openSession(item.id, surface: .settings)
                     } label: {
-                        Label(String(localized: "session.menu.settings"), systemImage: "slider.horizontal.3")
+                        Label(String(localized: "session.tab.settings"), systemImage: "slider.horizontal.3")
                     }
                     Divider()
                     // 录音进行中删不了(Core 软删与彻底删除都拒绝)。
@@ -1592,33 +1554,15 @@ private struct NotebookResourceBlock: View {
                     Button(role: .destructive) {
                         isConfirmingTrash = true
                     } label: {
-                        Label(
-                            String(localized: "resources.delete"),
-                            systemImage: "trash"
-                        )
+                        Label(String(localized: "common.delete"), systemImage: "trash")
                     }
                     .disabled(item.isRecording)
 
                     if item.isRecording {
                         Text(String(localized: "home.recording.delete_while_recording"))
                     }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(.textSecondary)
-                        .frame(width: 32, height: 36)
-                        .contentShape(Rectangle())
                 }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
                 .disabled(isSelectionMode)
-                .accessibilityLabel(
-                    String(
-                        format: String(localized: "home.catalog.row.actions_format"),
-                        displayTitle
-                    )
-                )
                 .accessibilityIdentifier("resources.menu.\(item.id)")
             }
 
@@ -1633,7 +1577,7 @@ private struct NotebookResourceBlock: View {
         .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
         .sheet(isPresented: $isRenaming) {
             RenameSheet(
-                title: String(localized: "library.rename.recording"),
+                title: String(localized: "recording.word.rename"),
                 placeholder: String(localized: "library.rename.recording_placeholder"),
                 initialText: item.title,
                 allowsEmpty: true
@@ -1692,10 +1636,14 @@ private struct NotebookResourceBlock: View {
                 .foregroundColor(.textTertiary)
             }
 
+            Spacer(minLength: Spacing.sm)
+
+            // At the far end, just before the ⋯ and level with it — where a
+            // recording's row has it on Home.
             Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
+                .font(PillMetrics.chevronFont)
                 .foregroundColor(.textTertiary)
-                .padding(.top, Spacing.xs)
+                .frame(height: PillMetrics.height)
                 .accessibilityHidden(true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1767,50 +1715,53 @@ private struct MoveSessionSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Spacing.lg) {
-            VStack(alignment: .leading, spacing: Spacing.sm) {
-                Text(String(localized: "resources.move.title"))
-                    .font(.titleMD)
-                    .foregroundColor(.textPrimary)
-                Text(String(format: String(localized: "resources.move.message"), displayTitle))
-                    .font(.bodySM)
-                    .foregroundColor(.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+        VStack(alignment: .leading, spacing: Spacing.md) {
+            Text(String(localized: "resources.move.title"))
+                .font(.titleMD)
+                .foregroundColor(.textPrimary)
 
             if destinations.isEmpty {
+                // The one line of an empty state.
                 Text(String(localized: "resources.move.no_destination"))
-                    .font(.bodySM)
-                    .foregroundColor(.textTertiary)
+                    .font(.body)
+                    .foregroundColor(.textSecondary)
             } else {
-                Picker("", selection: $selectedNotebookId) {
-                    ForEach(destinations, id: \.id) { notebook in
-                        Text(notebook.title).tag(notebook.id)
+                HStack(spacing: 0) {
+                    MenuPill(
+                        destinations.first { $0.id == selectedNotebookId }?.title ?? "",
+                        titleIsName: true,
+                        systemImage: "folder",
+                        // What moves along with it, for whoever asks.
+                        help: String(
+                            format: String(localized: "resources.move.message"),
+                            displayTitle
+                        ),
+                        accessibilityLabel: String(localized: "resources.move.destination")
+                    ) {
+                        destinations.map { notebook in
+                            PillMenuItem(notebook.title, isOn: notebook.id == selectedNotebookId) {
+                                selectedNotebookId = notebook.id
+                            }
+                        }
                     }
+                    .accessibilityIdentifier("resources.move.picker")
+                    Spacer(minLength: 0)
                 }
-                .labelsHidden()
-                .accessibilityLabel(String(localized: "resources.move.destination"))
-                .accessibilityIdentifier("resources.move.picker")
             }
 
-            HStack(spacing: Spacing.sm) {
-                Spacer()
-
-                Button(String(localized: "common.cancel")) {
-                    onCancel()
-                }
-                .keyboardShortcut(.cancelAction)
-
-                Button(String(localized: "resources.move.action")) {
+            SheetButtons(
+                confirm: String(localized: "resources.move.action"),
+                systemImage: "folder.badge.plus",
+                identifier: "resources.move.confirm",
+                isEnabled: selectedNotebookId.isEmpty == false,
+                onCancel: onCancel,
+                onConfirm: {
                     guard selectedNotebookId.isEmpty == false else { return }
                     onConfirm(selectedNotebookId)
                 }
-                .keyboardShortcut(.defaultAction)
-                .disabled(selectedNotebookId.isEmpty)
-                .accessibilityIdentifier("resources.move.confirm")
-            }
+            )
         }
-        .padding(Spacing.xl)
+        .padding(Spacing.lg)
         .frame(width: 440)
         .background(Color.bgRoot)
         .onAppear {

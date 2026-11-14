@@ -1,3 +1,5 @@
+import AppKit
+import SwiftUI
 import XCTest
 @testable import ZuTalk
 
@@ -174,7 +176,7 @@ final class LibraryViewModelTests: XCTestCase {
         XCTAssertTrue(topics.contains("topics.page"))
         XCTAssertTrue(contents.contains("MainNavigationStore.shared.openTopicWorkspace(notebookID: notebookId)"))
         XCTAssertTrue(contents.contains("home.row.topic.unknown"))
-        XCTAssertTrue(contents.contains("home.workspace.membership_unavailable"))
+        XCTAssertTrue(contents.contains("home.catalog.membership_failed"))
         XCTAssertTrue(contents.contains("HomeWorkspaceFailureView"))
         XCTAssertTrue(contents.contains("HomeWorkspaceRefreshWarning"))
         XCTAssertFalse(contents.contains("HomeRecentRecordingsSection"))
@@ -209,28 +211,30 @@ final class LibraryViewModelTests: XCTestCase {
         )
         XCTAssertTrue(record.contains("commands.startQuickCapture(profileEditor: editor)"))
         XCTAssertTrue(record.contains("commands.start(notebookId: notebookId, profileEditor: starter)"))
-        // The choices are in the card, behind "Change": none of them stands
-        // between the person and the Start button.
-        let optionsStart = try XCTUnwrap(record.range(of: "private var options: some View"))
-        let beforeOptions = String(record[..<optionsStart.lowerBound])
-        let options = String(record[optionsStart.lowerBound...])
-        XCTAssertTrue(beforeOptions.contains("if memory.showsOptions"))
-        XCTAssertFalse(beforeOptions.contains("CaptureLanguageEditor("))
-        XCTAssertFalse(beforeOptions.contains("AudioInputPicker("))
-        XCTAssertFalse(beforeOptions.contains("Picker("))
-        XCTAssertTrue(options.contains("CaptureLanguageEditor(editor: editor)"))
-        XCTAssertTrue(options.contains("commands.setRealtimeCaptionsEnabled("))
-        XCTAssertTrue(options.contains("hostMode.set("))
-        // Where the transcript will be filed is confirmed per recording, so
-        // that row is never inside the collapsed options — and nothing is
-        // confirmed when the row is not on screen.
-        XCTAssertTrue(beforeOptions.contains("StartCardHostingSection(editor: editor, topicId: topicId"))
+        // Nothing the card offers is hidden behind a link: no "Change", no
+        // collapsed options, nothing remembered about them being open.
+        for retired in ["showsOptions", "HomeStartCardMemory", "home.start.change", "private var options"] {
+            XCTAssertFalse(record.contains(retired), "the card still has \(retired)")
+        }
+        // The languages are pills on the card itself, and every other choice
+        // is a pill in one strip — the full editor and the settings picker
+        // belong to a topic's options, not here.
+        XCTAssertTrue(record.contains("CaptureLanguagePills(editor: editor)"))
+        XCTAssertTrue(record.contains("AudioInputPill(notebookId: notebookId"))
+        XCTAssertFalse(record.contains("CaptureLanguageEditor("))
+        XCTAssertFalse(record.contains("AudioInputPicker("))
+        XCTAssertFalse(record.contains("Picker("))
+        XCTAssertTrue(record.contains("commands.setRealtimeCaptionsEnabled("))
+        XCTAssertTrue(record.contains("hostMode.set("))
+        // Where the transcript will be filed is confirmed per recording: the
+        // event pill sits in the strip, and nothing is confirmed when it is
+        // not on screen.
+        XCTAssertTrue(record.contains(
+            "StartCardHostingPills(languages: languages, topicId: topicId, hostMode: hostMode)"
+        ))
         XCTAssertTrue(record.contains(
             "if StartCardHosting.current(hostMode: hostMode) == .destination {\n            CityStore.shared.confirmNextDestination()"
         ))
-        // Meeting or microphone is decided before Start, with the same control
-        // a recording's settings show.
-        XCTAssertTrue(record.contains("AudioInputPicker(notebookId: notebookId"))
         let settings = try String(
             contentsOf: root.appendingPathComponent("Pages/NotebookCaptureSettingsView.swift"),
             encoding: .utf8
@@ -382,7 +386,7 @@ final class LibraryViewModelTests: XCTestCase {
         XCTAssertTrue(resources.contains("getSession(id:"))
         XCTAssertFalse(resources.contains("limit: 500"))
         XCTAssertTrue(resources.contains("topic.research.copy"))
-        XCTAssertTrue(resources.contains("Button(action: chooseAudioFile)"))
+        XCTAssertTrue(resources.contains("chooseAudioFile()"))
         XCTAssertTrue(resources.contains(".accessibilityIdentifier(\"topic.import\")"))
         XCTAssertTrue(resources.contains(
             "viewModel.importAudio(at: url, notebookId: notebookId)"
@@ -2052,10 +2056,22 @@ final class HomeStartTests: XCTestCase {
 
     func testEveryPhraseTheStartCardShowsIsLocalized() {
         for key in [
-            "home.start.change",
-            "home.start.change_done",
-            "home.start.change_hint",
-            "home.start.offline_hint",
+            // The words on the pills.
+            "permission.microphone.name",
+            "home.card.sound_from_mac",
+            "onboarding.step.live_text",
+            "captions_choice.off",
+            "sidebar.notebook",
+            "home.options.topic.none",
+            "home.options.topic.new",
+            "home.card.hosting",
+            "home.card.choose_event",
+            "home.card.dont_file",
+            "sidebar.account.sign_in",
+            "home.import.sheet.confirm",
+            "home.card.move_earlier",
+            "home.card.move_later",
+            // The sentences behind them: tooltips, VoiceOver, the ⓘ.
             "home.plan.speak_format",
             "home.plan.speak_translate_format",
             "home.plan.speak_many_format",
@@ -2071,21 +2087,30 @@ final class HomeStartTests: XCTestCase {
             "home.options.languages_detail",
             "home.options.source_detail_microphone_or_mac",
             "home.options.live_text",
-            "home.options.live_text_detail",
             "home.options.live_text_needs_setup",
-            "home.options.live_text_setup",
             "home.options.live_text_invite_format",
+            "home.card.live_text_disclosure",
+            "network.offline.record_hint",
             "home.options.topic",
             "home.options.topic_detail",
-            "home.options.topic.none",
-            "home.options.topic.new",
-            "home.options.hosting",
             "home.options.hosting_detail",
             "home.options.import",
             "home.hosting.sign_in_hint",
-            "home.hosting.sign_in_button",
+            "record.page.import_detail",
+            "record.page.shortcut_hint",
+            "city.record.title",
+            "city.record.detail_format",
+            "city.record.several_format",
+            "city.record.none_running_detail",
+            "city.record.none_chosen_detail",
+            "city.action.pick_from_calendar",
+            "capture.languages.role.spoken_format",
+            "capture.languages.role.translated_format",
+            "capture.settings.languages.remove",
+            "capture.settings.languages.search",
+            // The list under the card, and the shared controls.
             "home.search.placeholder",
-            "home.empty.sentence",
+            "home.catalog.empty.title",
             "home.filter.no_topic",
             "home.filter.no_topic_empty",
             "home.row.put_in_topic",
@@ -2095,8 +2120,6 @@ final class HomeStartTests: XCTestCase {
             "topic.none_choice",
             "capture.languages.roles.all_spoken",
             "capture.languages.roles.some_translated_format",
-            "capture.languages.role.spoken_format",
-            "capture.languages.role.translated_format",
             "audio_input.sound_from_mac",
         ] {
             let value = Bundle.main.localizedString(forKey: key, value: nil, table: nil)
@@ -2170,6 +2193,446 @@ final class HomeStartTests: XCTestCase {
         XCTAssertTrue(home.contains(report))
         XCTAssertTrue(languages.contains(report))
         XCTAssertTrue(languages.contains(".focused($isSearchFocused)"))
+    }
+
+    // MARK: The pills
+
+    /// One language's strings, straight from its file.
+    private func strings(_ language: String) throws -> [String: String] {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("ZuTalk/Resources/\(language).lproj/Localizable.strings")
+        return try XCTUnwrap(NSDictionary(contentsOf: url) as? [String: String])
+    }
+
+    /// The word on each control of the card: one word, the same one
+    /// everywhere, with nothing explained beside it. Several of these keys
+    /// are shared with other screens — this is what stops a rewording there
+    /// from quietly changing the card.
+    func testEachControlOnTheCardIsNamedByOneWord() throws {
+        let words: [(key: String, zh: String, en: String)] = [
+            ("permission.microphone.name", "麦克风", "Microphone"),
+            ("home.card.sound_from_mac", "电脑里的声音", "This Mac’s sound"),
+            ("onboarding.step.live_text", "出字", "Live text"),
+            ("captions_choice.off", "只录音", "Audio only"),
+            ("sidebar.notebook", "主题", "Topic"),
+            ("home.options.topic.none", "不放", "None"),
+            ("home.options.topic.new", "新建主题…", "New topic…"),
+            ("home.card.hosting", "主持活动", "Hosting"),
+            ("home.card.choose_event", "选活动", "Choose event"),
+            ("home.card.dont_file", "不交", "Don’t file"),
+            ("sidebar.account.sign_in", "登录", "Sign in"),
+            ("home.import.sheet.confirm", "导入", "Import"),
+            ("home.card.move_earlier", "前移", "Move earlier"),
+            ("home.card.move_later", "后移", "Move later"),
+        ]
+        let zh = try strings("zh-Hans")
+        let en = try strings("en")
+        for word in words {
+            XCTAssertEqual(zh[word.key], word.zh, word.key)
+            XCTAssertEqual(en[word.key], word.en, word.key)
+        }
+        // In every language it stays a word or two, never a sentence.
+        for language in AppLanguage.allCases {
+            let table = try strings(language.rawValue)
+            for word in words {
+                let value = try XCTUnwrap(table[word.key], "\(language.rawValue) \(word.key)")
+                XCTAssertLessThanOrEqual(value.count, 24, "\(language.rawValue) \(word.key): \(value)")
+                for stop in ["。", ". ", "，", ", ", "；", "：", ": "] {
+                    XCTAssertFalse(
+                        value.contains(stop),
+                        "\(language.rawValue) \(word.key) reads as a sentence: \(value)"
+                    )
+                }
+            }
+        }
+    }
+
+    func testTheLiveTextPillSaysWhichWayItIsSet() {
+        // On: the word for live text, tinted.
+        let on = StartCardLiveText.resolve(enabled: true, available: true, offline: false)
+        XCTAssertEqual(on, .on)
+        XCTAssertEqual(on.labelKey, "onboarding.step.live_text")
+        XCTAssertEqual(on.systemImage, "captions.bubble.fill")
+        XCTAssertEqual(on.tone, .on)
+
+        // Off: a different word, not "live text, off".
+        let off = StartCardLiveText.resolve(enabled: false, available: true, offline: false)
+        XCTAssertEqual(off, .off)
+        XCTAssertEqual(off.labelKey, "captions_choice.off")
+        XCTAssertEqual(off.tone, .normal)
+        // Not a microphone: the sound may be coming from the Mac itself.
+        XCTAssertFalse(off.systemImage.hasPrefix("mic"))
+
+        // On while offline: still on, with the sign that says why no text.
+        let offline = StartCardLiveText.resolve(enabled: true, available: true, offline: true)
+        XCTAssertEqual(offline, .onOffline)
+        XCTAssertEqual(offline.labelKey, on.labelKey)
+        XCTAssertEqual(offline.systemImage, "wifi.slash")
+        XCTAssertEqual(offline.tone, .on)
+        // Off is off whether or not there is a network.
+        XCTAssertEqual(StartCardLiveText.resolve(enabled: false, available: true, offline: true), .off)
+
+        // Nothing to produce text with: the same word, dimmed, whatever the
+        // saved choice — there is nothing to switch.
+        for enabled in [true, false] {
+            let missing = StartCardLiveText.resolve(enabled: enabled, available: false, offline: false)
+            XCTAssertEqual(missing, .needsSetup)
+            XCTAssertEqual(missing.labelKey, on.labelKey)
+            XCTAssertEqual(missing.tone, .dimmed)
+        }
+    }
+
+    func testTheSoundPillNamesTheSourceInAWord() {
+        let microphone = StartCardSound.resolve(.thisMac)
+        XCTAssertEqual(microphone, .microphone)
+        XCTAssertEqual(microphone.labelKey, "permission.microphone.name")
+        XCTAssertEqual(microphone.systemImage, "mic.fill")
+
+        let mac = StartCardSound.resolve(.soundFromMac)
+        XCTAssertEqual(mac, .soundFromMac)
+        XCTAssertEqual(mac.labelKey, "home.card.sound_from_mac")
+        XCTAssertEqual(mac.systemImage, "speaker.wave.2.fill")
+
+        // A microphone picked by hand shows its own name.
+        let picked = StartCardSound.resolve(.microphone(" USB Mic "))
+        XCTAssertEqual(picked, .device("USB Mic"))
+        XCTAssertNil(picked.labelKey)
+        XCTAssertEqual(picked.title, "USB Mic")
+        XCTAssertEqual(picked.systemImage, "mic.fill")
+        // One whose name is unknown is still a microphone.
+        XCTAssertEqual(StartCardSound.resolve(.microphone("  ")), .microphone)
+    }
+
+    func testTheSoundMenuOffersWhatTheSettingsPickerOffers() {
+        let devices = [
+            AudioInputDevice(deviceID: 1, uid: "built-in", name: "Built-in"),
+            AudioInputDevice(deviceID: 2, uid: "usb", name: "USB Mic"),
+        ]
+        XCTAssertEqual(
+            AudioInputMenu.choices(
+                devices: devices,
+                defaultName: "Built-in",
+                soundFromMacSupported: true,
+                selectedUID: "usb",
+                selectionUnavailable: false,
+                lastKnownName: "USB Mic"
+            ),
+            [
+                .systemDefault(name: "Built-in"),
+                .soundFromMac,
+                .device(uid: "built-in", name: "Built-in"),
+                .device(uid: "usb", name: "USB Mic"),
+            ]
+        )
+        XCTAssertTrue(AudioInputMenu.Choice.soundFromMac.endsGroup)
+        XCTAssertFalse(AudioInputMenu.Choice.systemDefault(name: nil).endsGroup)
+
+        // A saved microphone that is unplugged stays in the list, so the
+        // pill's tick has somewhere to be; a Mac that cannot record its own
+        // sound does not offer to.
+        let unplugged = AudioInputMenu.choices(
+            devices: [devices[0]],
+            defaultName: nil,
+            soundFromMacSupported: false,
+            selectedUID: "usb",
+            selectionUnavailable: true,
+            lastKnownName: "USB Mic"
+        )
+        XCTAssertEqual(unplugged, [
+            .systemDefault(name: nil),
+            .device(uid: "built-in", name: "Built-in"),
+            .unavailable(uid: "usb", name: "USB Mic"),
+        ])
+        XCTAssertEqual(Set(unplugged.map(\.id)).count, unplugged.count)
+        XCTAssertNil(unplugged[0].uid)
+        XCTAssertEqual(unplugged[2].uid, "usb")
+    }
+
+    func testTheTopicPillShowsTheTopicOrItsOwnName() {
+        XCTAssertNil(StartCardTopic.label(nil))
+        XCTAssertNil(StartCardTopic.label("   "))
+        XCTAssertEqual(StartCardTopic.label(" 周会 "), "周会")
+        XCTAssertEqual(StartCardTopic.placeholderKey, "sidebar.notebook")
+        XCTAssertEqual(StartCardTopic.title("周会"), "周会")
+        XCTAssertEqual(StartCardTopic.title(nil), String(localized: "sidebar.notebook"))
+    }
+
+    func testTheEventPillShowsTheEventOrWhatWasDecided() {
+        let chosen = CityDestinationPillLabel.resolve(chosenTitle: "Open house", explicitlyNotFiling: false)
+        XCTAssertEqual(chosen, .event("Open house"))
+        XCTAssertNil(chosen.labelKey)
+        XCTAssertEqual(chosen.title, "Open house")
+
+        // Nothing chosen, by the app or the person: the pill offers to.
+        let open = CityDestinationPillLabel.resolve(chosenTitle: nil, explicitlyNotFiling: false)
+        XCTAssertEqual(open, .choose)
+        XCTAssertEqual(open.labelKey, "home.card.choose_event")
+
+        // The person said not to file: the pill says so.
+        let declined = CityDestinationPillLabel.resolve(chosenTitle: nil, explicitlyNotFiling: true)
+        XCTAssertEqual(declined, .notFiling)
+        XCTAssertEqual(declined.labelKey, "home.card.dont_file")
+        XCTAssertEqual(
+            CityDestinationPillLabel.resolve(chosenTitle: "  ", explicitlyNotFiling: false),
+            .choose
+        )
+    }
+
+    func testTheEventMenuListsWhatIsRunningThenTheCalendarAndNotFiling() {
+        // One event running, chosen for the person.
+        XCTAssertEqual(
+            CityDestinationMenuEntry.entries(
+                running: [("e1", "Open house")],
+                chosen: ("e1", "Open house"),
+                explicitlyNotFiling: false
+            ),
+            [
+                .event(id: "e1", title: "Open house", isChosen: true),
+                .separator,
+                .pickFromCalendar,
+                .notFiling(isChosen: false),
+            ]
+        )
+        // Several running: none is chosen for them.
+        XCTAssertEqual(
+            CityDestinationMenuEntry.entries(
+                running: [("e1", "Open house"), ("e2", "Town hall")],
+                chosen: nil,
+                explicitlyNotFiling: false
+            ),
+            [
+                .event(id: "e1", title: "Open house", isChosen: false),
+                .event(id: "e2", title: "Town hall", isChosen: false),
+                .separator,
+                .pickFromCalendar,
+                .notFiling(isChosen: false),
+            ]
+        )
+        // One picked from the calendar that is not running leads the list.
+        XCTAssertEqual(
+            CityDestinationMenuEntry.entries(
+                running: [("e1", "Open house")],
+                chosen: ("e9", "Evening talk"),
+                explicitlyNotFiling: false
+            ).prefix(2).map { $0 },
+            [
+                .event(id: "e9", title: "Evening talk", isChosen: true),
+                .event(id: "e1", title: "Open house", isChosen: false),
+            ]
+        )
+        // Nothing running and filing declined: the calendar, and the tick.
+        XCTAssertEqual(
+            CityDestinationMenuEntry.entries(running: [], chosen: nil, explicitlyNotFiling: true),
+            [.pickFromCalendar, .notFiling(isChosen: true)]
+        )
+    }
+
+    func testALanguageCanBeRemovedUnlessItIsTheOnlyOne() {
+        let one = CaptureLanguagePillState.pills(selected: ["zh"], translatedOnly: [])
+        XCTAssertEqual(one.map(\.canRemove), [false])
+
+        let two = CaptureLanguagePillState.pills(selected: ["zh", "en"], translatedOnly: [])
+        XCTAssertEqual(two.map(\.code), ["zh", "en"])
+        XCTAssertEqual(two.map(\.canRemove), [true, true])
+        // Reordering: not past either end.
+        XCTAssertEqual(two.map(\.canMoveEarlier), [false, true])
+        XCTAssertEqual(two.map(\.canMoveLater), [true, false])
+        XCTAssertEqual(one.map(\.canMoveEarlier), [false])
+        XCTAssertEqual(one.map(\.canMoveLater), [false])
+    }
+
+    func testAnotherLanguageCanBeAddedUntilThereAreThree() {
+        let maximum = NotebookCaptureSupportedLanguages.maximumSelectedCount
+        XCTAssertEqual(maximum, 3)
+        XCTAssertTrue(CaptureLanguagePillState.canAdd(selectedCount: 1, maximum: maximum))
+        XCTAssertTrue(CaptureLanguagePillState.canAdd(selectedCount: 2, maximum: maximum))
+        XCTAssertFalse(CaptureLanguagePillState.canAdd(selectedCount: 3, maximum: maximum))
+    }
+
+    func testLanguageRolesAppearAtThreeAndTheLastSpokenOneStaysSpoken() {
+        // One or two languages: nothing to tell apart, so no role control —
+        // even if a stale "translated only" is still saved.
+        for selected in [["zh"], ["zh", "en"]] {
+            let pills = CaptureLanguagePillState.pills(selected: selected, translatedOnly: ["en"])
+            XCTAssertEqual(pills.map(\.role), selected.map { _ in nil })
+            XCTAssertEqual(pills.map(\.canToggleRole), selected.map { _ in false })
+        }
+
+        // Three, all spoken: any one may become translated-into.
+        let allSpoken = CaptureLanguagePillState.pills(selected: ["zh", "en", "th"], translatedOnly: [])
+        XCTAssertEqual(allSpoken.map(\.role), [.spoken, .spoken, .spoken])
+        XCTAssertEqual(allSpoken.map(\.canToggleRole), [true, true, true])
+
+        // One translated into: it can go back; the two spoken can still change.
+        let one = CaptureLanguagePillState.pills(selected: ["zh", "en", "th"], translatedOnly: ["th"])
+        XCTAssertEqual(one.map(\.role), [.spoken, .spoken, .translatedInto])
+        XCTAssertEqual(one.map(\.canToggleRole), [true, true, true])
+
+        // Two translated into: someone has to be speaking, so the last
+        // spoken language keeps its role.
+        let two = CaptureLanguagePillState.pills(selected: ["zh", "en", "th"], translatedOnly: ["en", "th"])
+        XCTAssertEqual(two.map(\.role), [.spoken, .translatedInto, .translatedInto])
+        XCTAssertEqual(two.map(\.canToggleRole), [false, true, true])
+        // A language that is not chosen cannot be anyone's role.
+        let stray = CaptureLanguagePillState.pills(selected: ["zh", "en", "th"], translatedOnly: ["ja"])
+        XCTAssertEqual(stray.map(\.role), [.spoken, .spoken, .spoken])
+    }
+
+    func testAPillMenuTicksTheCurrentChoiceAndKeepsItsGroups() {
+        let menu = PillMenuPresenter.menu(
+            for: [
+                PillMenuItem("None", isOn: true),
+                .separator,
+                PillMenuItem("Weekly"),
+                PillMenuItem("Unavailable", isEnabled: false),
+            ],
+            target: nil,
+            action: nil
+        )
+        XCTAssertEqual(menu.items.map(\.title), ["None", "", "Weekly", "Unavailable"])
+        XCTAssertEqual(menu.items.map(\.isSeparatorItem), [false, true, false, false])
+        XCTAssertEqual(menu.items.map(\.state), [.on, .off, .off, .off])
+        XCTAssertEqual(menu.items.map(\.isEnabled).last, false)
+        // Each choice knows which action is its own, separators aside.
+        XCTAssertEqual(menu.items.filter { $0.isSeparatorItem == false }.map(\.tag), [0, 1, 2])
+        XCTAssertFalse(menu.autoenablesItems)
+    }
+
+    func testAStripFadesOnlyAtAnEdgeWithMoreBeyondIt() {
+        func fades(_ extent: PillStripExtent) -> [CGFloat] {
+            let fades = extent.fades(viewport: 500)
+            return [fades.leading, fades.trailing]
+        }
+        let full = PillStripExtent.fadeWidth
+
+        // Everything fits: no fade, however the numbers round.
+        XCTAssertEqual(fades(PillStripExtent(width: 500, offset: 0)), [0, 0])
+        XCTAssertEqual(fades(PillStripExtent(width: 500.3, offset: 0)), [0, 0])
+        XCTAssertEqual(fades(PillStripExtent(width: 320, offset: 0)), [0, 0])
+
+        // Wider than the window: more to the right at first,
+        var extent = PillStripExtent(width: 700, offset: 0)
+        XCTAssertEqual(fades(extent), [0, full])
+        // on both sides part-way,
+        extent.offset = 80
+        XCTAssertEqual(fades(extent), [full, full])
+        // and only to the left at the end.
+        extent.offset = 200
+        XCTAssertEqual(fades(extent), [full, 0])
+
+        // A little hidden is a little fade, so it does not blink on and off
+        // over the last few points of a scroll,
+        extent.offset = 196
+        XCTAssertEqual(fades(extent), [full, 8])
+        XCTAssertEqual(fades(PillStripExtent(width: 506, offset: 0)), [0, 12])
+        // and a rubber-band pull past either end hides nothing more.
+        extent.offset = -30
+        XCTAssertEqual(fades(extent), [0, full])
+        extent.offset = 260
+        XCTAssertEqual(fades(extent), [full, 0])
+    }
+
+    /// A name on a pill — a topic, a device, an event — gives way when its
+    /// row is short of room, down to a floor, so the pills after it stay on
+    /// screen. A word of ours is never cut.
+    @MainActor
+    func testANameOnAPillGivesWayWhenItsRowIsShortOfRoomAndAWordDoesNot() {
+        func width(_ title: String, isName: Bool, offered: CGFloat) -> CGFloat {
+            NSHostingController(
+                rootView: ActionPill(title, titleIsName: isName, systemImage: "folder") {}
+            )
+            .sizeThatFits(in: CGSize(width: offered, height: 100)).width
+        }
+        let long = "Cross-team product review and retrospective series, fourth quarter"
+
+        let roomy = width(long, isName: true, offered: 2000)
+        let tight = width(long, isName: true, offered: 150)
+        let least = width(long, isName: true, offered: 10)
+        // With room it stops at the most a name may take; offered less it
+        // takes what it is offered; and it never goes below the floor.
+        XCTAssertEqual(tight, 150, accuracy: 1)
+        XCTAssertEqual(
+            roomy - least,
+            PillMetrics.maxTitleWidth - PillMetrics.minNameWidth,
+            accuracy: 1
+        )
+        XCTAssertGreaterThan(least, PillMetrics.minNameWidth)
+
+        // The same string as a word of ours is whole whatever it is offered.
+        let word = width(long, isName: false, offered: 2000)
+        XCTAssertGreaterThan(word, roomy)
+        XCTAssertEqual(width(long, isName: false, offered: 10), word, accuracy: 0.5)
+
+        // A name shorter than the floor is just as wide as it is: it is not
+        // padded out to the floor, and has nothing to give.
+        let short = width("AB", isName: true, offered: 2000)
+        XCTAssertEqual(short, width("AB", isName: false, offered: 2000), accuracy: 0.5)
+        XCTAssertEqual(width("AB", isName: true, offered: 10), short, accuracy: 0.5)
+    }
+
+    /// The card is built from the app's shared pills and prints no sentence:
+    /// what used to be explained beside a control is handed to it as help.
+    func testTheCardIsBuiltFromTheSharedPillsAndExplainsInTooltips() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("ZuTalk", isDirectory: true)
+        func source(_ file: String) throws -> String {
+            try String(contentsOf: root.appendingPathComponent(file), encoding: .utf8)
+        }
+        let pills = try source("DesignSystem/Primitives/Pills.swift")
+        for component in [
+            "struct TogglePill: View",
+            "struct MenuPill: View",
+            "struct ActionPill: View",
+            "struct ValuePill: View",
+            "struct InfoButton: View",
+            "struct PillStrip<",
+            "enum PillMetrics",
+            "struct PillPalette",
+        ] {
+            XCTAssertTrue(pills.contains(component), "Pills.swift should define \(component)")
+        }
+
+        let card = try source("Pages/HomeStartCard.swift")
+        for used in ["TogglePill(", "MenuPill(", "ActionPill(", "InfoButton(", "PillStrip {"] {
+            XCTAssertTrue(card.contains(used), "the card should use \(used)")
+        }
+        // No pill of its own, and no measurements of its own.
+        for own in ["Capsule()", "strokeBorder", "struct StartCardPill", ".frame(height: 32)", "ScrollView("] {
+            XCTAssertFalse(card.contains(own), "the card should not draw its own \(own)")
+        }
+        XCTAssertTrue(try source("Pages/CaptureLanguageEditor.swift").contains("ValuePill("))
+        XCTAssertTrue(try source("Pages/AudioInputPicker.swift").contains("MenuPill("))
+        XCTAssertTrue(try source("Pages/CityDestinationRow.swift").contains("MenuPill("))
+        // The three pills that can show somebody's name for something say
+        // so, so the name gives way before the row scrolls.
+        XCTAssertTrue(card.contains("titleIsName: StartCardTopic.label(topicTitle) != nil"))
+        XCTAssertTrue(
+            try source("Pages/AudioInputPicker.swift").contains("titleIsName: sound.labelKey == nil")
+        )
+        XCTAssertTrue(
+            try source("Pages/CityDestinationRow.swift").contains("titleIsName: label.labelKey == nil")
+        )
+
+        // The sentence about how this recording will be made is the Start
+        // button's tooltip and hint, not text under it.
+        XCTAssertTrue(card.contains(".help(sentence + "))
+        XCTAssertTrue(card.contains(".accessibilityHint(Text(sentence))"))
+        XCTAssertFalse(card.contains("home.start.plan"))
+        // Where the audio goes is a disclosure: it names the service, and it
+        // is one click away in the ⓘ beside the pill, not only a tooltip.
+        XCTAssertTrue(card.contains("lines.append(String(localized: \"home.card.live_text_disclosure\"))"))
+        XCTAssertTrue(card.contains("InfoButton(explanation, accessibilityLabel: name)"))
+        for language in AppLanguage.allCases {
+            let disclosure = try XCTUnwrap(try strings(language.rawValue)["home.card.live_text_disclosure"])
+            XCTAssertTrue(disclosure.contains("Soniox"), "\(language.rawValue): \(disclosure)")
+        }
+        // What hosting adds, and what a topic is, are help on their pills.
+        XCTAssertTrue(card.contains("help: String(localized: \"home.options.hosting_detail\")"))
+        XCTAssertTrue(card.contains("help: String(localized: \"home.options.topic_detail\")"))
     }
 
     // MARK: Hosting an event
@@ -2347,5 +2810,349 @@ private final class HomeStartBox<Value>: @unchecked Sendable {
 
     init(_ value: Value) {
         self.value = value
+    }
+}
+
+// MARK: - Home's list, the Topics page and the sidebar: words, not sentences
+
+@MainActor
+final class HomeCatalogTests: XCTestCase {
+    private var root: URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("ZuTalk", isDirectory: true)
+    }
+
+    private func source(_ file: String) throws -> String {
+        try String(contentsOf: root.appendingPathComponent(file), encoding: .utf8)
+    }
+
+    private func strings(_ language: String) throws -> [String: String] {
+        let url = root.appendingPathComponent("Resources/\(language).lproj/Localizable.strings")
+        return try XCTUnwrap(NSDictionary(contentsOf: url) as? [String: String])
+    }
+
+    private let languages = ["en", "zh-Hans", "th", "ja", "ko", "fr", "es", "de"]
+
+    // MARK: A row
+
+    func testARecordingGoesByOneLineInAList() {
+        // Its title when it has one,
+        XCTAssertEqual(RecordingPresentation.rowWords(title: "Weekly sync", preview: "Hello"), "Weekly sync")
+        // else what was said first, on one line however it was broken,
+        XCTAssertEqual(
+            RecordingPresentation.rowWords(title: nil, preview: "Hello everyone.\n  Let us start.\n"),
+            "Hello everyone. Let us start."
+        )
+        XCTAssertEqual(RecordingPresentation.rowWords(title: "  ", preview: "Hello"), "Hello")
+        // else nothing: the row shows a word for why.
+        XCTAssertNil(RecordingPresentation.rowWords(title: nil, preview: " \n "))
+    }
+
+    func testARowSaysAtMostOneThingMoreAndAttentionComesFirst() {
+        typealias Mark = RecordingPresentation.RowMark
+        XCTAssertNil(Mark.resolve(status: nil, recordedOn: nil, isImport: false))
+        XCTAssertEqual(Mark.resolve(status: nil, recordedOn: nil, isImport: true), .imported)
+        XCTAssertEqual(Mark.resolve(status: nil, recordedOn: "Mac", isImport: true), .otherDevice("Mac"))
+        XCTAssertEqual(
+            Mark.resolve(status: .failed, recordedOn: "Mac", isImport: true),
+            .status(.failed)
+        )
+        XCTAssertEqual(Mark.resolve(status: .recording, recordedOn: nil, isImport: false), .status(.recording))
+    }
+
+    func testTheRowPrintsNoPreviewLinesAndNoLength() throws {
+        let presentation = try source("Library/RecordingPresentation.swift")
+        let text = try XCTUnwrap(presentation.range(of: "struct RecordingRowText: View"))
+        // One line: nothing in the row's text may run to a second.
+        XCTAssertFalse(presentation[text.lowerBound...].contains(".lineLimit(2)"))
+
+        let home = try source("Pages/HomeView.swift")
+        let parts = try XCTUnwrap(home.range(of: "private var metadataParts"))
+        let hover = try XCTUnwrap(home.range(of: "private var hoverDetail"))
+        // Under the name: languages, topic, one mark. The length is said on
+        // hover and to VoiceOver, not printed.
+        XCTAssertFalse(home[parts.lowerBound..<hover.lowerBound].contains("RecordingPresentation.duration"))
+        XCTAssertTrue(home[hover.lowerBound...].contains("RecordingPresentation.duration(ms: session.durationMs)"))
+        XCTAssertTrue(home.contains(".help(hoverDetail)"))
+    }
+
+    // MARK: The row's menu
+
+    func testTheRowMenuUsesTheSameShortWordsAsTheRecordingsOwnMenu() throws {
+        let words: [(key: String, zh: String, en: String)] = [
+            ("recording.word.rename", "改名", "Rename"),
+            ("recording.word.share", "分享", "Share"),
+            ("session.tab.settings", "详情", "Details"),
+            ("common.delete", "删除", "Delete"),
+        ]
+        let zh = try strings("zh-Hans")
+        let en = try strings("en")
+        let home = try source("Pages/HomeView.swift")
+        for word in words {
+            XCTAssertEqual(zh[word.key], word.zh)
+            XCTAssertEqual(en[word.key], word.en)
+            XCTAssertTrue(home.contains("Label(String(localized: \"\(word.key)\")"), word.key)
+        }
+        // The long forms are gone from the menu, and so is the grey line
+        // that explained why a recording in progress cannot be deleted.
+        for long in [
+            "Label(String(localized: \"library.rename.recording\")",
+            "Label(String(localized: \"share.recording.menu\")",
+            "Label(String(localized: \"session.menu.settings\")",
+            "Label(String(localized: \"resources.delete\")",
+            "Text(String(localized: \"home.recording.delete_while_recording\"))",
+        ] {
+            XCTAssertFalse(home.contains(long), long)
+        }
+        // Both of the row's small buttons still say what they are on hover.
+        XCTAssertTrue(home.contains(".help(String(localized: \"home.row.put_in_topic\"))"))
+        XCTAssertTrue(home.contains(
+            "String(format: String(localized: \"home.catalog.row.actions_format\"), titleForDisplay)"
+        ))
+        // The ⋯ is the one a recording has wherever it is listed.
+        XCTAssertTrue(home.contains("MorePill("))
+        XCTAssertFalse(home.contains("Image(systemName: \"ellipsis\")"))
+    }
+
+    func testDeletingAsksFirstExceptForTheRecordingStillBeingMade() {
+        XCTAssertTrue(HomeRowDelete.asksFirst(isRecording: false))
+        // It cannot be deleted; the library says why at once.
+        XCTAssertFalse(HomeRowDelete.asksFirst(isRecording: true))
+    }
+
+    // MARK: Filters
+
+    func testTheSelectedTopicsFilterIsAlwaysOnScreen() {
+        let ids = (1...9).map { "t\($0)" }
+        var layout = CatalogFilterLayout.split(topicIds: ids, selected: nil, limit: 6)
+        XCTAssertEqual(layout.shown, Array(ids.prefix(6)))
+        XCTAssertEqual(layout.more, ["t7", "t8", "t9"])
+
+        // One from the menu, once chosen, gets a pill of its own.
+        layout = CatalogFilterLayout.split(topicIds: ids, selected: "t8", limit: 6)
+        XCTAssertEqual(layout.shown, Array(ids.prefix(6)) + ["t8"])
+        XCTAssertEqual(layout.more, ["t7", "t9"])
+
+        // A narrow strip gives fewer topics a pill, so the menu holding the
+        // rest stays on screen; never none, never more than the most.
+        XCTAssertEqual(CatalogFilterLayout.limit(forWidth: 556), 2)
+        XCTAssertEqual(CatalogFilterLayout.limit(forWidth: 756), 4)
+        XCTAssertEqual(CatalogFilterLayout.limit(forWidth: 2_000), CatalogFilterLayout.limit)
+        XCTAssertEqual(CatalogFilterLayout.limit(forWidth: 0), 1)
+
+        // A menu of one is no shorter than that topic's pill: it is shown.
+        layout = CatalogFilterLayout.split(topicIds: Array(ids.prefix(7)), selected: nil, limit: 6)
+        XCTAssertEqual(layout.shown, Array(ids.prefix(7)))
+        XCTAssertTrue(layout.more.isEmpty)
+        layout = CatalogFilterLayout.split(topicIds: Array(ids.prefix(8)), selected: "t8", limit: 6)
+        XCTAssertEqual(layout.shown, Array(ids.prefix(8)))
+        XCTAssertTrue(layout.more.isEmpty)
+
+        // The two system filters and a topic that no longer exists add none.
+        layout = CatalogFilterLayout.split(topicIds: ["a", "b"], selected: "gone", limit: 6)
+        XCTAssertEqual(layout.shown, ["a", "b"])
+        XCTAssertTrue(layout.more.isEmpty)
+    }
+
+    func testAFilterIsASharedPillAndALongNameDoesNotStretchTheRow() throws {
+        XCTAssertEqual(CatalogFilterPill.tone(isSelected: true), .on)
+        XCTAssertEqual(CatalogFilterPill.tone(isSelected: false), .normal)
+
+        func width(_ title: String) -> CGFloat {
+            NSHostingController(rootView: CatalogFilterPill(title, count: 3, isSelected: false) {})
+                .sizeThatFits(in: CGSize(width: 4_000, height: 100)).width
+        }
+        let long = width("Cross-team product review and retrospective series, fourth quarter")
+        let short = width("AB")
+        XCTAssertLessThan(short, long)
+        // The name is cut at the most any pill's name may take.
+        XCTAssertLessThan(long, PillMetrics.maxTitleWidth + 80)
+        XCTAssertGreaterThan(long, PillMetrics.maxTitleWidth)
+
+        let home = try source("Pages/HomeView.swift")
+        let bar = try XCTUnwrap(home.range(of: "private struct HomeTopicFilterBar: View"))
+        let end = try XCTUnwrap(home.range(of: "private struct HomeNoSearchResults: View"))
+        let filters = home[bar.lowerBound..<end.lowerBound]
+        XCTAssertTrue(filters.contains("PillStrip {"))
+        XCTAssertTrue(filters.contains("CatalogFilterPill("))
+        XCTAssertTrue(filters.contains("MenuPill("))
+        XCTAssertFalse(filters.contains("Capsule()"))
+        XCTAssertFalse(filters.contains("ScrollView("))
+    }
+
+    // MARK: States
+
+    func testEachStateIsOneSentenceAndWhatWasUnderItIsATooltip() throws {
+        let home = try source("Pages/HomeView.swift")
+        // Printed nowhere on these pages any more.
+        for gone in [
+            "home.library.subtitle",
+            "home.create.description",
+            "home.create.name_placeholder",
+            "topics.search.empty.description",
+            "home.first_use.action",
+            "home.empty.sentence",
+            "home.library.title",
+        ] {
+            XCTAssertFalse(home.contains("\"\(gone)\""), gone)
+        }
+        // Moved to where someone who wants them finds them.
+        for moved in [
+            "help: String(localized: \"home.catalog.no_match.description\")",
+            "help: String(localized: \"home.catalog.topic_empty.description\")",
+            "help: String(localized: \"home.workspace.load_failed.description\")",
+            "help: String(localized: \"topics.empty.description\")",
+        ] {
+            XCTAssertTrue(home.contains(moved), moved)
+        }
+        // The page has one main action, and an empty page does not add one.
+        XCTAssertEqual(home.components(separatedBy: "PrimaryPill(").count - 1, 1)
+        XCTAssertFalse(home.contains("HomeActionButton"))
+        XCTAssertFalse(home.contains("EmptyState("))
+
+        // One sentence each, in every language: no state's text is two.
+        for key in [
+            "home.catalog.empty.title", "home.catalog.membership_failed", "home.filter.no_topic_empty",
+            "home.catalog.topic_empty.title", "home.catalog.no_match.title", "home.no_notebook.title",
+            "topics.search.empty.title", "home.workspace.load_failed.title", "home.workspace.refresh_failed",
+        ] {
+            for language in languages {
+                let value = try XCTUnwrap(try strings(language)[key], "\(language) \(key)")
+                let ends = value.dropLast().filter { "。.!?！？".contains($0) }.count
+                XCTAssertEqual(ends, 0, "\(language) \(key): \(value)")
+            }
+        }
+    }
+
+    func testTheCreateSheetIsANameAndCreate() throws {
+        let home = try source("Pages/HomeView.swift")
+        let sheet = try XCTUnwrap(home.range(of: "struct HomeCreateNotebookSheet: View"))
+        let end = try XCTUnwrap(home.range(of: "#if DEBUG"))
+        let body = home[sheet.lowerBound..<end.lowerBound]
+        XCTAssertTrue(body.contains("String(localized: \"home.create.name_label\")"))
+        XCTAssertTrue(body.contains("Button(String(localized: \"home.create.confirm\"))"))
+        // No line under the field, with or without an icon.
+        XCTAssertFalse(body.contains("systemImage"))
+        XCTAssertEqual(body.components(separatedBy: "Text(").count - 1, 2, "the title and the too-long error")
+        XCTAssertEqual(try strings("zh-Hans")["home.create.confirm"], "创建")
+        XCTAssertEqual(try strings("en")["home.create.confirm"], "Create")
+        XCTAssertEqual(try strings("zh-Hans")["home.topics.new"], "新建")
+        XCTAssertEqual(try strings("en")["home.topics.new"], "New")
+    }
+
+    // MARK: A topic's card
+
+    func testATopicsCardSaysWhenItWasLastUsedInAWord() {
+        XCTAssertNil(TopicCardFacts.lastActivityWord(nil))
+        XCTAssertNil(TopicCardFacts.lastActivitySentence(nil))
+
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let word = TopicCardFacts.lastActivityWord(now.addingTimeInterval(-2 * 86_400), relativeTo: now)
+        XCTAssertEqual(word?.isEmpty, false)
+        // The card shows the bare word; the phrase around it is for hover.
+        let sentence = TopicCardFacts.lastActivitySentence(
+            now.addingTimeInterval(-2 * 86_400),
+            relativeTo: now
+        )
+        XCTAssertEqual(sentence?.contains(word ?? "?"), true)
+        XCTAssertNotEqual(sentence, word)
+        // Nobody counts seconds on a folder, and a clock that is a little
+        // off does not make a topic "in 5 minutes": both are "now".
+        let rightNow = TopicCardFacts.lastActivityWord(now, relativeTo: now)
+        XCTAssertEqual(TopicCardFacts.lastActivityWord(now.addingTimeInterval(-13), relativeTo: now), rightNow)
+        XCTAssertEqual(TopicCardFacts.lastActivityWord(now.addingTimeInterval(300), relativeTo: now), rightNow)
+        XCTAssertNotEqual(TopicCardFacts.lastActivityWord(now.addingTimeInterval(-600), relativeTo: now), rightNow)
+        XCTAssertTrue(TopicCardFacts.count(3).contains("3"))
+    }
+
+    // MARK: The sidebar
+
+    func testTheSidebarShowsInviteTimeAsJustTheTime() throws {
+        let english = Locale(identifier: "en_US")
+        let word = SidebarInviteTime.word(seconds: 3 * 3_600 + 20 * 60, locale: english)
+        XCTAssertTrue(word.contains("3") && word.contains("20"), word)
+        XCTAssertLessThanOrEqual(word.count, 8, word)
+        XCTAssertFalse(SidebarInviteTime.word(seconds: 0, locale: english).isEmpty)
+        XCTAssertEqual(
+            SidebarInviteTime.word(seconds: -5, locale: english),
+            SidebarInviteTime.word(seconds: 0, locale: english)
+        )
+
+        // The sentence the word stands for, and how invite time is spent,
+        // are what hovering says.
+        let shell = try source("UIScenes/Main/MainShellView.swift")
+        XCTAssertTrue(shell.contains(".help(communityTimeExplanation)"))
+        XCTAssertTrue(shell.contains("community_invite.remaining_recordable_format"))
+        XCTAssertTrue(shell.contains("community_invite.remaining_recordable_hint"))
+    }
+
+    // MARK: The card's rows
+
+    func testHostingHasARowOfItsOwnAndImportEndsTheLanguageRow() throws {
+        let card = try source("Pages/HomeStartCard.swift")
+        let languageRow = try XCTUnwrap(card.range(of: "private var languageStrip: some View"))
+        let optionRow = try XCTUnwrap(card.range(of: "private var optionStrip: some View"))
+        let liveText = try XCTUnwrap(card.range(of: "private var liveTextPill: some View"))
+        let first = card[languageRow.lowerBound..<optionRow.lowerBound]
+        let second = card[optionRow.lowerBound..<liveText.lowerBound]
+
+        XCTAssertTrue(first.contains("CaptureLanguagePills(editor: editor)"))
+        XCTAssertTrue(first.contains("importPill"))
+        // The second row holds only pills whose words are ours, plus names
+        // that give way — so it fits the narrowest window.
+        for pill in ["AudioInputPill(", "liveTextPill", "topicPill", "hostingPill"] {
+            XCTAssertTrue(second.contains(pill), pill)
+        }
+        XCTAssertFalse(second.contains("importPill"))
+        XCTAssertFalse(second.contains("StartCardHostingPills("))
+        XCTAssertFalse(second.contains("CityDestinationPill("))
+
+        // What hosting adds is a strip of its own, and nothing when hidden.
+        let hosting = try XCTUnwrap(card.range(of: "private struct StartCardHostingPills: View"))
+        let rows = card[hosting.lowerBound...]
+        XCTAssertTrue(rows.contains("case .hidden:\n            EmptyView()"))
+        XCTAssertTrue(rows.contains(
+            "PillStrip {\n                CityDestinationPill(languages: languages, topicId: topicId)"
+        ))
+    }
+
+    // MARK: Nothing says the audio stays here
+
+    func testNothingInTheseFilesSaysAudioStaysOnThisMac() throws {
+        let retired = [
+            "home.notebook.local_first",
+            "home.create.local_first",
+            "home.workspace.membership_unavailable",
+            "record.page.captions_detail",
+            "topic.collab.join_explain",
+        ]
+        for file in [
+            "Pages/HomeView.swift",
+            "Pages/HomeStartCard.swift",
+            "Pages/HomeCatalogPills.swift",
+            "Pages/RecordingPlanSentence.swift",
+            "UIScenes/Main/MainShellView.swift",
+            "UIScenes/Main/MainNavigationStore.swift",
+            "UIScenes/Main/MainRoute.swift",
+            "Library/LibraryViewModel.swift",
+            "Library/RecordingPresentation.swift",
+        ] {
+            let text = try source(file)
+            for key in retired {
+                XCTAssertFalse(text.contains("\"\(key)\""), "\(file) still uses \(key)")
+            }
+        }
+        // Where the audio goes when live text is on is still said, with the
+        // service named — and it no longer adds where it stays when off.
+        for language in languages {
+            let table = try strings(language)
+            let disclosure = try XCTUnwrap(table["home.card.live_text_disclosure"], language)
+            XCTAssertTrue(disclosure.contains("Soniox"), language)
+            XCTAssertFalse(disclosure.contains("Mac"), "\(language): \(disclosure)")
+            let membership = try XCTUnwrap(table["home.catalog.membership_failed"], language)
+            XCTAssertFalse(membership.contains("Mac"), "\(language): \(membership)")
+        }
     }
 }

@@ -6,15 +6,24 @@ import SwiftUI
 /// This is the only writing surface that makes sense while a room is still
 /// talking. A blank page asks someone following a foreign language to compose;
 /// a card that already contains what was just said asks them only to react.
+///
+/// The header is one word and a count. A mark is a time, what was said, and
+/// the note field; what can be done to it is icons, each named by its
+/// tooltip.
 struct SessionMarksPanel: View {
     let sessionId: String?
     /// Whether a keypress can currently drop a mark. Marks are a live gesture;
     /// after the recording ends the rail becomes a reading and editing surface.
     let isLive: Bool
     let onMark: () -> Void
+    /// Marks to show instead of the store's: for drawing the panel in a
+    /// given state without a recording behind it.
+    var shownMarks: [SessionMarkViewModel]?
 
     @ObservedObject private var store = SessionMarkStore.shared
     @FocusState private var focusedNoteId: String?
+
+    private var marks: [SessionMarkViewModel] { shownMarks ?? store.marks }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -22,7 +31,7 @@ struct SessionMarksPanel: View {
 
             Divider().background(Color.borderGhost.opacity(0.4))
 
-            if store.marks.isEmpty {
+            if marks.isEmpty {
                 emptyState
             } else {
                 markList
@@ -40,12 +49,10 @@ struct SessionMarksPanel: View {
 
     private var header: some View {
         HStack(spacing: Spacing.sm) {
-            Text(String(localized: "session.marks.title"))
-                .font(.captionMedium)
-                .foregroundColor(.textSecondary)
+            GroupHeader(String(localized: "session.marks.title"))
 
-            if !store.marks.isEmpty {
-                Text("\(store.marks.count)")
+            if !marks.isEmpty {
+                Text("\(marks.count)")
                     .font(.monoNum11)
                     .foregroundColor(.textTertiary)
                     .padding(.horizontal, 5)
@@ -58,46 +65,30 @@ struct SessionMarksPanel: View {
             Spacer(minLength: Spacing.sm)
 
             if isLive {
-                Button(action: onMark) {
-                    Label(
-                        String(localized: "session.marks.add"),
-                        systemImage: "bookmark.fill"
-                    )
-                    .font(.captionMedium)
-                    .labelStyle(.titleAndIcon)
-                    .padding(.horizontal, Spacing.sm)
-                    .padding(.vertical, 4)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .foregroundColor(.brandAccent)
-                .background(
-                    RoundedRectangle(cornerRadius: Radius.xs)
-                        .fill(Color.brandAccent.opacity(0.14))
+                ActionPill(
+                    String(localized: "session.marks.add"),
+                    systemImage: "bookmark.fill",
+                    tone: .on,
+                    help: String(localized: "session.marks.add.hint"),
+                    action: onMark
                 )
-                .help(String(localized: "session.marks.add.hint"))
                 .accessibilityIdentifier("session.marks.add")
             }
         }
         .padding(.horizontal, Spacing.md)
-        .padding(.vertical, Spacing.sm)
+        .frame(minHeight: PillMetrics.height + Spacing.sm * 2)
     }
 
+    /// One sentence. While recording it names the key to press; the longer
+    /// account of what a mark keeps is its tooltip.
     private var emptyState: some View {
-        VStack(spacing: Spacing.sm) {
-            Image(systemName: "bookmark")
-                .font(.system(size: 20, weight: .light))
-                .foregroundColor(.textTertiary.opacity(0.7))
-            Text(String(localized: isLive
-                ? "session.marks.empty.live"
-                : "session.marks.empty.done"))
-                .font(.bodySM)
-                .foregroundColor(.textTertiary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(Spacing.md)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        OneSentenceState(
+            systemImage: "bookmark",
+            sentence: String(localized: isLive
+                ? "recording.marks.empty_live"
+                : "session.marks.empty.done"),
+            detail: isLive ? String(localized: "session.marks.empty.live") : nil
+        )
         .accessibilityIdentifier("session.marks.empty")
     }
 
@@ -105,7 +96,7 @@ struct SessionMarksPanel: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: Spacing.sm) {
-                    ForEach(store.marks) { mark in
+                    ForEach(marks) { mark in
                         SessionMarkCard(
                             mark: mark,
                             focusedNoteId: $focusedNoteId,
@@ -117,11 +108,11 @@ struct SessionMarksPanel: View {
                 }
                 .padding(Spacing.sm)
             }
-            .onChange(of: store.marks.count) { _ in
+            .onChange(of: marks.count) { _ in
                 // A fresh mark is the reason the rail exists; bring it into
                 // view without stealing the listener's scroll position for
                 // anything else.
-                guard let last = store.marks.last else { return }
+                guard let last = marks.last else { return }
                 withAnimation(.easeOut(duration: 0.18)) {
                     proxy.scrollTo(last.id, anchor: .bottom)
                 }
@@ -175,17 +166,15 @@ private struct SessionMarkCard: View {
                 .help(String(localized: "session.marks.reveal"))
                 .accessibilityLabel(Text(String(localized: "session.marks.reveal")))
                 Spacer(minLength: Spacing.xs)
-                if isHovering {
-                    Button(action: requestDelete) {
-                        Image(systemName: "trash")
-                            .font(.system(size: 10, weight: .medium))
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundColor(.textTertiary)
-                    .help(String(localized: "session.marks.delete"))
-                    .accessibilityLabel(Text(String(localized: "session.marks.delete")))
-                }
+                digestMarks
+                // Always there, quiet until the card is pointed at: an
+                // action that only exists on hover is one nobody finds.
+                iconButton(
+                    "trash",
+                    help: String(localized: "session.marks.delete"),
+                    action: requestDelete
+                )
+                .opacity(isHovering ? 1 : 0.55)
             }
 
             excerpt
@@ -271,6 +260,51 @@ private struct SessionMarkCard: View {
         }
     }
 
+    /// A small icon that does one thing, named by its tooltip.
+    private func iconButton(
+        _ systemImage: String,
+        tint: Color = .textTertiary,
+        help: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(PillMetrics.markFont)
+                .foregroundColor(tint)
+                .frame(width: PillMetrics.segmentWidth - Spacing.xs, height: PillMetrics.segmentWidth - Spacing.xs)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .accessibilityLabel(Text(help))
+    }
+
+    /// For a mark shown in its tidied form: that the passage changed since
+    /// (an icon, the words in its tooltip), and the way to the original
+    /// lines. Both used to be printed under the excerpt.
+    @ViewBuilder
+    private var digestMarks: some View {
+        if mark.isEmptyExcerpt == false, let digest = mark.digest, digest.failed == false {
+            if digest.isCurrent == false {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(PillMetrics.markFont)
+                    .foregroundColor(.signalAmber)
+                    .help(String(localized: "session.marks.digest.stale"))
+                    .accessibilityLabel(Text(String(localized: "session.marks.digest.stale")))
+            }
+            iconButton(
+                showsRawExcerpt ? "text.quote" : "text.alignleft",
+                tint: showsRawExcerpt ? .brandAccent : .textTertiary,
+                help: String(localized: showsRawExcerpt
+                    ? "session.marks.digest.hide_original"
+                    : "session.marks.digest.show_original")
+            ) {
+                showsRawExcerpt.toggle()
+            }
+            .accessibilityIdentifier("session.marks.digest.toggle.\(mark.id)")
+        }
+    }
+
     @ViewBuilder
     private var excerpt: some View {
         if mark.isEmptyExcerpt {
@@ -290,26 +324,6 @@ private struct SessionMarkCard: View {
                     .foregroundColor(.textPrimary)
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
-
-                HStack(spacing: Spacing.xs) {
-                    if digest.isCurrent == false {
-                        Label(
-                            String(localized: "session.marks.digest.stale"),
-                            systemImage: "clock.arrow.circlepath"
-                        )
-                        .font(.caption)
-                        .foregroundColor(.textTertiary)
-                    }
-                    Button(showsRawExcerpt
-                        ? String(localized: "session.marks.digest.hide_original")
-                        : String(localized: "session.marks.digest.show_original")) {
-                        showsRawExcerpt.toggle()
-                    }
-                    .buttonStyle(.plain)
-                    .font(.caption)
-                    .foregroundColor(.textTertiary)
-                    .accessibilityIdentifier("session.marks.digest.toggle.\(mark.id)")
-                }
 
                 if showsRawExcerpt {
                     rawExcerpt

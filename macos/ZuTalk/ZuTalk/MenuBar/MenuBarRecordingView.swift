@@ -67,13 +67,11 @@ struct MenuBarRecordingView: View {
         return model.statusLine
     }
 
+    /// The last two lines, as they are. The box used to carry a title; two
+    /// timestamped lines of what was just said need none, so the title is
+    /// now only what VoiceOver calls the box.
     private var transcriptSection: some View {
         VStack(alignment: .leading, spacing: Spacing.xs) {
-            Text(String(localized: "menubar.recording.live_transcript"))
-                .font(Font.mono9)
-                .foregroundColor(Color.textTertiary)
-                .textCase(.uppercase)
-
             ForEach(recentLines.suffix(2)) { line in
                 VStack(alignment: .leading, spacing: Spacing.xs) {
                     HStack(spacing: Spacing.sm) {
@@ -104,6 +102,8 @@ struct MenuBarRecordingView: View {
             RoundedRectangle(cornerRadius: Radius.sm)
                 .stroke(Color.borderPanel, lineWidth: 1)
         )
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text(String(localized: "menubar.recording.live_transcript")))
     }
 
     /// Opens the recording in progress, which is what it now says. It used

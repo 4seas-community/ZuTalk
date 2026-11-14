@@ -312,7 +312,11 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
         }
     }
 
-    func testProviderCredentialEditorMeetsMinimumInteractionTarget() throws {
+    /// The key field is the same height as the pills beside it — one height
+    /// for every small control (`PillMetrics.height`), never a field of its
+    /// own, smaller size. Before 0.8.3 the field was pinned at 44 pt while
+    /// the buttons next to it were whatever the system drew.
+    func testProviderCredentialEditorIsAsTallAsThePillsBesideIt() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
@@ -321,14 +325,21 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
             contentsOf: root.appendingPathComponent("Settings/ProviderSettingsView.swift"),
             encoding: .utf8
         )
-        let fieldStart = try XCTUnwrap(source.range(of: "SecureField("))
-        let fieldEnd = try XCTUnwrap(
-            source[fieldStart.upperBound...].range(of: "Text(statusHint)")
-        )
-        let field = source[fieldStart.lowerBound..<fieldEnd.lowerBound]
+        // The key goes into the shared field, hidden as it is typed.
+        let fieldStart = try XCTUnwrap(source.range(of: "SettingsField("))
+        let fieldEnd = try XCTUnwrap(source[fieldStart.upperBound...].range(of: ".onSubmit(verifyAndCommitDraft)"))
+        XCTAssertTrue(source[fieldStart.lowerBound..<fieldEnd.lowerBound].contains("isSecure: true"))
+        XCTAssertFalse(source.contains("SecureField("), "the row draws no field of its own")
 
-        XCTAssertTrue(field.contains(".frame(minHeight: 44)"))
-        XCTAssertFalse(field.contains(".frame(minHeight: 32)"))
+        let components = try String(
+            contentsOf: root.appendingPathComponent("Settings/SettingsComponents.swift"),
+            encoding: .utf8
+        )
+        let sharedStart = try XCTUnwrap(components.range(of: "struct SettingsField: View"))
+        let sharedEnd = try XCTUnwrap(components[sharedStart.upperBound...].range(of: "// MARK: - 状态与值"))
+        let shared = components[sharedStart.lowerBound..<sharedEnd.lowerBound]
+        XCTAssertTrue(shared.contains(".frame(height: PillMetrics.height)"))
+        XCTAssertTrue(shared.contains("SecureField(placeholder, text: $text)"))
     }
 
     func testProviderCredentialCopyExplainsLocalLoginTrustBoundary() throws {
@@ -1486,7 +1497,14 @@ final class CityTextTests: XCTestCase {
             marks: 7,
             changedSentences: changed,
             errorCode: errorCode,
-            webUrl: nil
+            webUrl: nil,
+            audioWanted: false,
+            audioWithheld: false,
+            audioDue: false,
+            audioPartsPlanned: 0,
+            audioPartsFiled: 0,
+            audioErrorCode: nil,
+            audioRetryAtEpoch: nil
         )
     }
 
@@ -1594,20 +1612,19 @@ final class CityTextTests: XCTestCase {
         XCTAssertEqual(CityText.joinSentences([]), "")
     }
 
-    func testTheSummaryNamesTheSignerTheChannelAndThatAudioStays() {
-        let options = FfiCityFilingOptions(speakerNames: true, marks: false, automatic: true)
-        let audio = String(localized: "city.summary.audio_stays")
+    /// What is filed in whose name. That the audio goes too — and that it is
+    /// never said to stay — is pinned in `CityAudioTruthTests`.
+    func testTheSummaryNamesTheSignerTheLanguagesAndTheChannel() {
+        let options = FfiCityFilingOptions(speakerNames: true, audio: false, automatic: true)
 
         let plain = CityText.summary(signer: "Sam", languages: ["en", "th"], options: options, channel: nil)
         let withChannel = CityText.summary(signer: "Sam", languages: ["en", "th"], options: options, channel: "Exchange")
 
         XCTAssertTrue(plain.contains("Sam"))
         XCTAssertTrue(plain.contains("English"))
-        XCTAssertTrue(plain.contains(String(localized: "city.summary.extras.names_only")))
-        XCTAssertTrue(plain.hasSuffix(audio))
+        XCTAssertTrue(plain.contains(String(localized: "city.summary.names")))
         XCTAssertFalse(plain.contains("Exchange"))
         XCTAssertTrue(withChannel.contains("Exchange"))
-        XCTAssertTrue(withChannel.hasSuffix(audio))
         // A recording whose languages are not known yet still says who signs.
         XCTAssertTrue(CityText.summary(signer: "Sam", languages: [], options: options, channel: nil).contains("Sam"))
         XCTAssertEqual(CityText.languageNames(["en", "EN", "und", "th"]).count, 2)
@@ -1634,7 +1651,14 @@ final class CityTextTests: XCTestCase {
         XCTAssertEqual(Set([filed, changed, waiting, refused].map(\.symbol)).count, 4)
         XCTAssertTrue(changed.label.contains("6"))
         XCTAssertEqual(refused.reason?.contains("Sam"), true)
-        XCTAssertTrue(CityFilingsCard.detail(filing(state: .filed), status: filed).hasSuffix(filed.label))
+        // A row is the event, its day, and the status as an icon and a word;
+        // what was filed and why is the row's tooltip.
+        XCTAssertFalse(CityFilingsCard.detail(filing(state: .filed)).isEmpty)
+        XCTAssertTrue(CityFilingsCard.tooltip(filing(state: .filed), status: filed).contains("412"))
+        XCTAssertTrue(
+            CityFilingsCard.tooltip(filing(state: .failed, errorCode: "city.error.not_allowed"), status: refused)
+                .contains("Sam")
+        )
     }
 
     func testEventTimesAreShownInTheGivenTimeZone() {
@@ -1676,10 +1700,10 @@ final class CityTextTests: XCTestCase {
     /// Copy that must be said truthfully, in every language the app ships.
     func testWithdrawAndSignInCopyStateTheirLimitsEverywhere() throws {
         let keys = [
-            "city.withdraw.confirm_title",
-            "city.withdraw.confirm_message",
-            "city.signin.trust",
-            "city.signout.confirm_message",
+            "city.withdraw.confirm_short",
+            "city.withdraw.confirm_one",
+            "city.signin.disclosure",
+            "city.signout.confirm_one",
             "city.share.public_note",
             "city.signin.step_scan",
             "city.signin.step_check",
@@ -1740,7 +1764,14 @@ final class CityFilingStatusTests: XCTestCase {
             marks: 7,
             changedSentences: changed,
             errorCode: errorCode,
-            webUrl: webUrl
+            webUrl: webUrl,
+            audioWanted: false,
+            audioWithheld: false,
+            audioDue: false,
+            audioPartsPlanned: 0,
+            audioPartsFiled: 0,
+            audioErrorCode: nil,
+            audioRetryAtEpoch: nil
         )
     }
 
@@ -1819,12 +1850,14 @@ final class CityFilingStatusTests: XCTestCase {
         let unreachable = filing(.queued, errorCode: Self.offlineCode)
 
         let online = status(unreachable, offline: false)
-        XCTAssertEqual(online.label, String(localized: "city.status.waiting"))
+        XCTAssertEqual(online.label, String(localized: "city.word.waiting"))
+        XCTAssertEqual(online.hint, String(localized: "city.status.waiting"))
         XCTAssertEqual(online.primaryAction, .retry)
         XCTAssertNil(online.reason)
 
         let offline = status(unreachable, offline: true)
-        XCTAssertEqual(offline.label, String(localized: "city.status.waiting_offline"))
+        XCTAssertEqual(offline.label, String(localized: "city.word.waiting_offline"))
+        XCTAssertEqual(offline.hint, String(localized: "city.status.waiting_offline"))
         XCTAssertEqual(offline.symbol, "wifi.slash")
         // Retrying with no network at all cannot work; it goes by itself later.
         XCTAssertNil(offline.primaryAction)
@@ -1919,8 +1952,9 @@ final class CityFilingStatusTests: XCTestCase {
         XCTAssertTrue(spoken.contains("Language Exchange"))
         XCTAssertNotEqual(spoken, filed.label)
         XCTAssertFalse(spoken.contains("%"))
-        XCTAssertEqual(filed.described(event: nil), filed.label)
-        XCTAssertEqual(filed.described(event: ""), filed.label)
+        // Without an event's name it is the status, then the word about its audio.
+        XCTAssertTrue(filed.described(event: nil).hasPrefix(filed.label))
+        XCTAssertEqual(filed.described(event: ""), filed.described(event: nil))
     }
 
     func testTheTallyCountsWhatIsInTheArchiveWhatIsWaitingAndWhatNeedsSomeone() {
@@ -1977,51 +2011,83 @@ final class CityFilingStatusTests: XCTestCase {
         XCTAssertEqual(Set([sending?.text, waiting?.text, gone?.text, failed?.text]).count, 4)
     }
 
-    /// Settings is where every filing can be dealt with: beyond the first
-    /// button, each row's menu holds the other things that make sense for it.
+    /// Settings is where every filing can be dealt with: one pill for the
+    /// thing most worth doing, and each row's ⋯ holds the rest.
     func testEachSettingsRowOffersWhatCanBeDoneWithIt() throws {
         let url = try XCTUnwrap(URL(string: "https://city.example/archive/item"))
         let menu = { (filing: FfiCityFiling) in
             CityFilingsCard.menu(for: self.status(filing), filing: filing)
         }
+        let pill = { (filing: FfiCityFiling) in
+            CityFilingsCard.pill(for: self.status(filing))
+        }
 
-        // A choice not acted on yet can be changed or dropped.
+        // A choice not acted on yet: file it (or retry), change it, or drop it.
+        XCTAssertEqual(pill(filing(.bound)), .file)
+        XCTAssertEqual(pill(filing(.withdrawn)), .file)
+        XCTAssertEqual(pill(filing(.queued)), .retry)
         for state in [FfiCityFilingState.bound, .queued, .withdrawn] {
             XCTAssertEqual(menu(filing(state)), [.changeEvent, .drop, .showRecording], "\(state)")
         }
+        XCTAssertEqual(pill(filing(.failed, errorCode: "city.error.not_allowed")), .retry)
         XCTAssertEqual(
             menu(filing(.failed, errorCode: "city.error.not_allowed")),
             [.changeEvent, .drop, .showRecording]
         )
-        // What is in the archive can be withdrawn; the first button already
-        // opens it (or updates it, and then the menu opens it).
-        XCTAssertEqual(menu(filing(.filed, webUrl: url.absoluteString)), [.withdraw, .showRecording])
+        // What is in the archive: opening it and withdrawing it are in the
+        // menu. No pill when nothing is needed.
+        XCTAssertNil(pill(filing(.filed, webUrl: url.absoluteString)))
+        XCTAssertEqual(
+            menu(filing(.filed, webUrl: url.absoluteString)),
+            [.open(url), .withdraw, .showRecording]
+        )
+        XCTAssertEqual(pill(filing(.filed, changed: 2, webUrl: url.absoluteString)), .update)
         XCTAssertEqual(
             menu(filing(.filed, changed: 2, webUrl: url.absoluteString)),
             [.open(url), .withdraw, .showRecording]
         )
-        // Event gone: the first button changes the event. The menu does not
-        // offer a page that would be empty.
+        // Event gone: the pill changes the event. The menu does not offer a
+        // page that would be empty.
+        XCTAssertEqual(pill(filing(.filed, errorCode: Self.goneCode, webUrl: url.absoluteString)), .changeEvent)
         XCTAssertEqual(
             menu(filing(.filed, errorCode: Self.goneCode, webUrl: url.absoluteString)),
             [.withdraw, .showRecording]
         )
+        XCTAssertEqual(pill(filing(.failed, errorCode: Self.goneCode)), .changeEvent)
         XCTAssertEqual(menu(filing(.failed, errorCode: Self.goneCode)), [.retry, .drop, .showRecording])
-        // The first button is never repeated in the menu.
+
+        // Text filed, audio never filed: the pill adds the audio. This is the
+        // only way audio reaches something filed before 0.8.3.
+        var textOnly = filing(.filed, webUrl: url.absoluteString)
+        textOnly.audioWanted = true
+        XCTAssertEqual(pill(textOnly), .fileAudio)
+        XCTAssertEqual(menu(textOnly), [.open(url), .withdraw, .showRecording])
+        // Changed sentences come first; adding the audio is then in the menu.
+        textOnly.changedSentences = 2
+        XCTAssertEqual(pill(textOnly), .update)
+        XCTAssertEqual(menu(textOnly), [.open(url), .fileAudio, .withdraw, .showRecording])
+        // The city refused the audio: retrying it is offered, the text is untouched.
+        var refused = filing(.filed, webUrl: url.absoluteString)
+        refused.audioWanted = true
+        refused.audioDue = true
+        refused.audioErrorCode = "city.error.audio_refused"
+        XCTAssertEqual(pill(refused), .retryAudio)
+
+        // The pill is never repeated in the menu, and every action has a word.
         let rows = [
             filing(.bound), filing(.queued), filing(.failed), filing(.filed, changed: 1),
-            filing(.failed, errorCode: Self.goneCode),
+            filing(.failed, errorCode: Self.goneCode), textOnly, refused,
         ]
         for row in rows {
             let resolved = status(row)
-            let repeated: CityFilingsCard.MenuAction?
-            switch resolved.primaryAction {
-            case .retry: repeated = .retry
-            case .chooseEvent: repeated = .changeEvent
-            default: repeated = nil
+            let listed = CityFilingsCard.menu(for: resolved, filing: row)
+            if let taken = CityFilingsCard.pill(for: resolved) {
+                XCTAssertFalse(listed.contains(taken), "\(resolved.kind)")
             }
-            if let repeated {
-                XCTAssertFalse(CityFilingsCard.menu(for: resolved, filing: row).contains(repeated))
+            for action in listed + [CityFilingsCard.pill(for: resolved)].compactMap({ $0 }) {
+                XCTAssertFalse(CityFilingsCard.title(action).hasPrefix("city."), "\(action)")
+                XCTAssertFalse(CityFilingsCard.symbol(action).isEmpty)
+                XCTAssertFalse(CityFilingsCard.identifier(action).isEmpty)
             }
         }
     }
@@ -2108,7 +2174,7 @@ final class CityFilingStatusTests: XCTestCase {
         let chinese = try strings("zh-Hans")
         // Said from the core's code alone, with no word from the system.
         let fromTheCoreAlone = [
-            "city.error.offline", "city.status.waiting", "city.share.queued", "city.toast.queued",
+            "city.error.offline", "city.status.waiting", "city.word.waiting", "city.toast.queued",
             "city.picker.empty_never", "city.when.automatic_detail",
         ]
         for key in fromTheCoreAlone {
@@ -2338,15 +2404,17 @@ final class SettingsThreeSectionsTests: XCTestCase {
     /// does not need to know who is behind it.
     func testAccountCopyNamesNoProvider() throws {
         let accountKeys = [
-            "settings.account.subtitle", "settings.account.signin_title", "settings.account.signin_detail",
+            "settings.account.signin_title", "settings.account.signin_detail",
             "settings.account.identity_title", "city.archive.title", "city.archive.subtitle",
-            "settings.live_text.title", "settings.live_text.source.invite",
+            "onboarding.step.live_text", "settings.live_text.source.invite",
             "settings.live_text.source.invite_time_format", "settings.live_text.source.invite_spent",
             "settings.live_text.source.own_key", "settings.live_text.source.nothing",
             "settings.live_text.shared_detail", "settings.live_text.invite_field_label",
-            "settings.live_text.invite_hint", "settings.live_text.invite_on",
+            "settings.live_text.invite_hint", "community_invite.remaining_recordable_format",
+            "settings.live_text.status.spent", "settings.live_text.status.own_key", "captions_choice.off",
             "settings.live_text.use_invite", "settings.live_text.use_own_key",
-            "settings.account.devices_title", "settings.account.devices_subtitle",
+            "settings.group.devices", "settings.account.devices_subtitle",
+            "settings.devices.this_mac_label", "settings.devices.pairing_code",
             "settings.account.devices_add_subtitle", "sidebar.account.sign_in", "sidebar.account.hint",
         ]
         for language in settingsLanguages {
@@ -2555,11 +2623,12 @@ final class OnboardingLiveTextStepTests: XCTestCase {
     func testFirstLaunchCopyNamesAProviderOnlyWhereAKeyIsChosen() throws {
         let plainKeys = [
             "onboarding.step.live_text", "onboarding.step.microphone",
-            "onboarding.live_text.title", "onboarding.live_text.subtitle",
-            "onboarding.live_text.visual", "onboarding.live_text.use_invite",
+            "onboarding.live_text.subtitle", "onboarding.live_text.use_invite",
             "onboarding.live_text.skip", "onboarding.welcome.privacy_plain",
             "onboarding.permissions.action.open_system_settings",
             "onboarding.permissions.denied_hint",
+            "onboarding.start", "onboarding.back", "onboarding.skip", "onboarding.finish",
+            "onboarding.permissions.allow", "onboarding.permissions.allowed",
         ]
         for language in settingsLanguages {
             let strings = try settingsStrings(language)
@@ -2652,5 +2721,221 @@ final class LiveConnectionFactsTests: XCTestCase {
             facts.text.hasSuffix(String(localized: "settings.diagnostics.recording_keeping_up")),
             facts.text
         )
+    }
+}
+
+// MARK: - 0.8.3: no sentences on the surface
+
+@MainActor
+final class SettingsSurfaceTests: XCTestCase {
+    private static let newLabels = [
+        "settings.switch.on", "settings.switch.off",
+        "settings.action.copy", "settings.action.copied", "settings.action.replace",
+        "settings.action.stop", "settings.action.create",
+        "settings.group.devices", "settings.group.updates", "settings.group.shortcuts",
+        "settings.general.appearance", "settings.updates.check",
+        "settings.devices.this_mac_label", "settings.devices.pairing_code", "settings.devices.online",
+        "settings.backup.code",
+        "settings.live_text.status.spent", "settings.live_text.status.own_key",
+        "settings.credentials.status.saved", "settings.credentials.status.verified",
+        "settings.credentials.status.invalid", "settings.credentials.key_placeholder",
+        "onboarding.start", "onboarding.back", "onboarding.skip", "onboarding.finish",
+        "onboarding.permissions.allow", "onboarding.permissions.allowed",
+    ]
+
+    /// What 0.8.3 added to Settings and first launch are labels: a word or
+    /// two in every language, never a sentence.
+    func testNewLabelsAreAWordOrTwoInEveryLanguage() throws {
+        for language in settingsLanguages {
+            let strings = try settingsStrings(language)
+            for key in Self.newLabels {
+                let value = try XCTUnwrap(strings[key], "\(language) lacks \(key)")
+                XCTAssertFalse(value.isEmpty, "\(language) \(key)")
+                XCTAssertLessThanOrEqual(value.count, 26, "\(language) \(key): \(value)")
+                for stop in [".", "。", "!", "！", "…", ":", "："] {
+                    XCTAssertFalse(value.contains(stop), "\(language) \(key) reads as a sentence: \(value)")
+                }
+            }
+        }
+    }
+
+    /// The city agent's files call these four with the arguments below; the
+    /// sentences they pass are no longer printed, but the calls must compile.
+    func testTheSharedComponentsKeepTheirCallSignatures() {
+        _ = SettingsGroup(title: "a", subtitle: "b") {
+            SettingsCard(title: "c", subtitle: "d") {
+                SettingsRow("e", description: "f") { EmptyView() }
+                SettingsRowDivider()
+                SettingsFullRow { EmptyView() }
+            }
+            SettingsCard { SettingsRow("g") { EmptyView() } }
+        }
+        _ = SettingsGroup(title: "a") { EmptyView() }
+    }
+
+    /// A row's description and a card's or group's subtitle are tooltips
+    /// now. Nothing in the three components prints them.
+    func testDescriptionsAndSubtitlesAreNotPrinted() throws {
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("ZuTalk/Settings/SettingsComponents.swift"),
+            encoding: .utf8
+        )
+        let pageHeader = try XCTUnwrap(source.range(of: "struct SettingsPageHeader: View"))
+        let components = source[source.startIndex..<pageHeader.lowerBound]
+        XCTAssertFalse(components.contains("Text(description)"))
+        XCTAssertFalse(components.contains("Text(subtitle)"))
+        XCTAssertTrue(components.contains(".settingsExplained(subtitle)"))
+        XCTAssertTrue(components.contains(".help(description ?? \"\")"))
+    }
+
+    /// What powers live text is said in a few words; the sentence is the
+    /// tooltip. Neither names a provider.
+    func testLiveTextStatusIsAFewWords() {
+        let states: [LiveTextSource] = [
+            .invite(recordableSeconds: nil),
+            .invite(recordableSeconds: 29 * 3_600 + 30 * 60),
+            .inviteSpent,
+            .ownKey,
+            .nothing,
+        ]
+        let words = states.map(\.status)
+        XCTAssertEqual(Set(words).count, words.count)
+        for (state, word) in zip(states, words) {
+            XCTAssertFalse(word.isEmpty)
+            XCTAssertNotEqual(word, state.sentence)
+            for account in ProviderCredentialAccount.allCases {
+                XCTAssertFalse(word.localizedCaseInsensitiveContains(account.displayName), word)
+            }
+        }
+        XCTAssertTrue(words[1].contains("29"), words[1])
+        XCTAssertTrue(words[1].contains("30"), words[1])
+        XCTAssertEqual(LiveTextSource.nothing.status, String(localized: "captions_choice.off"))
+    }
+
+    private func device(_ name: String, connected: Bool) -> FfiSyncDevice {
+        FfiSyncDevice(
+            deviceId: name,
+            name: name,
+            isThisDevice: false,
+            connected: connected,
+            viaRelay: false,
+            lastSyncedUnixMs: nil
+        )
+    }
+
+    /// Leaving is offered only while this Mac is paired and still in.
+    func testLeavingIsOfferedOnlyWhilePaired() {
+        var model = DevicesCardModel(enabled: true, others: [device("Studio Mac", connected: true)])
+        XCTAssertTrue(model.canLeave)
+        model.removedFromGroup = true
+        XCTAssertFalse(model.canLeave)
+        XCTAssertFalse(DevicesCardModel(enabled: true).canLeave)
+        XCTAssertFalse(DevicesCardModel(enabled: false, others: [device("Studio Mac", connected: true)]).canLeave)
+    }
+
+    /// The disclosures that used to be printed under the devices and the
+    /// sharing headers are still all there, behind the ⓘ.
+    func testDisclosuresMovedBehindTheInfoButtonsNotAway() {
+        for key in [
+            "settings.devices.how_direct", "settings.devices.how_audio",
+            "settings.devices.how_recording", "settings.devices.how_code",
+        ] {
+            XCTAssertTrue(
+                DevicesSettingsSection.howItWorks.contains(String(localized: String.LocalizationValue(key))),
+                key
+            )
+        }
+        for key in ["share.encrypted", "share.audio_never"] {
+            XCTAssertTrue(
+                SharingSettingsSection.howSharingWorks.contains(String(localized: String.LocalizationValue(key))),
+                key
+            )
+        }
+        XCTAssertTrue(BackupSettingsCard.howBackupWorks.contains(String(localized: "backup.subtitle")))
+
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("ZuTalk", isDirectory: true)
+        let keys = try? String(
+            contentsOf: root.appendingPathComponent("Settings/ProviderSettingsView.swift"),
+            encoding: .utf8
+        )
+        for key in [
+            "settings.credentials.trust_boundary_notice", "settings.services.no_egress_notice",
+            "settings.services.model.egress_notice", "settings.services.model.audio_notice",
+            "settings.credentials.local_storage_hint",
+        ] {
+            XCTAssertEqual(keys?.contains("\"\(key)\""), true, "\(key) is no longer shown anywhere")
+        }
+        let onboarding = try? String(
+            contentsOf: root.appendingPathComponent("App/OnboardingView.swift"),
+            encoding: .utf8
+        )
+        for key in [
+            "onboarding.welcome.privacy_plain", "onboarding.keys.soniox.help",
+            "settings.credentials.trust_boundary_notice",
+        ] {
+            XCTAssertEqual(onboarding?.contains("\"\(key)\""), true, "\(key) is no longer shown anywhere")
+        }
+    }
+
+    func testDiagnosticsAreCopiedOneRowPerLine() {
+        XCTAssertEqual(
+            DiagnosticLine.text([
+                DiagnosticLine(label: "Version", value: "0.8.3 (63)"),
+                DiagnosticLine(label: "Network", value: "Online"),
+            ]),
+            "Version: 0.8.3 (63)\nNetwork: Online"
+        )
+    }
+
+    func testALinkSaysHowLongItHasLeft() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        func link(expiresIn seconds: Int64) -> FfiRecordingLink {
+            FfiRecordingLink(
+                roomId: "room",
+                sessionId: "session",
+                url: "https://example.invalid/r",
+                createdAtEpoch: 1_000_000,
+                expiresAtEpoch: 1_000_000 + seconds
+            )
+        }
+        XCTAssertEqual(
+            SharingSettingsSection.timeLeft(link(expiresIn: 23 * 3_600 + 59), now: now),
+            String(format: String(localized: "share.recording.expires_hours_format"), Int64(23))
+        )
+        XCTAssertEqual(
+            SharingSettingsSection.timeLeft(link(expiresIn: 40 * 60), now: now),
+            String(format: String(localized: "share.recording.expires_minutes_format"), Int64(40))
+        )
+        XCTAssertEqual(
+            SharingSettingsSection.timeLeft(link(expiresIn: -5), now: now),
+            String(format: String(localized: "share.recording.expires_minutes_format"), Int64(1))
+        )
+    }
+
+    /// First launch asks the system about the microphone through the
+    /// controller, so a state can be looked at without changing the Mac's.
+    func testTheMicrophoneStepShowsWhatTheSystemAnswers() throws {
+        let suiteName = "SettingsSurfaceTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        var answer = PermissionStatus.denied
+        let controller = OnboardingController(
+            defaults: defaults,
+            openSystemSettings: { _ in },
+            permissionStatus: { _ in answer }
+        )
+        XCTAssertEqual(controller.permissionStatuses[.microphone], .denied)
+        XCTAssertFalse(controller.allPermissionsGranted)
+        XCTAssertFalse(controller.hasCompletedBefore)
+
+        answer = .granted
+        controller.refreshPermissions()
+        XCTAssertTrue(controller.allPermissionsGranted)
     }
 }

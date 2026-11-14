@@ -5,13 +5,23 @@
 // 操作:
 //   - Restore:core.restoreSession → 回到 Home
 //   - Purge:core.purgeSession → 清加密音频 + 删 session 记录(不可撤销)
+//
+// 页面上不写句子(docs/product/interface-layers.md「界面怎么写」):标题一个词,
+// 每一行是「这是哪场录音」加两个动作,空的时候一句话。永久删除不能撤销 ——
+// 这句告知在按下去那一刻的确认框里;原来标题下面那段话是标题的悬停提示。
 
 import Combine
 import SwiftUI
 
 struct TrashPage: View {
-    @StateObject private var viewModel = TrashViewModel()
+    @StateObject private var viewModel: TrashViewModel
     @State private var isConfirmingEmpty = false
+
+    /// - Parameter showing: Rows to show as they are, without reading the
+    ///   library: a way to look at the page, not a second source of truth.
+    init(showing items: [SessionListItem]? = nil) {
+        _viewModel = StateObject(wrappedValue: TrashViewModel(fixedItems: items))
+    }
 
     var body: some View {
         ScrollView {
@@ -19,12 +29,8 @@ struct TrashPage: View {
                 header
 
                 if viewModel.items.isEmpty {
-                    EmptyState(
-                        icon: "trash",
-                        title: String(localized: "trash.empty.title"),
-                        description: String(localized: "trash.empty.desc")
-                    )
-                    .frame(maxWidth: .infinity, minHeight: 320)
+                    PlainEmptyLine(String(localized: "trash.empty.desc"))
+                        .accessibilityIdentifier("trash.empty")
                 } else {
                     LazyVStack(alignment: .leading, spacing: Spacing.xs) {
                         ForEach(viewModel.items) { item in
@@ -35,6 +41,9 @@ struct TrashPage: View {
                             )
                         }
                     }
+                    // What the page is and what its two actions do — the
+                    // title's tooltip while the page had a title.
+                    .help(String(localized: "trash.subtitle"))
                 }
             }
             .frame(maxWidth: 1_080, alignment: .leading)
@@ -62,27 +71,28 @@ struct TrashPage: View {
         }
     }
 
+    /// The window's header already says "Trash", so the page has no title
+    /// of its own: it starts with the one thing that can be done to all of
+    /// it, and with nothing when there is nothing to empty.
+    @ViewBuilder
     private var header: some View {
-        HStack(alignment: .top, spacing: Spacing.md) {
-            VStack(alignment: .leading, spacing: Spacing.xs) {
-                Text(String(localized: "sidebar.trash"))
-                    .font(.titleLG)
-                    .foregroundColor(.textPrimary)
-                    .accessibilityAddTraits(.isHeader)
-                Text(String(localized: "trash.subtitle"))
-                    .font(.bodySM)
-                    .foregroundColor(.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: Spacing.md)
-            if viewModel.items.isEmpty == false {
-                Button(role: .destructive) {
+        if viewModel.items.isEmpty == false {
+            HStack(spacing: Spacing.sm) {
+                Spacer(minLength: 0)
+                // Quiet: emptying is the rare thing to do here, and it asks
+                // before it does anything.
+                ActionPill(
+                    String(localized: "trash.action.empty"),
+                    systemImage: "trash.slash",
+                    style: .quiet,
+                    help: String(localized: "trash.purge.confirm_desc"),
+                    accessibilityLabel: String(localized: "trash.empty_all")
+                ) {
                     isConfirmingEmpty = true
-                } label: {
-                    Label(String(localized: "trash.empty_all"), systemImage: "trash.slash")
                 }
                 .accessibilityIdentifier("trash.empty_all")
             }
+            .frame(minHeight: PillMetrics.height)
         }
     }
 }
@@ -91,8 +101,17 @@ struct TrashPage: View {
 private final class TrashViewModel: ObservableObject {
     @Published var items: [SessionListItem] = []
 
+    /// True when the rows were handed in rather than read: nothing is then
+    /// read from, or changed in, the library.
+    private let isFixed: Bool
+
+    init(fixedItems: [SessionListItem]? = nil) {
+        isFixed = fixedItems != nil
+        items = fixedItems ?? []
+    }
+
     func reload() {
-        guard let core = CoreClient.shared.core else { return }
+        guard isFixed == false, let core = CoreClient.shared.core else { return }
         do {
             let infos = try core.listTrashedSessions()
             items = infos.map(LibraryViewModel.makeListItem)
@@ -103,7 +122,7 @@ private final class TrashViewModel: ObservableObject {
     }
 
     func restore(_ id: String) {
-        guard let core = CoreClient.shared.core else { return }
+        guard isFixed == false, let core = CoreClient.shared.core else { return }
         do {
             try core.restoreSession(sessionId: id)
             items.removeAll { $0.id == id }
@@ -115,7 +134,7 @@ private final class TrashViewModel: ObservableObject {
     }
 
     func purge(_ id: String) {
-        guard let core = CoreClient.shared.core else { return }
+        guard isFixed == false, let core = CoreClient.shared.core else { return }
         do {
             try core.purgeSession(sessionId: id)
             items.removeAll { $0.id == id }
@@ -128,7 +147,7 @@ private final class TrashViewModel: ObservableObject {
     /// Empties the trash one recording at a time, so one that can't be
     /// deleted leaves the rest gone and says which remain.
     func purgeAll() {
-        guard let core = CoreClient.shared.core else { return }
+        guard isFixed == false, let core = CoreClient.shared.core else { return }
         var failed = 0
         for item in items {
             do {
@@ -149,6 +168,8 @@ private final class TrashViewModel: ObservableObject {
     }
 }
 
+/// One deleted recording: when it was made, what it is, and the two things
+/// that can be done with it.
 private struct TrashRow: View {
     let session: SessionListItem
     let onRestore: () -> Void
@@ -158,12 +179,20 @@ private struct TrashRow: View {
     @State private var showPurgeConfirm = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: Spacing.md) {
-            Text(session.createdAt.formatted(date: .abbreviated, time: .shortened))
-                .font(.bodySM)
-                .foregroundColor(.textSecondary)
-                .monospacedDigit()
-                .frame(width: 132, alignment: .leading)
+        HStack(alignment: .center, spacing: Spacing.md) {
+            // The day, and under it the time: two short lines of their own
+            // rather than one long one that breaks wherever it runs out.
+            VStack(alignment: .leading, spacing: 2) {
+                Text(session.createdAt.formatted(date: .abbreviated, time: .omitted))
+                    .foregroundColor(.textSecondary)
+                Text(session.createdAt.formatted(date: .omitted, time: .shortened))
+                    .foregroundColor(.textTertiary)
+            }
+            .font(.bodySM)
+            .monospacedDigit()
+            .lineLimit(1)
+            .frame(width: 112, alignment: .leading)
+            .accessibilityElement(children: .combine)
 
             VStack(alignment: .leading, spacing: Spacing.xs) {
                 RecordingRowText(
@@ -181,15 +210,27 @@ private struct TrashRow: View {
 
             Spacer(minLength: Spacing.sm)
 
-            HStack(spacing: Spacing.sm) {
-                Button(action: onRestore) {
-                    Label(String(localized: "trash.action.restore"), systemImage: "arrow.uturn.backward")
-                }
-                .help(String(localized: "trash.action.restore_hint"))
+            HStack(spacing: PillMetrics.spacing) {
+                ActionPill(
+                    String(localized: "trash.action.restore"),
+                    systemImage: "arrow.uturn.backward",
+                    help: String(localized: "trash.action.restore_hint"),
+                    action: onRestore
+                )
+                .accessibilityIdentifier("trash.row.restore")
 
-                Button(role: .destructive) { showPurgeConfirm = true } label: {
-                    Label(String(localized: "trash.action.purge"), systemImage: "trash.slash")
+                // Asks first: the confirmation is where "cannot be undone"
+                // is said.
+                ActionPill(
+                    String(localized: "common.delete"),
+                    systemImage: "trash",
+                    style: .quiet,
+                    help: String(localized: "trash.purge.confirm_desc"),
+                    accessibilityLabel: String(localized: "trash.action.purge")
+                ) {
+                    showPurgeConfirm = true
                 }
+                .accessibilityIdentifier("trash.row.purge")
                 .confirmationDialog(
                     String(localized: "trash.purge.confirm_title"),
                     isPresented: $showPurgeConfirm

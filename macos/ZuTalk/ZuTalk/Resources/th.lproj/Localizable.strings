@@ -6,35 +6,21 @@
 "common.delete" = "ลบ";
 
 /* Onboarding — Welcome */
-"onboarding.welcome.button" = "ดำเนินการต่อ →";
 "onboarding.welcome.bullet1" = "เลือกภาษาแล้วกดเริ่มบันทึก หรือกด ⌃⌥R จากแอปไหนก็ได้";
 "onboarding.welcome.bullet2" = "ข้อความขึ้นขณะที่พูด กด ⌃⌥S เพื่อทำเครื่องหมายช่วงสำคัญ";
 "onboarding.welcome.bullet3" = "จากนั้นอ่านข้อความถอดเสียง เครื่องหมาย และโน้ตได้ในที่เดียว และเพิ่มการบันทึกเข้าหัวข้อเมื่อต้องการ";
 "onboarding.welcome.privacy" = "การบันทึกจะอยู่บน Mac เครื่องนี้ จะเปิดข้อความสด (ซึ่งส่งเสียงไปที่ Soniox) หรือไม่ คุณเลือกเองทุกครั้ง";
-"onboarding.visual.live" = "ข้อความสด";
-"onboarding.visual.speaker.host" = "ผู้ดำเนินรายการ";
-"onboarding.visual.speaker.guest" = "ผู้เข้าร่วม";
-"onboarding.visual.language.zh" = "中文";
-"onboarding.visual.language.en" = "English";
-"onboarding.visual.language.ja" = "日本語";
-"onboarding.visual.microphone.title" = "ไมโครโฟนพร้อมแล้ว";
-"onboarding.visual.microphone.detail" = "บันทึกเสียงในห้อง · รับข้อความสด";
 
 /* Onboarding — Permissions */
-"onboarding.permissions.title" = "เตรียมพร้อมสำหรับบทสนทนาแรกของคุณ";
 "onboarding.permissions.subtitle" = "อนุญาตการเข้าถึงไมโครโฟนเพื่อบันทึกเสียงในห้องและรับข้อความสด";
 "onboarding.permissions.hint" = "คุณสามารถเข้าใช้แอปตอนนี้ แล้วค่อยให้สิทธิ์เมื่อบันทึกครั้งแรกก็ได้";
-"onboarding.permissions.mic.name" = "ไมโครโฟน";
 "onboarding.permissions.mic.usage" = "บันทึกเสียงบทสนทนาและใช้สร้างข้อความสด";
-"onboarding.permissions.action.grant" = "อนุญาตการเข้าถึง";
 "onboarding.permissions.action.open_settings" = "เปิดการตั้งค่า";
-"onboarding.permissions.continue" = "เข้าสู่ ZUTALK →";
 
 /* Onboarding — API Keys */
 "onboarding.keys.title" = "เปิดใช้ข้อความสด";
 "onboarding.keys.subtitle" = "ป้อนคีย์ API Soniox ของคุณเองเพื่อเปิดใช้ข้อความสด";
 "community_invite.placeholder" = "ป้อนรหัสคำเชิญ";
-"community_invite.action" = "เปิดใช้งานคำเชิญ";
 "community_invite.active" = "คำเชิญชุมชนใช้งานอยู่";
 "community_invite.thirty_hours" = "5 Give · ประมาณ 30 ชั่วโมง";
 "community_invite.shared_detail" = "ข้อความสดและการแปลใช้เวลานี้ร่วมกัน ส่วนการขัดเกลาใช้คีย์ Soniox ของคุณเอง";
@@ -62,11 +48,8 @@
 "community_invite.fallback_personal_key" = "เวลาจากคำเชิญไม่พร้อมใช้งานในขณะนี้ — การบันทึกนี้จะใช้คีย์ Soniox ของคุณเองแทน";
 "community_invite.async.needs_personal_key" = "การขัดเกลาต้องใช้คีย์ Soniox ของคุณเอง โปรดเพิ่มในการตั้งค่า";
 "community_invite.async.wait_for_recording" = "มีการบันทึกที่กำลังใช้เวลาจากคำเชิญอยู่ โปรดหยุดการบันทึกก่อน แล้วจึงขัดเกลา";
-"editor.transcript.async.start" = "ขัดเกลา";
 "editor.transcript.async.start_failed" = "ไม่สามารถเริ่มการขัดเกลาได้";
-"editor.transcript.async.invite_add_key" = "ใช้คีย์ Soniox ของฉันเอง…";
 "editor.transcript.async.invite_add_key_hint" = "เวลาจากคำเชิญครอบคลุมเฉพาะการถอดเสียงสด การถอดเสียงจากไฟล์เสียงจะอัปโหลดการบันทึกนี้ไปยังผู้ให้บริการเสียงด้วยคีย์ของคุณเอง เพิ่มคีย์ในการตั้งค่าเพื่อเปิดใช้งาน";
-"onboarding.keys.voice_label" = "บริการข้อความสด";
 "onboarding.keys.guide.create" = "สมัครใช้งาน";
 "onboarding.keys.guide.copy" = "คัดลอกคีย์";
 "onboarding.keys.guide.paste" = "วางด้านล่าง";
@@ -74,18 +57,15 @@
 "onboarding.keys.soniox.help" = "ตรวจสอบและบันทึกเป็นเพียงการตรวจว่าคีย์ใช้งานได้ ไม่มีการอัปโหลดการบันทึกใด ๆ";
 "onboarding.keys.paste" = "คีย์ API ของ Soniox";
 "onboarding.keys.verify_and_save" = "ตรวจสอบและบันทึก";
-"onboarding.keys.verify_saved" = "ตรวจสอบการเชื่อมต่อ";
 "onboarding.keys.skip" = "ข้ามไปก่อน";
 "onboarding.keys.continue" = "ดำเนินการต่อ";
 "onboarding.keys.private_status" = "ตรวจสอบแล้วก่อนบันทึกลงเครื่อง";
 
 /* Onboarding — Step Indicator */
-"onboarding.step.signup" = "รู้จัก ZuTalk";
 "onboarding.step.setup" = "พร้อมบันทึก";
 "onboarding.step.tryout" = "ข้อความสด";
 
 /* Onboarding — Common */
-"onboarding.common.back" = "← ย้อนกลับ";
 
 "sidebar.help" = "วิธีใช้ ZuTalk";
 "updates.install_and_relaunch" = "อัปเดตและเปิดใหม่";
@@ -154,15 +134,12 @@
 "settings.language.title" = "ภาษาของแอป";
 "settings.language.hint" = "ภาษาที่ใช้ในหน้าต่าง เมนู และข้อความของ ZuTalk";
 "settings.language.restart_hint" = "เริ่ม ZuTalk ใหม่เพื่อให้การเปลี่ยนแปลงมีผลทั้งหมด";
-"settings.appearance.title" = "ลักษณะที่ปรากฏ";
 
 /* Permissions */
 "permission.microphone.name" = "ไมโครโฟน";
 "permission.microphone.usage" = "บันทึกเสียงของคุณและส่งไปยัง Soniox เพื่อถอดเสียง";
 
 /* Library — export sheet */
-"export.dialog.title" = "ตัวเลือกการส่งออก";
-"export.dialog.text_format" = "รูปแบบข้อความ";
 "export.dialog.audio_group" = "เสียง";
 "export.dialog.audio_include" = "รวมไฟล์เสียง (.wav)";
 "export.dialog.markdown" = "Markdown (.md)";
@@ -182,7 +159,6 @@
 "doc.scratchpad" = "โน้ตส่วนตัว";
 
 /* Onboarding brand line */
-"onboarding.brand.subtitle" = "การสื่อสารหลายภาษา · การประชุมสด";
 
 /* Settings sidebar section rawValues (localized names) */
 "settings.section.general_name" = "ทั่วไป";
@@ -190,11 +166,9 @@
 /* Settings sidebar groups */
 
 /* Settings — API panels (Voice / AI) */
-"settings.credentials.enter_key" = "ป้อนคีย์ API";
 "settings.credentials.local_storage_hint" = "บันทึกโดยไม่เข้ารหัสในไฟล์ส่วนตัวของแอปซึ่งบัญชี macOS นี้อ่านได้ และจะโหลดอัตโนมัติเมื่อเปิดแอป";
 "settings.credentials.trust_boundary_notice" = "ข้อมูลรับรองที่บันทึกไว้ที่นี่ไม่ได้เข้ารหัส ZuTalk อาศัยบัญชี macOS ที่เชื่อถือได้นี้และไฟล์ในเครื่องที่เป็นส่วนตัวของแอป แล้วโหลดโดยอัตโนมัติเมื่อเปิดแอป";
 "settings.credentials.verify" = "ตรวจสอบ";
-"settings.credentials.verify_and_save" = "ตรวจสอบและบันทึก";
 "settings.credentials.verifying" = "กำลังตรวจสอบ…";
 "settings.credentials.verifying_hint_format" = "กำลังเชื่อมต่อกับ %@ เพื่อตรวจสอบคีย์นี้";
 "settings.credentials.verified_hint_capture" = "คีย์ Soniox นี้พร้อมใช้กับข้อความสดและการขัดเกลา";
@@ -271,7 +245,7 @@
 "settings.services.model.title" = "โมเดลภาษา";
 "settings.services.model.subtitle_format" = "ไม่บังคับ ใช้เรียบเรียงช่วงที่ทำเครื่องหมายและเขียนต่อจากนั้น ใช้ %@";
 "settings.services.model.egress_notice" = "ส่งเฉพาะช่วงที่คุณทำเครื่องหมาย ข้อความถอดเสียงทั้งหมดยังอยู่บน Mac เครื่องนี้";
-"settings.services.model.audio_notice" = "ไม่มีการส่งเสียงออกไป ไม่ว่าจะตั้งค่าคีย์ DeepSeek ไว้หรือไม่";
+"settings.services.model.audio_notice" = "ไม่มีการส่งเสียงไปยัง DeepSeek ไม่ว่าจะตั้งค่าคีย์ไว้หรือไม่";
 "settings.services.model.invite_included" = "คำเชิญของคุณรวมการเรียบเรียงช่วงที่ทำเครื่องหมายไว้แล้ว";
 "settings.services.model.invite_included_detail_format" = "ไม่ต้องใส่คีย์ DeepSeek เมื่อเปิดสวิตช์ด้านบน ช่วงที่ทำเครื่องหมายจะผ่านบริการคำเชิญของ ZuTalk ไปยัง %1$@ เพื่อเรียบเรียง บริการไม่เก็บเนื้อหาไว้ วันนี้เหลืออีก %2$lld ครั้ง";
 "settings.services.model.invite_superseded_format" = "คุณบันทึกคีย์ %@ ของตัวเองไว้แล้ว ช่วงที่ทำเครื่องหมายจะส่งไปที่ %@ เท่านั้น ไม่ผ่านบริการคำเชิญ";
@@ -304,7 +278,6 @@
 /* Settings — Privacy section */
 
 /* Settings — Shortcuts */
-"settings.shortcuts.title" = "แป้นพิมพ์ลัด";
 "settings.shortcuts.subtitle" = "สามรายการแรกใช้ได้จากทุกแอป แม้ ZuTalk จะอยู่เบื้องหลัง";
 "settings.shortcuts.toggle_recording" = "เริ่ม / หยุดบันทึก";
 "settings.shortcuts.cycle_display" = "สลับโหมดการแสดงผล";
@@ -355,7 +328,6 @@
 "editor.transcript.async.pending_desc" = "การขัดเกลาที่คุณสั่งไว้ยังดำเนินการอยู่";
 "editor.transcript.async.metadata_missing_notice" = "ฉบับขัดเกลานี้ไม่มีข้อมูลผู้พูดหรือภาษา";
 "editor.transcript.async.failed_title" = "การขัดเกลาล้มเหลว";
-"editor.transcript.async.failed_desc" = "การขัดเกลาไม่สำเร็จ การบันทึกยังคงจัดเก็บอยู่ในเครื่อง";
 "editor.transcript.async.empty_title" = "ไม่มีฉบับขัดเกลา";
 "editor.transcript.async.empty_desc" = "การขัดเกลาปิดอยู่ตามค่าเริ่มต้น และไม่ได้ร้องขอสำหรับการบันทึกนี้";
 "editor.transcript.async.no_session_title" = "ยังไม่ได้เลือกการบันทึก";
@@ -381,7 +353,6 @@
 
 /* Home page */
 "home.workspace.load_failed" = "ไม่สามารถโหลดข้อมูลหัวข้อได้";
-"home.workspace.membership_unavailable" = "ไม่สามารถโหลดหัวข้อของการบันทึกได้ การบันทึกยังอยู่บน Mac เครื่องนี้ จนกว่าจะลองอีกครั้ง หัวข้อจะไม่แสดงและเปลี่ยนไม่ได้";
 "home.workspace.select_failed" = "ไม่สามารถเปิดหัวข้อนี้ได้";
 "home.workspace.resolve_failed" = "ไม่สามารถระบุหัวข้อของการบันทึกนี้ได้";
 "home.workspace.refresh_failed" = "ไม่สามารถรีเฟรชข้อมูลหัวข้อได้";
@@ -390,15 +361,11 @@
 "home.workspace.retry" = "ลองอีกครั้ง";
 "home.notebook.new" = "หัวข้อใหม่";
 "home.notebook.new.help" = "สร้างและตั้งชื่อหัวข้อ";
-"home.notebook.local_first" = "บันทึกไว้บน Mac เครื่องนี้";
-"home.library.title" = "หัวข้อ";
-"home.library.subtitle" = "แต่ละหัวข้อมีพื้นที่ทำงานสำหรับการบันทึก ข้อความถอดเสียง และโน้ตของหัวข้อ";
 "home.library.open_hint" = "เปิดพื้นที่หัวข้อ";
 "home.topic.workspace_contents" = "การบันทึก ข้อความถอดเสียง และโน้ตที่ใช้ร่วมกัน";
 "home.library.session_count_format" = "การบันทึก %lld รายการ";
 "topics.search.placeholder" = "ค้นหาหัวข้อ";
 "topics.search.empty.title" = "ไม่พบหัวข้อ";
-"topics.search.empty.description" = "ลองใช้คำค้นหาอื่นหรือสร้างหัวข้อใหม่";
 "home.no_notebook.title" = "ยังไม่มีหัวข้อ";
 "home.no_notebook.description" = "คุณเริ่มบันทึกจากปุ่มด้านบนได้ทันที แล้วค่อยสร้างหัวข้อภายหลังเพื่อเชื่อมการสัมภาษณ์ที่เกี่ยวข้อง";
 "home.first_use.step1.title" = "สร้างหัวข้อ";
@@ -407,7 +374,6 @@
 "home.first_use.step2.detail" = "เปิดหัวข้อ แล้วปุ่มบันทึกสีแดงจะอยู่ด้านบน";
 "home.first_use.step3.title" = "ตรวจดูผลลัพธ์";
 "home.first_use.step3.detail" = "หลังจากคุณหยุด คำบรรยาย เสียง และโน้ตจะยังอยู่ด้วยกัน";
-"home.first_use.action" = "หัวข้อใหม่";
 "home.import.action" = "นำเข้าไฟล์เสียง";
 "home.import.in_progress" = "กำลังนำเข้า…";
 "home.import.completed" = "นำเข้าไฟล์เสียงแล้ว";
@@ -449,11 +415,7 @@
 "home.recording.delete_while_recording" = "ลบการบันทึกนี้ได้เมื่อหยุดบันทึกแล้ว";
 "home.recording.bulk_delete_failed" = "ไม่สามารถย้ายการบันทึกเหล่านี้ไปถังขยะได้";
 "home.create.title" = "หัวข้อใหม่";
-"home.create.description" = "ตั้งชื่อหัวข้อที่คุณต้องการติดตาม";
 "home.create.name_label" = "ชื่อหัวข้อ";
-"home.create.name_placeholder" = "เช่น AI และอนาคตระยะยาว";
-"home.create.local_first" = "พื้นที่หัวข้อและโน้ตจะเก็บไว้ใน Mac เครื่องนี้";
-"home.create.action" = "สร้างหัวข้อ";
 "home.create.completed" = "สร้างหัวข้อแล้ว";
 "home.create.failed" = "ไม่สามารถสร้างหัวข้อได้";
 "home.create.invalid_title" = "ต้องระบุชื่อหัวข้อ";
@@ -474,7 +436,6 @@
 "resources.status.pending" = "กำลังประมวลผล";
 "resources.status.ready" = "พร้อมใช้งาน";
 "resources.status.failed" = "ล้มเหลว";
-"resources.move" = "ย้ายการบันทึกไปยังหัวข้ออื่น…";
 "resources.move.title" = "ย้ายการบันทึก";
 "resources.move.message" = "เสียงและข้อความถอดเสียงที่มีของ “%@” จะย้ายไปด้วยกัน โน้ตของหัวข้อจะยังอยู่ในหัวข้อปัจจุบัน";
 "resources.move.action" = "ย้าย";
@@ -491,7 +452,7 @@
 "resources.audio.destroy" = "ลบไฟล์เสียง";
 "resources.audio.destroy.confirm_title" = "ลบไฟล์เสียงของ “%@” อย่างถาวรหรือไม่";
 "resources.audio.destroy.confirm_button" = "ลบไฟล์เสียง";
-"resources.audio.destroy.confirm_message" = "ไฟล์เสียงจะถูกทำลายอย่างปลอดภัยและกู้คืนไม่ได้ ข้อความถอดเสียง โน้ต และตัวการบันทึกเองจะยังคงอยู่";
+"resources.audio.destroy.confirm_message" = "เสียงใน Mac เครื่องนี้จะถูกทำลายอย่างปลอดภัยและกู้คืนไม่ได้ ข้อความถอดเสียงและโน้ตจะยังคงอยู่";
 "resources.audio.destroy.done" = "ลบเสียงแล้ว";
 "resources.audio.destroy.while_recording" = "หยุดการบันทึกก่อนลบเสียง";
 "resources.audio.destroy.while_processing" = "การขัดเกลากำลังใช้เสียง โปรดรอให้เสร็จก่อนลบ";
@@ -545,7 +506,6 @@
 "editor.failed.subtitle"      = "อาจเกิดจากเครือข่ายขัดข้องชั่วคราวหรือขีดจำกัดอัตราของ API แตะเพื่อลองใหม่";
 
 /* Trash page */
-"trash.empty.title" = "ถังขยะว่างเปล่า";
 "trash.empty.desc" = "การบันทึกที่ลบจะอยู่ที่นี่จนกว่าคุณจะกู้คืนหรือลบถาวร";
 "trash.action.restore" = "กู้คืน";
 "trash.action.purge" = "ลบอย่างถาวร";
@@ -558,8 +518,6 @@
 /* Onboarding — residuals */
 "onboarding.brand.name" = "ZuTalk";
 "onboarding.brand.tagline" = "เก็บทุกบทสนทนาหลายภาษาไว้ในที่เดียว ตั้งแต่การทำความเข้าใจแบบสดไปจนถึงการจัดระเบียบในภายหลัง";
-"onboarding.keys.testing_status" = "กำลังทดสอบ…";
-"onboarding.keys.connected_status" = "เชื่อมต่อแล้ว";
 
 /* Trust bar */
 "trust.version_format" = "ZuTalk · v%@";
@@ -570,7 +528,6 @@
 "updates.unavailable.title" = "ยังไม่ได้กำหนดค่าการอัปเดต";
 "updates.unavailable.message" = "รุ่นพัฒนานี้ไม่มีคีย์สาธารณะสำหรับตรวจสอบลายเซ็นอัปเดต";
 "updates.unavailable.dismiss" = "ตกลง";
-"settings.updates.title" = "การอัปเดตซอฟต์แวร์";
 "settings.updates.subtitle" = "เวอร์ชันใหม่จะถูกตรวจสอบลายเซ็นก่อนติดตั้ง";
 "settings.updates.automatic" = "ตรวจหาอัปเดตโดยอัตโนมัติ";
 "settings.updates.automatic_hint" = "ZuTalk จะตรวจสอบฟีดอัปเดตที่มีลายเซ็นเป็นระยะ และแจ้งให้คุณทราบเมื่อมีเวอร์ชันใหม่";
@@ -660,7 +617,6 @@
 "subtitle.overlay.font_auto.enable" = "ปรับขนาดคำบรรยายตามหน้าต่างอัตโนมัติ";
 "subtitle.overlay.font_auto.disable" = "ปรับขนาดคำบรรยายด้วยตนเอง";
 "subtitle.overlay.font_auto.on" = "ขนาดคำบรรยายปรับตามหน้าต่าง";
-"subtitle.overlay.font_auto.off" = "ขนาดคำบรรยายตั้งค่าเอง";
 "subtitle.overlay.move_resize_hint" = "ลากหน้าต่างเพื่อย้ายตำแหน่ง ลากขอบหรือมุมใดก็ได้เพื่อปรับขนาด";
 "subtitle.overlay.maximize" = "แสดงเต็มพื้นที่หน้าจอปัจจุบัน";
 "subtitle.overlay.banner" = "ปักแถบคำบรรยายไว้ด้านบนของหน้าจอ";
@@ -723,7 +679,6 @@
 "capture.toast.context_update_failed" = "ไม่สามารถอัปเดตข้อมูลอ้างอิงได้";
 "capture.toast.edit_failed" = "ไม่สามารถอัปเดตคอลัมน์ภาษาของข้อความถอดเสียงได้";
 "capture.toast.projection_retry_failed" = "จัดเก็บข้อความถอดเสียงอีกครั้งไม่สำเร็จ";
-"capture.settings.title" = "ตัวเลือกการบันทึก";
 "capture.settings.subtitle" = "ระบบจะบันทึกการเปลี่ยนแปลงอัตโนมัติและใช้เป็นค่าเริ่มต้นสำหรับการบันทึกครั้งถัดไป";
 "capture.settings.subtitle.topic" = "ระบบจะจัดเก็บการเปลี่ยนแปลงอัตโนมัติเป็นค่าเริ่มต้นสำหรับการบันทึกครั้งถัดไปในหัวข้อนี้ แหล่งเสียงใช้ค่าเดียวกันทั้ง Mac เครื่องนี้";
 "capture.settings.subtitle.quick_capture" = "ระบบจะจัดเก็บการเปลี่ยนแปลงอัตโนมัติเป็นค่าเริ่มต้นสำหรับการบันทึกครั้งถัดไปที่เริ่มจากหน้าหลัก แหล่งเสียงใช้ค่าเดียวกันทั้ง Mac เครื่องนี้";
@@ -747,8 +702,6 @@
 "capture.settings.languages.no_results" = "ไม่มีภาษาที่ยังไม่ได้เลือกตรงกับการค้นหาของคุณ";
 "capture.settings.languages.maximum_reached" = "เลือกได้สูงสุดสามภาษาต่อการบันทึกหนึ่งครั้ง";
 "capture.settings.languages.add_format" = "เพิ่ม %@";
-"capture.settings.languages.move_earlier" = "เลื่อนภาษาขึ้น";
-"capture.settings.languages.move_later" = "เลื่อนภาษาลง";
 "capture.settings.languages.remove" = "เอาภาษาออก";
 "capture.settings.languages.roles.all_spoken" = "ทุกภาษาอาจมีคนพูด จึงนับเป็น “ภาษาที่พูด” ทั้งหมด และเปิดการเชื่อมต่อแปลภาษาละหนึ่งเส้น (%d เส้น) หากภาษาใดไม่มีใครพูด แตะไอคอนคลื่นเสียงของภาษานั้นเพื่อเปลี่ยนเป็น “แปลเพิ่มเป็น” และใช้การเชื่อมต่อน้อยลง";
 "capture.settings.languages.roles.some_subtitle_only" = "ภาษาที่พูด: %1$@ แปลเพิ่มเป็น: %2$@ · %3$d การเชื่อมต่อ";
@@ -766,13 +719,7 @@
 "capture.settings.context.current_topic" = "หัวข้อปัจจุบัน";
 "capture.settings.context.current_quick_capture" = "การบันทึกที่ไม่อยู่ในหัวข้อ";
 "capture.settings.context.current_notebook_detail" = "ใช้ในขอบเขตการบันทึกปัจจุบัน";
-"capture.settings.context.selected" = "กำลังแก้ไข";
-"capture.settings.context.not_selected" = "ไม่ได้เลือก";
 "capture.settings.context.create_library" = "สร้าง";
-"capture.settings.after_stop.title" = "การขัดเกลา";
-"capture.settings.after_stop.engine" = "วิธีการประมวลผล";
-"capture.settings.after_stop.detail" = "หลังหยุดบันทึกแล้ว เอนจินปัจจุบันสามารถขัดเกลาการบันทึกได้";
-"capture.settings.after_stop.unavailable_detail" = "การขัดเกลาไม่พร้อมใช้งานในเวอร์ชันนี้";
 "capture.state.recording" = "กำลังบันทึก";
 "capture.state.paused" = "หยุดชั่วคราว";
 "capture.state.draining" = "กำลังปิดท้าย";
@@ -868,9 +815,7 @@
 "knowledge.create" = "สร้าง";
 "knowledge.untitled" = "ชุดข้อมูลไม่มีชื่อ";
 "knowledge.name" = "ชื่อชุดข้อมูล";
-"knowledge.empty.title" = "สร้างชุดข้อมูลแรก";
 "knowledge.empty.description" = "รวมบริบท บุคคล องค์กร และคำศัพท์ของหัวข้อหนึ่งไว้ในโปรไฟล์เดียว";
-"knowledge.card.no_summary" = "ยังไม่มีคำอธิบาย";
 "knowledge.card.counts" = "คำศัพท์ %lld คำ · คำแปลที่ต้องการ %lld รายการ";
 "knowledge.back" = "คำเฉพาะและบริบท";
 "knowledge.summary.placeholder" = "อธิบายในประโยคเดียวว่าชุดข้อมูลนี้ช่วยให้จำอะไรได้";
@@ -897,16 +842,14 @@
 "knowledge.translation.source" = "ต้นฉบับ";
 "knowledge.translation.target" = "คำแปลที่ต้องการ";
 "knowledge.translation.add" = "เพิ่มคำแปลที่ต้องการ";
-"capture.settings.context.current" = "ใช้อยู่";
 "capture.settings.context.no_selection" = "ยังไม่ได้เลือก";
-"capture.settings.context.choose" = "เปลี่ยน";
 "knowledge.import_json" = "นำเข้า JSON";
 "knowledge.import_json.message" = "เลือกไฟล์ JSON คำเฉพาะและบริบทของ ZuTalk (.zutalk-pack.json)";
 "knowledge.import_json.done" = "นำเข้าแล้ว";
 "knowledge.import_json.failed" = "นำเข้าไฟล์นี้ไม่ได้";
 
 /* 分享:点对点字幕与文档协同 */
-"share.audio_never" = "เสียงไม่เคยออกจาก Mac เครื่องนี้ คนอื่นเห็นแค่ข้อความ";
+"share.audio_never" = "แชร์เฉพาะข้อความเท่านั้น ไม่รวมเสียง";
 
 /* 设置:分享(点对点)传输 */
 
@@ -1017,16 +960,11 @@
 "session.notes.context" = "ใช้กับการบันทึกนี้เท่านั้น";
 "session.settings.title" = "การตั้งค่าการบันทึก";
 "session.settings.workspace.configuration" = "การตั้งค่าการบันทึก";
-"session.settings.workspace.snapshot" = "การบันทึกนี้";
 "session.settings.workspace.scope" = "แก้ไขการตั้งค่าการบันทึกได้ ดูการตั้งค่าที่การบันทึกนี้ใช้จริงใน “การบันทึกนี้”";
 "session.settings.workspace.scope.topic" = "แก้ไขการกำหนดค่าสำหรับการบันทึกครั้งถัดไปในหัวข้อนี้ได้ ส่วนการกำหนดค่าที่การบันทึกนี้ใช้จริงอยู่ในสแนปช็อตด้านล่าง";
 "session.settings.workspace.scope.quick_capture" = "แก้ไขการกำหนดค่าสำหรับการบันทึกครั้งถัดไปที่เริ่มจากหน้าหลักได้ ส่วนการกำหนดค่าที่การบันทึกนี้ใช้จริงอยู่ในสแนปช็อตด้านล่าง";
-"session.settings.resources.title" = "สิ่งที่มีในการบันทึกนี้";
 "session.settings.resources.subtitle" = "ดูสิ่งที่มีสำหรับการบันทึกนี้ การลบเสียงจะยังเก็บข้อความถอดเสียงและโน้ตไว้";
-"session.settings.resources.note.detail" = "แก้ไขได้";
 "session.settings.subtitle" = "การกำหนดค่าที่ใช้จริงในการบันทึกนี้ และจะไม่เปลี่ยนค่าเริ่มต้นของหัวข้อ";
-"session.settings.section.session" = "ข้อมูลการบันทึก";
-"session.settings.section.capture" = "สแนปช็อตการบันทึก";
 "session.settings.field.created" = "สร้างเมื่อ";
 "session.settings.field.duration" = "ระยะเวลา";
 "session.settings.field.type" = "ประเภท";
@@ -1068,11 +1006,7 @@
 "recording_bar.stop_hint" = "จบและจัดเก็บการบันทึกนี้ (⌃⌥R ใช้ได้จากทุกแอป)";
 "recording_bar.retry_stop" = "ลองหยุดอีกครั้ง";
 "recording_bar.captions.off" = "บันทึกเสียงอย่างเดียว";
-"captions_choice.on" = "ข้อความสด";
 "captions_choice.off" = "บันทึกเสียงอย่างเดียว";
-"captions_choice.on_hint" = "การบันทึกจะมีข้อความสดและคำแปล เสียงจะถูกส่งไปที่ Soniox ขณะบันทึก คลิกเพื่อบันทึกเฉพาะบน Mac เครื่องนี้";
-"captions_choice.off_hint" = "การบันทึกจะอยู่บน Mac เครื่องนี้เท่านั้น ไม่มีข้อความสด คลิกเพื่อเปิดข้อความสด";
-"captions_choice.unavailable_hint" = "ข้อความสดต้องใช้คีย์ Soniox หรือรหัสคำเชิญ คลิกเพื่อเพิ่มในการตั้งค่า";
 "capture.toast.stopped_saved" = "จัดเก็บการบันทึกแล้ว (%@)";
 "capture.toast.stopped_by_sleep" = "Mac เข้าสู่โหมดพัก การบันทึกจึงจบและจัดเก็บไว้แล้ว (%@)";
 "menubar.action.start_recording" = "เริ่มบันทึก";
@@ -1091,7 +1025,6 @@
 "common.save" = "บันทึก";
 "library.rename.recording" = "เปลี่ยนชื่อการบันทึก…";
 "library.rename.recording_placeholder" = "เว้นว่างไว้เพื่อแสดงคำแรก ๆ";
-"library.rename.topic" = "เปลี่ยนชื่อหัวข้อ…";
 "library.rename.failed" = "เปลี่ยนชื่อไม่ได้";
 "topic.actions" = "การทำงานกับหัวข้อ";
 "topic.delete" = "ลบหัวข้อ…";
@@ -1103,7 +1036,6 @@
 "topic.delete.confirm_message_format" = "การบันทึก %lld รายการจะยังอยู่ พร้อมข้อความถอดเสียงและโน้ต เพียงแต่จะไม่อยู่ในหัวข้อใดอีก ส่วนโน้ตของหัวข้อเองจะถูกลบ";
 "topic.delete.confirm_message_empty" = "หัวข้อนี้ไม่มีการบันทึก โน้ตของหัวข้อจะถูกลบ";
 
-"captions_choice.on_invite_format" = "ข้อความสด · เหลือประมาณ %@";
 
 "topics.card.last_recorded_format" = "บันทึกล่าสุด: %@";
 
@@ -1203,7 +1135,6 @@
 "record.page.input_detail_microphone_or_meeting" = "บันทึกเสียงที่ไมโครโฟนได้ยิน เช่น ประชุมต่อหน้า ห้องเรียน เสียงของคุณเอง หากต้องการบันทึกอีกฝ่ายในการประชุมออนไลน์ ให้เลือก “เสียงจาก Mac เครื่องนี้”";
 "record.page.input_detail_microphone" = "บันทึกเสียงที่ไมโครโฟนได้ยิน เช่น ประชุมต่อหน้า ห้องเรียน เสียงของคุณเอง";
 "record.page.captions" = "ข้อความสด";
-"record.page.captions_detail" = "เมื่อเปิด เสียงจะส่งไปยัง Soniox เพื่อถอดเสียงเป็นข้อความสดและแปล เมื่อปิดจะบันทึกบน Mac เครื่องนี้เท่านั้น";
 "record.page.captions_needs_key" = "ต้องใส่คีย์ Soniox หรือรหัสคำเชิญในการตั้งค่าก่อนจึงจะมีข้อความสด ตอนนี้บันทึกได้อย่างเดียว";
 "record.page.shortcut_hint" = "กด ⌃⌥R ในแอปใดก็ได้เพื่อเริ่มหรือหยุดบันทึก";
 "record.page.import" = "นำเข้าเสียง";
@@ -1221,7 +1152,6 @@
 "session.transcript.refined_version" = "ฉบับขัดเกลา";
 "session.menu.hint" = "แชร์ ส่งออก และรายละเอียดการบันทึก";
 "session.menu.settings" = "ไฟล์และรายละเอียด…";
-"editor.export.menu" = "ส่งออก…";
 
 "trash.subtitle" = "การบันทึกที่ลบแล้วอยู่ที่นี่ กู้คืนแล้วจะกลับไปที่เดิม ลบถาวรจะลบเสียงที่เข้ารหัสไปด้วยและย้อนกลับไม่ได้";
 "trash.empty_all" = "ล้างถังขยะ…";
@@ -1250,10 +1180,9 @@
 "settings.devices.subtitle" = "ซิงก์การบันทึก ข้อความถอดเสียง และโน้ตระหว่าง Mac ของคุณเอง ส่งตรงระหว่างเครื่อง ไม่ผ่านเซิร์ฟเวอร์ ไม่ต้องมีบัญชี";
 "settings.devices.sync_title" = "การซิงก์";
 "settings.devices.enable" = "ซิงก์ระหว่าง Mac ของฉัน";
-"settings.devices.enable_hint" = "เสียงอยู่แค่ใน Mac ที่บันทึก Mac เครื่องอื่นได้เฉพาะข้อความ";
+"settings.devices.enable_hint" = "ซิงก์เฉพาะข้อความ เสียงไม่ถูกซิงก์ไปยัง Mac เครื่องอื่น";
 "settings.devices.this_mac" = "ชื่อของ Mac เครื่องนี้";
 "settings.devices.this_mac_hint" = "Mac เครื่องอื่นใช้ชื่อนี้บอกว่าการบันทึกทำที่เครื่องไหน";
-"settings.devices.my_macs" = "Mac ของฉัน";
 "settings.devices.only_this" = "ตอนนี้มีแค่เครื่องนี้ เปิดการซิงก์บน Mac อีกเครื่องแล้วใส่รหัสจับคู่ที่นั่น เครื่องนั้นจะปรากฏที่นี่";
 "settings.devices.unnamed" = "Mac ที่ไม่มีชื่อ";
 "settings.devices.online_direct" = "ออนไลน์ · เชื่อมตรง";
@@ -1263,7 +1192,6 @@
 "settings.devices.remove" = "นำออก";
 "settings.devices.remove_confirm_title" = "นำ “%@” ออกไหม";
 "settings.devices.remove_confirm_message" = "เครื่องนั้นเก็บสิ่งที่ได้รับไปแล้วไว้ แต่จะไม่ซิงก์กับ Mac ของคุณอีก หากจะเพิ่มกลับ ต้องรีเซ็ตการซิงก์บนเครื่องนั้นแล้วจับคู่ใหม่";
-"settings.devices.add_title" = "เพิ่ม Mac";
 "settings.devices.add_subtitle" = "สร้างรหัสจับคู่ที่นี่ แล้วไปใส่ใน การตั้งค่า › อุปกรณ์ของฉัน บน Mac อีกเครื่อง หรือจะทำกลับกันก็ได้";
 "settings.devices.create_code" = "สร้างรหัสจับคู่";
 "settings.devices.create_code_hint" = "ใช้ได้ครั้งเดียว ภายในสิบนาที";
@@ -1273,9 +1201,8 @@
 "settings.devices.join_placeholder" = "วางรหัสจับคู่จาก Mac อีกเครื่อง";
 "settings.devices.join" = "เข้าร่วม";
 "settings.devices.joined_format" = "เชื่อมกับ “%@” แล้ว การบันทึกจะทยอยมาในอีกไม่กี่นาที";
-"settings.devices.how" = "ทำงานอย่างไร";
 "settings.devices.how_direct" = "ในเครือข่ายเดียวกัน Mac คุยกันโดยตรง ถ้าไม่อยู่ในเครือข่ายเดียวกัน รีเลย์ของ ZuTalk จะส่งต่อข้อมูลที่เข้ารหัส ซึ่งรีเลย์อ่านไม่ได้";
-"settings.devices.how_audio" = "เสียงไม่เคยออกจาก Mac ที่บันทึก";
+"settings.devices.how_audio" = "ไม่มีการซิงก์เสียงระหว่างอุปกรณ์";
 "settings.devices.how_recording" = "การบันทึกที่กำลังทำอยู่จะปรากฏบน Mac เครื่องอื่นเมื่อบันทึกเสร็จ";
 "settings.devices.how_code" = "รหัสจับคู่คือกุญแจเข้าคลังของคุณ ใช้ได้ครั้งเดียวภายในสิบนาที อย่าโพสต์ในที่สาธารณะ";
 "sync.invite.copied" = "คัดลอกรหัสจับคู่แล้ว";
@@ -1306,7 +1233,7 @@
 
 "topic.collab.menu" = "ทำงานร่วมกัน…";
 "topic.collab.title_format" = "ทำงานร่วมกันใน “%@”";
-"topic.collab.explain" = "เชิญคนอื่นมาทำหัวข้อนี้ร่วมกับคุณ ทั้งสองฝ่ายดูและแก้ไขข้อความถอดเสียง โน้ต และเครื่องหมายของการบันทึกได้ และการแก้ไขจะรวมกันเองโดยอัตโนมัติ ข้อมูลส่งตรงระหว่าง Mac ไม่ต้องมีบัญชี และไม่มีเซิร์ฟเวอร์เก็บสำเนาไว้ เสียงจะอยู่เฉพาะใน Mac ที่บันทึกเท่านั้น";
+"topic.collab.explain" = "เชิญคนอื่นมาทำหัวข้อนี้ร่วมกับคุณ ทั้งสองฝ่ายดูและแก้ไขข้อความถอดเสียง โน้ต และเครื่องหมายของการบันทึกได้ และการแก้ไขจะรวมกันเองโดยอัตโนมัติ ข้อมูลส่งตรงระหว่าง Mac ไม่ต้องมีบัญชี และไม่มีเซิร์ฟเวอร์เก็บสำเนาไว้ เสียงจะไม่ถูกส่งให้อีกฝ่าย";
 "topic.collab.removed" = "คุณถูกนำออกจากหัวข้อนี้แล้ว เนื้อหาที่ซิงก์มาแล้วยังอยู่ใน Mac เครื่องนี้ แต่จะไม่ซิงก์อีก";
 "topic.collab.members" = "ผู้ร่วมงาน";
 "topic.collab.this_mac_format" = "%@ (Mac เครื่องนี้)";
@@ -1321,7 +1248,7 @@
 "topic.collab.remove_confirm_format" = "นำ %@ ออกจากหัวข้อนี้ไหม";
 "topic.collab.remove_confirm_message" = "อีกฝ่ายยังเก็บเนื้อหาที่มีอยู่แล้วได้ แต่จะซิงก์หัวข้อนี้ไม่ได้อีก";
 "topic.collab.join_title" = "เข้าร่วมหัวข้อที่ทำงานร่วมกัน";
-"topic.collab.join_explain" = "วางรหัสเชิญที่ได้รับมา หัวข้อพร้อมข้อความถอดเสียงและโน้ตของการบันทึกจะมาที่ Mac เครื่องนี้ ส่วนเสียงยังอยู่กับอีกฝ่าย";
+"topic.collab.join_explain" = "วางรหัสเชิญที่ได้รับมา หัวข้อพร้อมข้อความถอดเสียงและโน้ตของการบันทึกจะมาที่ Mac เครื่องนี้ ส่วนเสียงจะไม่ถูกซิงก์มาด้วย";
 "topic.collab.join_placeholder" = "รหัสเชิญ";
 "topic.collab.join_button" = "เข้าร่วมทำงานร่วมกัน";
 "topic.collab.joined_format" = "เข้าร่วม “%@” แล้ว การบันทึกจะทยอยมาภายในไม่กี่นาที";
@@ -1394,8 +1321,6 @@
 "backup.made" = "สำรองแล้ว";
 "backup.unchanged" = "ไม่มีอะไรเปลี่ยนตั้งแต่การสำรองครั้งก่อน";
 "backup.failed" = "สำรองไม่สำเร็จ";
-"backup.add" = "สำรองไปยัง Mac อีกเครื่อง";
-"backup.add_another" = "สำรองไปยัง Mac อีกเครื่องด้วย";
 "backup.add_hint" = "สร้างรหัสสำรองแล้ววางใน การตั้งค่า › อุปกรณ์ของฉัน ของ Mac ที่จะเก็บข้อมูลสำรอง หลังจากนั้นจะสำรองทุกวัน และข้ามวันที่ไม่มีการเปลี่ยนแปลง";
 "backup.create_code" = "สร้างรหัสสำรอง";
 "backup.code_hint" = "บน Mac ที่จะเก็บข้อมูลสำรอง เปิด การตั้งค่า › อุปกรณ์ของฉัน แล้ววางรหัสนี้ ใช้ได้ครั้งเดียวภายใน 10 นาที";
@@ -1439,7 +1364,6 @@
 
 /* City: signing in. */
 "city.signin.title" = "ลงชื่อเข้า";
-"city.signin.title_format" = "ลงชื่อเข้า %@";
 "city.signin.address_hint" = "เริ่มจากใส่ที่อยู่เว็บของเมือง";
 "city.signin.address_placeholder" = "ที่อยู่ของเมือง";
 "city.signin.address_label" = "ที่อยู่เว็บของเมือง";
@@ -1463,47 +1387,29 @@
 "city.signin.recovery_placeholder" = "คีย์กู้คืน";
 "city.signin.sign_in" = "ลงชื่อเข้า";
 "city.signin.recovery_hint" = "คีย์กู้คืนคือตัวตนของคุณในเมืองโดยตรง อย่ากรอกบนคอมพิวเตอร์ที่ใช้ร่วมกัน";
-"city.signin.trust" = "การลงชื่อเข้าคือการมอบตัวตนของคุณในเมืองให้ Mac เครื่องนี้ เครื่องนี้จึงทำทุกอย่างที่คุณทำได้ในเมืองในนามของคุณ ZuTalk ใช้ตัวตนนี้เพื่อส่งข้อความถอดเสียงที่คุณจัดเข้ากิจกรรมเข้าคลังเอกสารเท่านั้น ถ้าเป็นคอมพิวเตอร์ส่วนกลางของสถานที่ ใช้เสร็จแล้วให้ลงชื่อออก";
 
 /* City: signed in. */
-"city.settings.signed_in" = "ลงชื่อเข้าแล้ว";
 "city.settings.unnamed" = "ผู้อยู่อาศัยที่ไม่มีชื่อ";
-"city.settings.stored_title" = "ข้อมูลการลงชื่อเข้าเก็บไว้ที่ไหน";
 "city.settings.stored_detail" = "เก็บไว้บน Mac เครื่องนี้เท่านั้น การลงชื่อออกจะลบออกจาก Mac เครื่องนี้ ตัวตนของคุณในเมืองไม่ได้รับผลกระทบ";
 "city.role.resident_format" = "ชาวเมือง %@";
 "city.role.founder_format" = "ผู้ก่อตั้ง %@";
 "city.role.coordinator_format" = "ผู้ประสานงานของ %@";
 "city.role.curator_format" = "ภัณฑารักษ์ของ %@";
 "city.role.inviter_format" = "ผู้เชิญของ %@";
-"city.signout.action" = "ลงชื่อออก…";
 "city.signout.button" = "ลงชื่อออก";
 "city.signout.confirm_title" = "ลงชื่อออกจาก Mac เครื่องนี้ไหม";
-"city.signout.confirm_message" = "ข้อมูลการลงชื่อเข้าจะถูกลบจาก Mac เครื่องนี้เท่านั้น ตัวตนของคุณในเมืองและสิ่งที่ส่งเข้าคลังเอกสารไปแล้วยังอยู่เหมือนเดิม หลังลงชื่อออก Mac เครื่องนี้จะทำอะไรในนามของคุณไม่ได้อีก และข้อความถอดเสียงที่รอส่งอยู่ก็จะไม่ถูกส่ง";
 "city.signout.failed" = "ลงชื่อออกไม่สำเร็จ";
 
 /* City: what is filed, and when. */
-"city.what.title" = "ส่งอะไรบ้าง";
-"city.what.subtitle" = "จะแสดงให้ดูอีกครั้งก่อนเริ่มบันทึกทุกครั้ง";
-"city.what.text" = "ต้นฉบับและคำแปล";
 "city.what.text_detail" = "ภาษาละหนึ่งชุด เรียงตรงกันตามเวลา";
 "city.what.always" = "ส่งเสมอ";
-"city.what.speakers" = "ชื่อผู้พูด";
 "city.what.speakers_detail" = "เมื่อปิด จะเขียนเพียง “ผู้พูด 1” “ผู้พูด 2”";
-"city.what.marks" = "เครื่องหมาย";
-"city.what.marks_detail" = "ส่งเฉพาะตำแหน่งที่ทำเครื่องหมาย ไม่ส่งโน้ตที่คุณเขียน";
 "city.what.audio" = "เสียง";
-"city.what.never" = "ไม่ส่ง";
-"city.when.title" = "หลังบันทึกเสร็จ";
-"city.when.row" = "ส่งเมื่อไร";
-"city.when.automatic" = "ส่งอัตโนมัติ";
-"city.when.ask" = "ถามฉันก่อน";
 "city.when.automatic_detail" = "เมื่อหยุดบันทึกจะส่งอยู่เบื้องหลัง ไม่ต้องรอ ถ้าติดต่อเมืองไม่ได้จะเข้าคิวไว้แล้วลองส่งใหม่เอง";
 "city.when.ask_detail" = "เมื่อหยุดบันทึกจะจัดไว้กับกิจกรรมเท่านั้น ยังไม่ส่งออกไป จนกว่าคุณจะกด “ส่งเข้าคลังเอกสาร”";
 "city.options.save_failed" = "บันทึกการตั้งค่านี้ไม่สำเร็จ";
 
 /* City: the list in Settings of every recording assigned to an event from this Mac. */
-"city.filings.title" = "การบันทึกที่ส่งเข้าคลังเอกสาร";
-"city.filings.subtitle" = "การบันทึกทุกรายการที่จัดเข้ากิจกรรมจาก Mac เครื่องนี้อยู่ที่นี่ ทั้งที่ส่งแล้ว รอส่ง และส่งไม่สำเร็จ จัดการแต่ละรายการได้จากที่นี่";
 "city.filings.empty" = "ยังไม่มีการบันทึกที่จัดเข้ากิจกรรม";
 "city.filings.more_format" = "การทำงานเพิ่มเติมสำหรับ “%@”";
 
@@ -1518,8 +1424,6 @@
 "city.action.change_event" = "เปลี่ยนกิจกรรม…";
 "city.action.drop" = "ไม่ส่งแล้ว";
 "city.action.show_recording" = "เปิดการบันทึกนี้";
-"city.withdraw.confirm_title" = "ถอนข้อความถอดเสียงนี้ออกจากคลังเอกสารไหม";
-"city.withdraw.confirm_message" = "รายการนี้จะหายไปจากหน้าคลังเอกสาร แต่ข้อความถอดเสียงที่ส่งไปแล้วยังคงอยู่ในบันทึกของเมือง และตอนนี้ยังลบออกจากที่นั่นไม่ได้";
 "city.withdraw.button" = "ถอนออก";
 
 /* City: where one recording’s filing stands. One vocabulary, used by the recording’s page, the lists of recordings, the Share panel, Settings and the sidebar. */
@@ -1568,12 +1472,7 @@
 "city.event.today_format" = "วันนี้ %@";
 "city.summary.as_languages_format" = "ส่งในนามของ %1$@: ข้อความถอดเสียงภาษา %2$@";
 "city.summary.as_format" = "ส่งข้อความถอดเสียงในนามของ %@";
-"city.summary.extras.names_marks" = "มีชื่อผู้พูดและเครื่องหมาย";
-"city.summary.extras.names_only" = "มีชื่อผู้พูด ไม่มีเครื่องหมาย";
-"city.summary.extras.marks_only" = "มีเครื่องหมาย ไม่มีชื่อผู้พูด";
-"city.summary.extras.neither" = "ไม่มีชื่อผู้พูดและไม่มีเครื่องหมาย";
 "city.summary.channel_format" = "และใส่ไว้ในช่อง “%@” ด้วย";
-"city.summary.audio_stays" = "เสียงอยู่บน Mac เครื่องนี้เท่านั้น";
 "city.content.language_format" = "%1$@ %2$lld ประโยค";
 "city.content.speakers_format" = "ผู้พูด %lld คน";
 "city.content.marks_format" = "เครื่องหมาย %lld จุด";
@@ -1624,27 +1523,15 @@
 
 /* City: the archive section of a recording’s Share panel. */
 "city.share.title" = "คลังเอกสาร";
-"city.share.filed_format" = "ส่งเข้าคลังเอกสารแล้ว · %@";
 "city.share.fact.event" = "กิจกรรม";
 "city.share.fact.channel" = "ช่อง";
 "city.share.fact.signer" = "ลงชื่อโดย";
 "city.share.fact.content" = "เนื้อหา";
-"city.share.fact.last" = "ครั้งล่าสุด";
-"city.share.last_format" = "%1$@ โดย %2$@";
-"city.share.changed_format" = "คุณแก้ไป %lld ประโยค ในคลังเอกสารยังเป็นฉบับเดิม";
 "city.share.changed_detail" = "การอัปเดตจะส่งเฉพาะประโยคที่แก้";
-"city.share.update" = "อัปเดตคลังเอกสาร";
-"city.share.open" = "เปิดในเบราว์เซอร์";
-"city.share.withdraw" = "ถอนออกจากคลังเอกสาร…";
 "city.share.public_note" = "สิ่งที่อยู่ในคลังเอกสารเป็นสาธารณะและจะอยู่ตลอดไป ต่างจากลิงก์ด้านล่างที่หมดอายุใน 24 ชั่วโมง";
-"city.share.queued" = "รอส่งอยู่ เมื่อครู่ติดต่อเซิร์ฟเวอร์ของเมืองไม่ได้ จะลองส่งใหม่เอง หรือกดลองใหม่ตอนนี้ก็ได้";
-"city.share.queued_offline" = "Mac เครื่องนี้ยังไม่ได้ออนไลน์ เมื่อออนไลน์แล้วจะส่งเข้าคลังเอกสารเอง";
-"city.share.retry_now" = "ลองใหม่ตอนนี้";
 "city.share.failed_format" = "ส่งไม่สำเร็จ: %@";
 "city.share.failed_safe" = "ข้อความถอดเสียงยังอยู่บน Mac เครื่องนี้ครบ ไม่มีอะไรหาย";
 "city.share.not_filed" = "การบันทึกนี้ยังไม่ได้ส่งเข้าคลังเอกสาร";
-"city.share.withdrawn" = "ข้อความถอดเสียงนี้ถูกถอนออกจากคลังเอกสารแล้ว เลือกกิจกรรมอื่นหรือส่งใหม่ได้";
-"city.share.pick" = "เลือกกิจกรรมจากปฏิทิน…";
 "city.share.change" = "เปลี่ยน…";
 
 /* City: what is said once filing finishes in the background. */
@@ -1697,12 +1584,10 @@
 /* 0.8.2 after */
 "recording.result.title" = "บันทึกเสร็จแล้ว";
 "recording.result.title_format" = "บันทึกเสร็จแล้ว · %@";
-"recording.result.summary.text_and_audio" = "ข้อความถอดเสียงอยู่ด้านล่าง ไฟล์เสียงเก็บไว้ใน Mac เครื่องนี้";
 "recording.result.summary.text_only" = "ข้อความถอดเสียงอยู่ด้านล่าง ไฟล์เสียงถูกลบไปแล้วตามที่ตั้งไว้สำหรับการบันทึกนี้";
 "recording.result.summary.audio_only" = "ครั้งนี้บันทึกไว้แต่เสียง ขัดเกลาหนึ่งรอบก็จะได้ข้อความถอดเสียง";
 "recording.result.refine.detail" = "ถอดเสียงทั้งหมดใหม่อีกรอบ แม่นกว่าฉบับสด";
 "recording.result.refine.needs_setup" = "ต้องเปิดใช้การขัดเกลาในการตั้งค่าก่อน";
-"recording.result.refine.open_settings" = "เปิดการตั้งค่า";
 "recording.result.refine.in_progress" = "กำลังขัดเกลา รอสักครู่";
 "recording.result.refine.ready" = "ฉบับขัดเกลาพร้อมแล้ว";
 "recording.result.refine.failed" = "การขัดเกลาครั้งก่อนไม่สำเร็จ";
@@ -1719,12 +1604,7 @@
 "session.version.show_refined" = "ดูฉบับขัดเกลา";
 "session.version.show_live" = "ดูฉบับสด";
 "session.menu.label" = "ตัวเลือกเพิ่มเติมของการบันทึกนี้";
-"session.menu.rename" = "เปลี่ยนชื่อ…";
-"session.menu.file_into_topic" = "เพิ่มเข้าหัวข้อ…";
-"session.menu.destroy_audio" = "ลบเสียง เก็บไว้แต่ข้อความ…";
 "session.menu.destroy_audio.refining" = "กำลังขัดเกลาและยังต้องใช้เสียง รอให้เสร็จก่อนแล้วค่อยลบ";
-"session.menu.delete" = "ลบการบันทึกนี้…";
-"session.rename.title" = "เปลี่ยนชื่อการบันทึกนี้";
 "session.delete.confirm_title_format" = "ลบ “%@” ไหม";
 "session.delete.confirm_message" = "การบันทึกนี้พร้อมข้อความถอดเสียงและไฟล์เสียงจะย้ายไปที่ถังขยะ และกู้คืนจากที่นั่นได้";
 "session.delete.done" = "ย้ายไปที่ถังขยะแล้ว";
@@ -1744,13 +1624,11 @@
 /* 0.8.2 settings */
 "settings.section.account_name" = "บัญชี";
 "settings.section.advanced_name" = "ขั้นสูง";
-"settings.account.subtitle" = "ตัวตนของคุณ สิ่งที่ใช้ทำข้อความสด และอุปกรณ์ของคุณ อยู่ในหน้านี้ทั้งหมด";
 "settings.account.signin_title" = "ลงชื่อเข้าด้วยตัวตน Zu ของคุณ";
 "settings.account.signin_detail" = "เมื่อลงชื่อเข้าแล้ว คุณส่งข้อความถอดเสียงเข้าคลังเอกสารของเมืองในนามของคุณเองได้ ส่วนการบันทึกและข้อความสดใช้ได้ตามปกติแม้ไม่ลงชื่อเข้า";
 "settings.account.identity_title" = "ตัวตน Zu ของคุณ";
 "city.archive.title" = "คลังเอกสารของเมือง";
 "city.archive.subtitle" = "ส่งอะไรบ้าง ส่งเมื่อไรหลังบันทึกเสร็จ และการบันทึกที่ส่งไปแล้ว";
-"settings.live_text.title" = "ข้อความสดและการแปล";
 "settings.live_text.source.invite" = "ตอนนี้ข้อความสดใช้รหัสคำเชิญของคุณ";
 "settings.live_text.source.invite_time_format" = "ตอนนี้ข้อความสดใช้รหัสคำเชิญของคุณ บันทึกได้อีกประมาณ %1$lld ชม. %2$lld นาที";
 "settings.live_text.source.invite_spent" = "เวลาของรหัสคำเชิญหมดแล้ว ตอนนี้จึงยังไม่มีข้อความสด";
@@ -1759,22 +1637,16 @@
 "settings.live_text.shared_detail" = "ข้อความสดและคำแปลใช้เวลานี้ร่วมกัน ส่วนการขัดเกลาต้องใช้คีย์ของคุณเอง";
 "settings.live_text.invite_field_label" = "รหัสคำเชิญ";
 "settings.live_text.invite_hint" = "ถ้ามีรหัสคำเชิญ ให้ใส่ที่นี่ แล้วข้อความสดจะพร้อมใช้งาน";
-"settings.live_text.invite_on" = "รหัสคำเชิญใช้งานอยู่";
 "settings.live_text.use_invite" = "ใช้รหัสคำเชิญทำข้อความสด";
 "settings.live_text.use_own_key" = "ใช้คีย์ของคุณเอง…";
-"settings.account.devices_title" = "อุปกรณ์ของฉัน";
 "settings.account.devices_subtitle" = "ซิงก์การบันทึก ข้อความถอดเสียง และโน้ตระหว่าง Mac ของคุณเอง ส่งตรงระหว่างเครื่อง ไม่ผ่านเซิร์ฟเวอร์ และไม่ต้องลงชื่อเข้า";
 "settings.account.devices_add_subtitle" = "สร้างรหัสจับคู่ที่นี่ แล้วไปใส่ใน การตั้งค่า › บัญชี › อุปกรณ์ของฉัน บน Mac อีกเครื่อง หรือจะทำกลับกันก็ได้";
-"settings.general.subtitle_plain" = "ภาษาของหน้าจอ รูปลักษณ์ การอัปเดต และปุ่มลัด";
 "settings.general.welcome_again_hint_plain" = "ดูอีกครั้ง: สิ่งที่ข้อความสดต้องใช้ ไมโครโฟน และวิธีบันทึก การบันทึกและการตั้งค่าเดิมยังอยู่ครบ";
 "settings.advanced.subtitle" = "คนส่วนใหญ่ไม่จำเป็นต้องใช้หน้านี้";
-"settings.advanced.own_key_format" = "คีย์ %@ ของคุณเอง";
+"settings.advanced.own_key_format" = "คีย์ %@";
 "settings.advanced.capture_key_subtitle" = "จำเป็นเฉพาะเมื่อไม่มีรหัสคำเชิญ หรือเมื่อต้องการขัดเกลา";
-"settings.advanced.sharing_title" = "ลิงก์ที่กำลังแชร์";
-"settings.advanced.sharing_how" = "วิธีแชร์";
 "settings.advanced.sharing_how_live" = "ระหว่างบันทึก คุณแสดงคำบรรยายให้ผู้ชมดูได้ คนในงานสแกนโค้ดเพื่อดูตาม";
 "settings.advanced.sharing_how_recording" = "การบันทึกที่เสร็จแล้วแชร์ได้จากเมนูของการบันทึกนั้น ส่งสำเนา หรือสร้างลิงก์อ่านอย่างเดียว 24 ชั่วโมง";
-"settings.advanced.backup_title" = "สำรองและกู้คืนข้อมูล";
 "backup.add_hint_account" = "สร้างรหัสสำรองแล้ววางใน การตั้งค่า › บัญชี › อุปกรณ์ของฉัน ของ Mac ที่จะเก็บข้อมูลสำรอง หลังจากนั้นจะสำรองทุกวัน และข้ามวันที่ไม่มีการเปลี่ยนแปลง";
 "backup.code_hint_account" = "บน Mac ที่จะเก็บข้อมูลสำรอง เปิด การตั้งค่า › บัญชี › อุปกรณ์ของฉัน แล้ววางรหัสนี้ ใช้ได้ครั้งเดียวภายใน 10 นาที";
 "backup.restore_explain_account" = "บน Mac ที่จะกู้คืน เปิด การตั้งค่า › บัญชี › อุปกรณ์ของฉัน แล้ววางรหัสกู้คืน การกู้คืนจะรวมข้อมูลสำรองนี้เข้าไป สิ่งที่ Mac เครื่องนั้นมีอยู่แล้วไม่เปลี่ยน และสิ่งที่ลบถาวรไปแล้วจะไม่กลับมา มีแต่ข้อความ ไม่มีเสียง";
@@ -1793,23 +1665,17 @@
 "settings.diagnostics.recording_keeping_up" = "ทันเวลา";
 "onboarding.step.live_text" = "ข้อความสด";
 "onboarding.step.microphone" = "ไมโครโฟน";
-"onboarding.live_text.title" = "สิ่งที่ข้อความสดต้องใช้";
 "onboarding.live_text.subtitle" = "ถ้ามีรหัสคำเชิญ ให้ใส่ที่นี่ ข้อความและคำแปลจะขึ้นระหว่างที่บันทึก ถ้าไม่มีก็ยังบันทึกเสียงได้";
 "onboarding.live_text.redeem" = "เปิดใช้";
-"onboarding.live_text.visual" = "ข้อความและคำแปล ขึ้นระหว่างบันทึก";
 "onboarding.live_text.use_own_key_format" = "ใช้คีย์ %@ ของคุณเอง";
 "onboarding.live_text.use_invite" = "ใช้รหัสคำเชิญแทน";
 "onboarding.live_text.skip" = "ข้ามไปก่อน บันทึกเสียงอย่างเดียว";
-"onboarding.welcome.privacy_plain" = "โดยปกติการบันทึกจะอยู่บน Mac เครื่องนี้เท่านั้น จะเปิดข้อความสด (ซึ่งส่งเสียงไปยังบริการถอดเสียง) หรือไม่ คุณเลือกเองทุกครั้งที่บันทึก";
+"onboarding.welcome.privacy_plain" = "การบันทึกเก็บไว้บน Mac เครื่องนี้ จะเปิดข้อความสด (ซึ่งส่งเสียงไปยังบริการถอดเสียง) หรือไม่ คุณเลือกเองทุกครั้งที่บันทึก";
 "onboarding.permissions.action.open_system_settings" = "เปิดการตั้งค่าระบบ";
 "onboarding.permissions.denied_hint" = "ในการตั้งค่าระบบ ให้เปิด ZuTalk ในส่วน “ไมโครโฟน” แล้วกลับมาที่นี่";
 "sidebar.account.sign_in" = "ลงชื่อเข้า";
 "sidebar.account.hint" = "เปิด “การตั้งค่า › บัญชี”";
 /* 0.8.2 home */
-"home.start.change" = "เปลี่ยน";
-"home.start.change_done" = "ซ่อน";
-"home.start.change_hint" = "เปลี่ยนภาษา แหล่งเสียง และตัวเลือกอื่น";
-"home.start.offline_hint" = "Mac เครื่องนี้ออฟไลน์อยู่ จึงใช้ข้อความสดไม่ได้ เชื่อมต่อเครือข่ายก่อน หรือกด “เปลี่ยน” เพื่อปิดข้อความสดแล้วค่อยบันทึก";
 "home.plan.speak_format" = "ภาษาที่พูด: %@";
 "home.plan.speak_translate_format" = "ภาษาที่พูด: %1$@ แปลเป็น %2$@ ด้วย";
 "home.plan.speak_many_format" = "ภาษาที่พูด: %@ แปลให้กันและกัน";
@@ -1825,21 +1691,16 @@
 "home.options.languages_detail" = "เลือกได้สูงสุดสามภาษา ถ้าเลือกสองภาษาขึ้นไปจะแปลให้กันและกัน";
 "home.options.source_detail_microphone_or_mac" = "บันทึกเสียงที่ไมโครโฟนได้ยิน เช่น ประชุมต่อหน้า ห้องเรียน เสียงของคุณเอง หากต้องการบันทึกอีกฝ่ายในการประชุมออนไลน์ ให้เลือก “เสียงจาก Mac เครื่องนี้”";
 "home.options.live_text" = "ข้อความสด";
-"home.options.live_text_detail" = "เมื่อเปิด เสียงจะถูกส่งไปยังบริการออนไลน์เพื่อถอดเป็นข้อความและแปลระหว่างบันทึก เมื่อปิด การบันทึกจะอยู่ใน Mac เครื่องนี้เท่านั้น";
 "home.options.live_text_needs_setup" = "ข้อความสดต้องใช้รหัสคำเชิญหรือคีย์ของคุณเอง ตอนนี้บันทึกเสียงได้อย่างเดียว";
-"home.options.live_text_setup" = "เปิดการตั้งค่า";
 "home.options.live_text_invite_format" = "กำลังใช้รหัสคำเชิญ: บันทึกได้อีกประมาณ %@";
 "home.options.topic" = "เพิ่มเข้าหัวข้อ";
 "home.options.topic_detail" = "หัวข้อคือโฟลเดอร์สำหรับรวมการบันทึกที่เป็นชุดเดียวกัน ไม่เพิ่มก็ได้ และเพิ่มทีหลังได้ทุกเมื่อ";
 "home.options.topic.none" = "ไม่เพิ่ม";
 "home.options.topic.new" = "หัวข้อใหม่…";
-"home.options.hosting" = "ฉันกำลังจัดกิจกรรม";
-"home.options.hosting_detail" = "เมื่อเปิดจะมีเพิ่มสองอย่าง: แสดงคำบรรยายให้ผู้ชม และส่งข้อความถอดเสียงเข้าคลังเอกสารของเมือง";
+"home.options.hosting_detail" = "เมื่อเปิดจะมีเพิ่มสองอย่าง: แสดงคำบรรยายให้ผู้ชม และส่งการบันทึกเข้าคลังเอกสารของเมือง";
 "home.options.import" = "นำเข้าไฟล์เสียงที่บันทึกไว้แล้ว…";
-"home.hosting.sign_in_hint" = "เมื่อลงชื่อเข้าด้วยตัวตน Zu ของคุณแล้ว บันทึกเสร็จจะส่งข้อความถอดเสียงเข้าคลังเอกสารของเมืองได้";
-"home.hosting.sign_in_button" = "ลงชื่อเข้า";
+"home.hosting.sign_in_hint" = "เมื่อลงชื่อเข้าด้วยตัวตน Zu ของคุณแล้ว บันทึกเสร็จจะส่งข้อความถอดเสียงและเสียงเข้าคลังเอกสารของเมืองได้";
 "home.search.placeholder" = "ค้นหาการบันทึก";
-"home.empty.sentence" = "ยังไม่มีการบันทึก กด “เริ่มบันทึก” ด้านบน แล้วสิ่งที่บันทึกจะเรียงตามวันที่อยู่ตรงนี้";
 "home.filter.no_topic" = "ยังไม่อยู่ในหัวข้อ";
 "home.filter.no_topic_empty" = "ไม่มีการบันทึกที่ยังไม่อยู่ในหัวข้อ";
 "home.row.put_in_topic" = "เพิ่มเข้าหัวข้อ";
@@ -1852,3 +1713,160 @@
 "capture.languages.role.spoken_format" = "%@ เป็นภาษาที่พูด — ถ้าไม่มีคนพูด กดเพื่อเปลี่ยนเป็น “แปลเพิ่มเป็น”";
 "capture.languages.role.translated_format" = "%@ เป็นภาษาที่แปลเพิ่มเท่านั้น — ถ้ามีคนพูด กดเพื่อเปลี่ยนกลับเป็น “ภาษาที่พูด”";
 "audio_input.sound_from_mac" = "เสียงจาก Mac เครื่องนี้ (ประชุมออนไลน์ วิดีโอ)";
+
+/* 0.8.3 home card */
+"home.card.sound_from_mac" = "เสียงจาก Mac";
+"home.card.hosting" = "จัดกิจกรรม";
+"home.card.choose_event" = "เลือกกิจกรรม";
+"home.card.dont_file" = "ไม่ส่ง";
+"home.card.move_earlier" = "เลื่อนไปข้างหน้า";
+"home.card.move_later" = "เลื่อนไปข้างหลัง";
+
+/* 0.8.3 home */
+"home.card.live_text_disclosure" = "เมื่อเปิด เสียงจะส่งไปยัง Soniox เพื่อถอดเสียงเป็นข้อความสดและแปล";
+"home.catalog.membership_failed" = "ไม่สามารถโหลดหัวข้อของการบันทึกได้";
+"home.topics.new" = "สร้างใหม่";
+"home.create.confirm" = "สร้าง";
+/* 0.8.3 topics */
+"topics.options.header" = "ค่าเริ่มต้น";
+"topics.options.languages" = "ภาษา";
+"topics.options.sound" = "แหล่งเสียง";
+"topics.options.audio" = "เสียง";
+"topics.options.edit" = "แก้ไข";
+"topics.options.preview" = "ดูตัวอย่าง";
+"knowledge.action.new" = "สร้างใหม่";
+"knowledge.action.import" = "นำเข้า";
+"knowledge.meter.title" = "ความยาว";
+"trash.action.empty" = "ล้าง";
+"topic.collab.action.copy" = "คัดลอก";
+"topic.collab.action.invite" = "เชิญ";
+"topic.collab.action.stop" = "หยุด";
+"topic.collab.action.leave" = "ออก";
+/* 0.8.3 windows */
+"share.fact.no_audio" = "ไม่รวมเสียง";
+"share.fact.encrypted" = "เข้ารหัสตั้งแต่ต้นทางถึงปลายทาง";
+"share.fact.deleted_on_stop" = "ลบทันทีเมื่อหยุด";
+"share.fact.kept_24h" = "เก็บไว้ราว 24 ชั่วโมงหลังหยุด";
+"share.fact.expires_24h" = "หมดอายุใน 24 ชั่วโมง";
+"share.live.keep_short" = "เก็บข้อความถอดเสียง";
+"share.live.start_short" = "เริ่ม";
+"share.live.stop_short" = "หยุด";
+"share.live.replace_short" = "ลิงก์ใหม่";
+"share.live.ended" = "หยุดแสดงคำบรรยายให้ผู้ชมแล้ว";
+"share.qr.show" = "คิวอาร์โค้ด";
+"share.copy.sent" = "ส่งแล้ว";
+"nearby.pill.count_format" = "ใกล้เคียง · %lld";
+"nearby.send.empty" = "ไม่มี Mac ใกล้ๆ ที่เปิดรับไว้";
+"subtitle.overlay.menu.banner" = "แถบคำบรรยายด้านบน";
+"subtitle.overlay.menu.backdrop" = "พื้นหลัง";
+/* 0.8.3 settings */
+"settings.switch.on" = "เปิด";
+"settings.switch.off" = "ปิด";
+"settings.action.copy" = "คัดลอก";
+"settings.action.copied" = "คัดลอกแล้ว";
+"settings.action.replace" = "เปลี่ยน";
+"settings.action.stop" = "หยุด";
+"settings.action.create" = "สร้าง";
+"settings.group.devices" = "อุปกรณ์";
+"settings.group.updates" = "การอัปเดต";
+"settings.group.shortcuts" = "แป้นพิมพ์ลัด";
+"settings.general.appearance" = "ลักษณะที่ปรากฏ";
+"settings.updates.check" = "ตรวจหา";
+"settings.devices.this_mac_label" = "Mac เครื่องนี้";
+"settings.devices.pairing_code" = "รหัสจับคู่";
+"settings.devices.online" = "ออนไลน์";
+"settings.backup.code" = "รหัสสำรอง";
+"settings.live_text.status.spent" = "ใช้หมดแล้ว";
+"settings.live_text.status.own_key" = "คีย์ของคุณเอง";
+"settings.credentials.status.saved" = "บันทึกแล้ว";
+"settings.credentials.status.verified" = "ตรวจสอบแล้ว";
+"settings.credentials.status.invalid" = "ไม่ถูกต้อง";
+"onboarding.start" = "เริ่ม";
+"onboarding.back" = "ย้อนกลับ";
+"onboarding.skip" = "ข้าม";
+"onboarding.finish" = "เข้าสู่ ZuTalk";
+"onboarding.permissions.allow" = "อนุญาต";
+"onboarding.permissions.allowed" = "อนุญาตแล้ว";
+"settings.credentials.key_placeholder" = "คีย์ API";
+/* 0.8.3 recording */
+"recording.word.copy" = "คัดลอก";
+"recording.word.share" = "แชร์";
+"recording.word.rename" = "เปลี่ยนชื่อ";
+"recording.word.delete_audio" = "ลบไฟล์เสียง";
+"recording.word.version" = "ฉบับ";
+"recording.word.read_only" = "อ่านอย่างเดียว";
+"recording.word.open" = "เปิด";
+"recording.word.verify" = "ตรวจสอบ";
+"recording.word.select" = "เลือก";
+"recording.word.select_all" = "เลือกทั้งหมด";
+"recording.details.files" = "ไฟล์";
+"recording.details.info" = "ข้อมูล";
+"recording.details.setup" = "การกำหนดค่า";
+"recording.city.waiting" = "รอส่ง";
+"recording.city.filed" = "ส่งแล้ว";
+"recording.city.changed" = "ต้องอัปเดต";
+"recording.city.event_gone" = "กิจกรรมถูกลบ";
+"recording.marks.empty_live" = "กด ⌃⌥S เมื่อเจอสิ่งสำคัญ";
+/* 0.8.3 city */
+"city.word.chosen" = "เลือกแล้ว";
+"city.word.waiting" = "รอส่ง";
+"city.word.waiting_offline" = "ออฟไลน์";
+"city.word.filed" = "ส่งแล้ว";
+"city.word.event_gone" = "กิจกรรมถูกลบ";
+"city.identity.word" = "ตัวตน";
+"city.what.text_word" = "ข้อความ";
+"city.what.speakers_word" = "ผู้พูด";
+"city.when.word" = "เมื่อไร";
+"city.when.auto_word" = "อัตโนมัติ";
+"city.when.ask_word" = "ถามก่อน";
+"city.filings.word" = "การบันทึก";
+"city.picker.search_word" = "ค้นหา";
+"city.audio.off" = "ไม่ส่งเสียง";
+"city.audio.included" = "พร้อมเสียง";
+"city.audio.absent" = "ยังไม่ส่งเสียง";
+"city.audio.queued" = "เสียงรอส่ง";
+"city.audio.uploading" = "กำลังส่งเสียง";
+"city.audio.progress_format" = "เสียง %1$lld/%2$lld";
+"city.audio.filed" = "ส่งเสียงแล้ว";
+"city.audio.refused" = "เสียงถูกปฏิเสธ";
+"city.audio.too_big" = "เสียงใหญ่เกินไป";
+"city.audio.capped" = "เสียงส่งต่อภายหลัง";
+"city.audio.missing" = "ไม่มีเสียงแล้ว";
+"city.audio.unreadable" = "เตรียมเสียงไม่ได้";
+"city.audio.retained" = "เสียงยังอยู่ในเมือง";
+"city.audio.file" = "ส่งเสียงเพิ่ม";
+"city.audio.disclosure" = "ส่งเสียงไปด้วย เสียงที่ส่งแล้วเป็นสาธารณะ ใครมีที่อยู่ของไฟล์ก็ดึงไปได้ และลบไม่ได้ ผู้จัดของเมืองนำไปถอดเสียงใหม่ได้";
+"city.audio.public" = "เสียงที่ส่งแล้วเป็นสาธารณะและลบไม่ได้";
+"city.audio.reason.withheld" = "การบันทึกนี้ตั้งไว้ว่าไม่ส่งเสียง";
+"city.audio.reason.setting_off" = "ปิดเสียงไว้ที่ “การตั้งค่า › บัญชี › คลังเอกสาร”";
+"city.audio.reason.absent" = "ส่งข้อความแล้ว แต่ยังไม่ได้ส่งเสียง ถ้าต้องการส่ง ให้เลือก “ส่งเสียงเพิ่ม”";
+"city.audio.reason.capped_format" = "วันนี้ส่งเสียงเข้าเมืองถึงขีดจำกัดแล้ว จะส่งต่อเองหลัง %@";
+"city.audio.reason.missing" = "Mac เครื่องนี้ไม่มีเสียงของการบันทึกนี้แล้ว จึงไม่มีเสียงให้ส่ง";
+"city.audio.reason.retained_format" = "เสียง %lld ช่วงที่ส่งไปแล้วยังอยู่บนเซิร์ฟเวอร์ของเมือง และลบไม่ได้";
+"city.summary.names" = "มีชื่อผู้พูด";
+"city.summary.no_names" = "ไม่ใส่ชื่อผู้พูด";
+"city.summary.audio_included" = "ส่งเสียงไปด้วย เมื่อส่งแล้วจะเป็นสาธารณะและลบไม่ได้";
+"city.signin.disclosure" = "เมื่อลงชื่อเข้าแล้ว Mac เครื่องนี้ทำทุกอย่างในเมืองในนามของคุณได้ การบันทึกที่คุณส่งเข้ากิจกรรมจะมีเสียงไปด้วยโดยค่าเริ่มต้น ข้อความและเสียงที่ส่งแล้วเป็นสาธารณะและลบไม่ได้ ถ้าเป็นคอมพิวเตอร์ที่ใช้ร่วมกัน ใช้เสร็จแล้วให้ลงชื่อออก";
+"city.withdraw.confirm_one" = "หน้าคลังเอกสารจะไม่แสดงรายการนี้อีก แต่ข้อความและเสียงที่ส่งไปแล้วยังอยู่ในบันทึกของเมืองและลบไม่ได้";
+"city.signout.confirm_one" = "ข้อมูลการลงชื่อเข้าจะถูกลบออกจาก Mac เครื่องนี้ สิ่งที่ส่งไปแล้วยังอยู่ในเมือง ส่วนข้อความและเสียงที่ยังรอส่งจะไม่ถูกส่ง";
+"city.toast.audio_filed" = "ส่งเสียงเข้าคลังเอกสารแล้ว";
+"city.toast.audio_stopped_format" = "ส่งเสียงไม่ครบ · %@";
+"city.toast.audio_failed" = "ส่งเสียงไม่สำเร็จ";
+"city.error.audio_not_filed" = "ต้องส่งข้อความถอดเสียงของการบันทึกนี้ก่อน จึงจะส่งเสียงได้";
+"city.error.audio_off" = "ปิดเสียงไว้ที่ “การตั้งค่า › บัญชี › คลังเอกสาร” เปิดแล้วลองอีกครั้ง";
+"city.error.audio_withheld" = "การบันทึกนี้ตั้งไว้ว่าไม่ส่งเสียง เปลี่ยนการตั้งค่านี้แล้วลองอีกครั้ง";
+"city.error.audio_bad_part" = "เตรียมเสียงของการบันทึกนี้ไม่สำเร็จ จึงยังไม่ได้ส่งอะไรออกไป ลองอีกครั้ง";
+"city.error.audio_refused" = "เมืองไม่รับเสียง เมืองรับเสียงจากผู้อยู่อาศัยของเมืองเท่านั้น และต้องเป็นกิจกรรมที่ผู้อยู่อาศัยสร้าง หรือกิจกรรมที่คุณเป็นผู้จัดหรือผู้บันทึก ข้อความถอดเสียงส่งไปแล้ว";
+"city.error.audio_too_big" = "เสียงช่วงหนึ่งมีขนาดเกินที่เมืองรับได้ ข้อความถอดเสียงส่งไปแล้ว";
+"city.error.audio_daily_cap" = "วันนี้ส่งเสียงเข้าเมืองถึงขีดจำกัดแล้ว จะส่งต่อเองภายหลัง";
+"city.error.audio_server_full" = "เซิร์ฟเวอร์ของเมืองเต็มแล้ว จะลองใหม่เองในอีกสักครู่";
+"city.tally.audio_sending_format" = "กำลังส่งเสียง %lld รายการ";
+"city.tally.audio_stuck_format" = "ส่งเสียงไม่สำเร็จ %lld รายการ";
+"city.sidebar.audio_stuck_format" = "คลังเอกสาร: ส่งเสียงไม่สำเร็จ %lld รายการ";
+"city.sidebar.audio_sending_format" = "คลังเอกสาร: กำลังส่งเสียง %lld รายการ";
+"city.switch.on" = "เปิด";
+"city.switch.off" = "ปิด";
+"city.withdraw.confirm_short" = "ถอนออกจากคลังเอกสารไหม";
+
+/* 0.8.3 integration */
+"resources.audio.destroy.confirm_filed" = "สำเนาเสียงที่ส่งเข้าคลังเอกสารไปแล้วยังอยู่ในเมือง ลบจากที่นี่ไม่ได้";

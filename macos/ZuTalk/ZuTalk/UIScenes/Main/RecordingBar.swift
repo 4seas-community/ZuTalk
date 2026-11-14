@@ -358,6 +358,11 @@ struct RecordingBar: View {
 /// label and a Reconnect button beside these — nineteen controls on screen
 /// while recording, counting the live page's. What is left is what someone
 /// needs to record, glance, and stop.
+///
+/// Everything on it is a pill of the shared family (`PillMetrics`,
+/// `PillPalette`): the same height, fill and border as the pills on Home and
+/// on a recording's page, so the bar reads as part of the app rather than a
+/// strip of its own. Red is kept for two things: the dot, and Stop's icon.
 struct RecordingBarContent: View {
     let model: RecordingBarModel
     var menu = RecordingBarMenu()
@@ -366,7 +371,7 @@ struct RecordingBarContent: View {
     @State private var showsAudiencePanel = false
 
     var body: some View {
-        HStack(spacing: Spacing.sm) {
+        HStack(spacing: PillMetrics.spacing) {
             identity
             // Where this recording will be filed, when a city event was chosen.
             CityDestinationChip(compact: compact)
@@ -388,16 +393,14 @@ struct RecordingBarContent: View {
                     // Capped so a long translation cannot push the controls
                     // out of the header; the tooltip always has it in full.
                     Text(status.text)
-                        .font(.bodySM)
+                        .font(PillMetrics.font)
                         .foregroundColor(status.reportsTextProblem ? .signalAmber : .textSecondary)
                         .lineLimit(1)
                         .frame(maxWidth: Self.sentenceMaxWidth, alignment: .leading)
                 }
             }
-            .padding(.horizontal, Spacing.sm + 2)
-            .frame(minHeight: 30)
-            .background(Color.signalRed.opacity(model.phase == .recording ? 0.08 : 0.04))
-            .clipShape(Capsule())
+            .padding(.horizontal, PillMetrics.horizontalPadding)
+            .modifier(PillChrome())
         }
         .buttonStyle(.plain)
         .help(statusHelp)
@@ -408,7 +411,7 @@ struct RecordingBarContent: View {
     }
 
     private var controls: some View {
-        HStack(spacing: Spacing.xs) {
+        HStack(spacing: PillMetrics.spacing) {
             // No Reconnect here: when the text needs it, the line under the
             // header (`RecordingProblemBanner`) says why and offers it once.
             barButton(
@@ -416,7 +419,8 @@ struct RecordingBarContent: View {
                     ? String(localized: "recording_bar.marked")
                     : String(localized: "recording_bar.mark"),
                 systemImage: model.justMarked ? "bookmark.fill" : "bookmark",
-                tint: model.justMarked ? .brandAccent : .textPrimary,
+                // Tinted for the moment after a mark, like a toggle that is on.
+                tone: model.justMarked ? .on : .normal,
                 disabled: model.phase == .stopping,
                 help: String(localized: "recording_bar.mark_hint"),
                 action: actions.mark
@@ -429,7 +433,6 @@ struct RecordingBarContent: View {
                 systemImage: model.phase == .paused || model.phase == .resuming
                     ? "play.fill"
                     : "pause.fill",
-                tint: .textPrimary,
                 disabled: model.canPause == false,
                 help: String(localized: "recording_bar.pause_hint"),
                 action: actions.togglePause
@@ -446,7 +449,7 @@ struct RecordingBarContent: View {
                 systemImage: model.phase == .stopping
                     ? "hourglass"
                     : model.stopNeedsRetry ? "exclamationmark.arrow.circlepath" : "stop.fill",
-                tint: .signalRed,
+                iconTint: .signalRed,
                 disabled: model.canStop == false,
                 help: String(localized: "recording_bar.stop_hint"),
                 action: actions.stop
@@ -460,56 +463,17 @@ struct RecordingBarContent: View {
     /// live page. They stay one click away, where they do not have to be
     /// understood before pressing Stop.
     private var moreMenu: some View {
-        moreMenuButton
-            .help(String(localized: "recording_bar.more"))
-            .accessibilityLabel(Text(String(localized: "recording_bar.more")))
-            .accessibilityIdentifier("recording-bar.more")
-            // Anchored here rather than on the audience button: this is the
-            // entry for someone who has no such button. It stays put when the
-            // share starts and the button appears beside the bar.
-            .popover(isPresented: $showsAudiencePanel, arrowEdge: .bottom) {
-                if let sessionId = menu.sessionId {
-                    LiveSharePopover(sessionId: sessionId, title: menu.audienceTitle)
-                }
+        MorePill(String(localized: "recording_bar.more")) {
+            moreItems
+        }
+        .accessibilityIdentifier("recording-bar.more")
+        // Anchored here rather than on the audience button: this is the
+        // entry for someone who has no such button. It stays put when the
+        // share starts and the button appears beside the bar.
+        .popover(isPresented: $showsAudiencePanel, arrowEdge: .bottom) {
+            if let sessionId = menu.sessionId {
+                LiveSharePopover(sessionId: sessionId, title: menu.audienceTitle)
             }
-    }
-
-    /// A round button the size of the others. A borderless menu draws its
-    /// own small pop-up button and ignores the label's frame, which left a
-    /// 25 × 14 pt target in the middle of a 30 pt circle; the button style
-    /// (macOS 13) makes the whole label the target. Monterey keeps the
-    /// borderless form inside the same circle.
-    @ViewBuilder
-    private var moreMenuButton: some View {
-        if #available(macOS 13.0, *) {
-            Menu {
-                moreItems
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.bodyMedium)
-                    .foregroundColor(.textPrimary)
-                    .frame(width: 30, height: 30)
-                    .background(Color.textPrimary.opacity(0.1))
-                    .clipShape(Capsule())
-                    .contentShape(Capsule())
-            }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .menuIndicator(.hidden)
-            .fixedSize()
-        } else {
-            Menu {
-                moreItems
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.bodyMedium)
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .foregroundColor(.textPrimary)
-            .frame(width: 30, height: 30)
-            .background(Color.textPrimary.opacity(0.1))
-            .clipShape(Capsule())
         }
     }
 
@@ -549,36 +513,27 @@ struct RecordingBarContent: View {
         }
     }
 
+    /// One of the bar's controls, as a shared pill: a word and an icon, or
+    /// — in a narrow window — the icon alone in a circle of the same height.
     private func barButton(
         title: String,
         systemImage: String,
-        tint: Color,
+        tone: PillTone = .normal,
+        iconTint: Color? = nil,
         disabled: Bool,
         help: String,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
-            Group {
-                if compact {
-                    Image(systemName: systemImage)
-                        .frame(width: 30, height: 30)
-                } else {
-                    Label(title, systemImage: systemImage)
-                        .padding(.horizontal, Spacing.sm + 2)
-                        .frame(minHeight: 30)
-                }
-            }
-            .font(.bodyMedium)
-            .foregroundColor(tint)
-            .background(tint.opacity(0.1))
-            .clipShape(Capsule())
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
+        ActionPill(
+            compact ? nil : title,
+            systemImage: systemImage,
+            tone: tone,
+            iconTint: iconTint,
+            help: help,
+            accessibilityLabel: title,
+            action: action
+        )
         .disabled(disabled)
-        .opacity(disabled ? 0.45 : 1)
-        .help(help)
-        .accessibilityLabel(Text(title))
     }
 
     private var dotColor: Color {
@@ -723,18 +678,14 @@ struct RecordingProblemBanner: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: Spacing.md)
                 if attention.offersReconnect {
-                    Button {
+                    ActionPill(
+                        String(localized: "capture.toolbar.restart_transcription"),
+                        systemImage: attention.isReconnecting ? "hourglass" : "arrow.clockwise",
+                        help: String(localized: "capture.toolbar.restart_transcription_hint")
+                    ) {
                         commands.restartTranscription()
-                    } label: {
-                        Label(
-                            String(localized: "capture.toolbar.restart_transcription"),
-                            systemImage: attention.isReconnecting ? "hourglass" : "arrow.clockwise"
-                        )
-                        .font(.bodyMedium)
                     }
-                    .buttonStyle(.bordered)
                     .disabled(attention.isReconnecting)
-                    .help(String(localized: "capture.toolbar.restart_transcription_hint"))
                     // The bar's own Reconnect button is gone; this is the one.
                     .accessibilityIdentifier("recording-bar.reconnect")
                 }
@@ -754,69 +705,107 @@ struct RecordingProblemBanner: View {
     }
 }
 
-/// The live-captions choice beside a Record button: what the next recording
-/// will do, switchable in place. Captions send audio to Soniox, so the choice
-/// is made — and visible — where recording starts, never implied.
+/// The live-text choice beside a topic's Record button: what the next
+/// recording will do, switchable in place. It is the same pill, with the
+/// same words, as the one on Home's start card (`StartCardLiveText`): on is
+/// tinted, off says "audio only", and with nothing to produce text it leads
+/// to where an invite code or a key is added.
+///
+/// Live text sends the audio to the service that turns it into words. That
+/// is a disclosure, so it is one click away in the ⓘ beside the pill, by
+/// name — not only in a tooltip, and not printed under the button.
 struct CaptionsChoiceChip: View {
     @ObservedObject private var commands = CaptureCommandCenter.shared
     @ObservedObject private var invite = CommunityInviteSession.shared
     @ObservedObject private var credentials = ProviderCredentialSession.shared
+    @ObservedObject private var network = NetworkReachability.shared
     var isLocked = false
 
     var body: some View {
         let _ = credentials.statusRevision
-        let available = commands.realtimeCredentialAvailable
-        let on = commands.realtimeCaptionsEnabled && available
-        Button {
-            if available {
-                commands.setRealtimeCaptionsEnabled(!commands.realtimeCaptionsEnabled)
-            } else {
-                MainNavigationStore.shared.openSettings(section: .account)
+        let state = StartCardLiveText.resolve(
+            enabled: commands.realtimeCaptionsEnabled,
+            available: commands.realtimeCredentialAvailable,
+            offline: network.isOffline
+        )
+        let name = String(localized: "home.options.live_text")
+        let explanation = Self.explanation(state, inviteTime: inviteTimeLeft)
+        HStack(spacing: 2) {
+            Group {
+                if state == .needsSetup {
+                    ActionPill(
+                        state.title,
+                        systemImage: state.systemImage,
+                        tone: state.tone,
+                        mark: .warning,
+                        help: explanation,
+                        accessibilityLabel: name,
+                        accessibilityValue: state.title
+                    ) {
+                        MainNavigationStore.shared.openSettings(section: .account)
+                    }
+                } else {
+                    TogglePill(
+                        isOn: state != .off,
+                        on: .init(
+                            StartCardLiveText.on.title,
+                            systemImage: state == .onOffline
+                                ? StartCardLiveText.onOffline.systemImage
+                                : StartCardLiveText.on.systemImage
+                        ),
+                        off: .init(
+                            StartCardLiveText.off.title,
+                            systemImage: StartCardLiveText.off.systemImage
+                        ),
+                        iconTint: state == .onOffline ? .signalAmber : nil,
+                        help: explanation,
+                        accessibilityLabel: name
+                    ) {
+                        commands.setRealtimeCaptionsEnabled(!commands.realtimeCaptionsEnabled)
+                    }
+                }
             }
-        } label: {
-            Label(
-                on ? onTitle : String(localized: "captions_choice.off"),
-                systemImage: on ? "captions.bubble.fill" : "mic.fill"
-            )
-            .font(.bodyMedium)
-            .foregroundColor(on ? .brandAccent : .textSecondary)
-            .padding(.horizontal, Spacing.md)
-            .frame(minHeight: 36)
-            .background(on ? Color.brandAccent.opacity(0.1) : Color.bgElevated.opacity(0.5))
-            .overlay(
-                Capsule().strokeBorder(
-                    (on ? Color.brandAccent : Color.borderGhost).opacity(0.35),
-                    lineWidth: Stroke.thin
-                )
-            )
-            .clipShape(Capsule())
+            .disabled(isLocked)
+            .accessibilityIdentifier("captions-choice")
+
+            if state != .needsSetup {
+                InfoButton(explanation, accessibilityLabel: name)
+                    .accessibilityIdentifier("captions-choice.info")
+            }
         }
-        .buttonStyle(.plain)
-        .disabled(isLocked)
-        .help(helpText(available: available, on: on))
-        .accessibilityLabel(Text(String(localized: on ? "captions_choice.on" : "captions_choice.off")))
-        .accessibilityHint(Text(helpText(available: available, on: on)))
-        .accessibilityIdentifier("captions-choice")
     }
 
-    /// With an invite, how long it lasts at the connections this recording
-    /// will open — said before recording, where the time is about to be
-    /// spent, rather than only in the sidebar.
-    private var onTitle: String {
+    /// What the pill explains on hover and the ⓘ on a click: that live text
+    /// needs the network when there is none, where the audio goes, and —
+    /// with an invite — how long it lasts at the connections this recording
+    /// will open.
+    static func explanation(_ state: StartCardLiveText, inviteTime: String?) -> String {
+        guard state != .needsSetup else {
+            return String(localized: "home.options.live_text_needs_setup")
+        }
+        var lines: [String] = []
+        if state == .onOffline {
+            lines.append(String(localized: "network.offline.record_hint"))
+        }
+        // Where the audio goes, by name: this is the disclosure.
+        lines.append(String(localized: "home.card.live_text_disclosure"))
+        if state != .off, let inviteTime {
+            lines.append(String(
+                format: String(localized: "home.options.live_text_invite_format"),
+                inviteTime
+            ))
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private var inviteTimeLeft: String? {
         guard invite.isEnabled, invite.isActive, let remaining = invite.remainingSeconds else {
-            return String(localized: "captions_choice.on")
+            return nil
         }
         let recordable = CommunityInviteSession.wallClockRecordableSeconds(
             remainingSeconds: remaining,
             laneCount: invite.plannedLaneCount
         )
-        let length = RecordingPresentation.duration(ms: UInt64(max(recordable, 0)) * 1_000)
-            ?? RecordingPresentation.duration(ms: 1_000) ?? ""
-        return String(format: String(localized: "captions_choice.on_invite_format"), length)
-    }
-
-    private func helpText(available: Bool, on: Bool) -> String {
-        guard available else { return String(localized: "captions_choice.unavailable_hint") }
-        return String(localized: on ? "captions_choice.on_hint" : "captions_choice.off_hint")
+        return RecordingPresentation.duration(ms: UInt64(max(recordable, 0)) * 1_000)
     }
 }

@@ -1,11 +1,17 @@
 //! The city's server, as far as a recorder needs it.
 //!
-//! Two things live behind one host. The **hub** stores signed records under
-//! tags (`polis:<city>` for a city, `ev:<event>` for one event) and hands
-//! them back to anyone who asks; the **relay** passes a few handshake
-//! messages between two devices in a short-lived room. Neither takes any
-//! credential: what a tag keeps is decided by the signatures on the records
-//! themselves.
+//! Three things live behind one host. The **hub** stores signed records
+//! under tags (`polis:<city>` for a city, `ev:<event>` for one event) and
+//! hands them back to anyone who asks; the **relay** passes a few handshake
+//! messages between two devices in a short-lived room; the **files** store
+//! keeps the bytes too large for a record — the parts of a recording's audio
+//! — under the SHA-256 of their content. None takes any credential: what a
+//! tag keeps is decided by the signatures on the records themselves, and a
+//! file is kept only when a record the hub already holds claims it.
+//!
+//! A stored file is public by its name, served to be cached for good, and
+//! there is no request that removes it. Whoever calls [`Hub::file_put`] has
+//! to have decided that before the call; nothing here can take it back.
 //!
 //! The two kinds of tag are not equally careful, and a reader has to know
 //! it. A city tag keeps a record only when its key belongs to the person it
@@ -19,6 +25,7 @@ use std::time::Duration;
 use serde::Deserialize;
 use serde_json::value::RawValue;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 use crate::error::{CityError, Result};
 use crate::identity::Identity;
@@ -27,6 +34,10 @@ use crate::text::is_id;
 
 /// The server refuses a posted batch larger than this.
 pub const POST_MAX_BYTES: usize = 1024 * 1024;
+/// The server stores one part of a recording of at most this many bytes
+/// (`FILE_MAX` in the city's `server/files.py`). Its own recorder cuts
+/// five-minute parts of two or three megabytes.
+pub const FILE_MAX_BYTES: u64 = 16 * 1024 * 1024;
 
 /// Someone the city admitted.
 pub const ROLE_RESIDENT: &str = "resident";
@@ -49,6 +60,13 @@ const TAG_TIMEOUT: Duration = Duration::from_secs(90);
 /// the route to a city's server is often briefly unreachable while the
 /// machine itself is online.
 const RETRY_PAUSE: Duration = Duration::from_millis(800);
+/// The server gives an upload this long before it stops listening: the time
+/// the bytes take at the slowest rate it puts up with, and a grace period on
+/// top (`UPLOAD_RATE`, `UPLOAD_IDLE` in its `server/sites.py`). Waiting any
+/// longer than the server does would only hide a failure; giving up sooner
+/// would abandon an upload that a slow venue network was still carrying.
+pub const UPLOAD_BYTES_PER_SEC: u64 = 16 * 1024;
+pub const UPLOAD_GRACE_SECS: u64 = 60;
 /// A tag is read in pages; this bounds a server that never says "done".
 const MAX_PAGES: usize = 2_000;
 const MAX_KINDS: usize = 24;
@@ -407,6 +425,91 @@ impl Hub {
         Ok(card)
     }
 
+    /// Whether the server already stores the file of this name (see
+    /// [`file_name`]). Stored files never change, so the first byte is asked
+    /// for and nothing more.
+    pub async fn file_exists(&self, file: &str) -> Result<bool> {
+        let url = format!("{}{}", self.base, file_path(file)?);
+        match self.file_probe(&url).await {
+            // A read, like any other: tried once more before it is a failure.
+            Err(CityError::Offline) => {
+                tokio::time::sleep(RETRY_PAUSE).await;
+                self.file_probe(&url).await
+            }
+            answer => answer,
+        }
+    }
+
+    async fn file_probe(&self, url: &str) -> Result<bool> {
+        let response = self
+            .http
+            .get(url)
+            .header("Range", "bytes=0-0")
+            .timeout(REQUEST_TIMEOUT)
+            .send()
+            .await
+            .map_err(transport)?;
+        match response.status().as_u16() {
+            200..=299 => Ok(true),
+            404 => Ok(false),
+            status => Err(CityError::Http { status }),
+        }
+    }
+
+    /// Uploads one file under its name, in one request with a stated length
+    /// (the server takes no chunked uploads and no credential).
+    ///
+    /// The server keeps it only if a record the hub already holds claims
+    /// exactly these bytes: for a recording, a `tape/part` naming this file
+    /// and this size, signed by the author of the take it belongs to and
+    /// posted to the event's tag **before** this call (see
+    /// [`crate::publish::build_part`]). Who may add audio to an event is the
+    /// server's decision, made here and nowhere earlier; a refusal is
+    /// [`CityError::Unclaimed`].
+    ///
+    /// Sending a file the server already has is accepted and changes nothing.
+    /// A file that was accepted cannot be withdrawn.
+    pub async fn file_put(&self, file: &str, bytes: Vec<u8>) -> Result<()> {
+        let url = format!("{}{}", self.base, file_path(file)?);
+        let size = bytes.len() as u64;
+        if size == 0 {
+            return Err(CityError::malformed("an empty file"));
+        }
+        // Both would be refused by the server; neither is worth the upload.
+        if size > FILE_MAX_BYTES {
+            return Err(CityError::FileTooBig);
+        }
+        if file_name(&bytes) != file {
+            return Err(CityError::malformed(
+                "the bytes are not the file the name promises",
+            ));
+        }
+        let response = self
+            .http
+            .put(url)
+            .header("Content-Type", "application/octet-stream")
+            .timeout(upload_timeout(size))
+            .body(bytes)
+            .send()
+            .await
+            .map_err(transport)?;
+        match response.status().as_u16() {
+            200..=299 => Ok(()),
+            403 => Err(CityError::Unclaimed),
+            413 => Err(CityError::FileTooBig),
+            429 => Err(CityError::DailyCap {
+                retry_after_secs: response
+                    .headers()
+                    .get("retry-after")
+                    .and_then(|value| value.to_str().ok())
+                    .and_then(|seconds| seconds.trim().parse().ok()),
+            }),
+            507 => Err(CityError::ServerFull),
+            400 => Err(CityError::BadFile),
+            status => Err(CityError::Http { status }),
+        }
+    }
+
     /// A read. One that did not get through is tried once more: reads change
     /// nothing, and a single lost connection should not surface as a failure.
     async fn get(&self, path: &str, timeout: Duration) -> Result<Vec<u8>> {
@@ -439,6 +542,23 @@ pub fn event_tag(event_id: &str) -> String {
 /// The tag a city's records are posted to.
 pub fn city_tag(city_id: &str) -> String {
     format!("polis:{}", crate::text::utf16_prefix(city_id, 16))
+}
+
+/// The name the city stores a file under: the lowercase hex SHA-256 of its
+/// bytes. The bytes are opaque here — an encoded file, whatever is in it.
+pub fn file_name(bytes: &[u8]) -> String {
+    hex::encode(Sha256::digest(bytes))
+}
+
+fn file_path(file: &str) -> Result<String> {
+    if !is_id(file) {
+        return Err(CityError::malformed("not a file name"));
+    }
+    Ok(format!("/files/{file}"))
+}
+
+fn upload_timeout(size: u64) -> Duration {
+    Duration::from_secs(size / UPLOAD_BYTES_PER_SEC + UPLOAD_GRACE_SECS)
 }
 
 /// A person's most useful record of one type: for a DID log the longest (a
@@ -603,6 +723,31 @@ mod tests {
         for bad in ["", "Ev", "ev/", "ev/Edit", "@me", "ev/edit/x", "a,b"] {
             assert!(!kind_ok(bad), "{bad}");
         }
+    }
+
+    #[test]
+    fn files_are_named_by_their_bytes_and_given_time_to_arrive() {
+        assert_eq!(
+            file_name(b""),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+        assert_eq!(
+            file_name(b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        assert_eq!(
+            file_path(&"0a".repeat(32)).unwrap(),
+            format!("/files/{}", "0a".repeat(32))
+        );
+        for bad in ["", "0a", &"0A".repeat(32), &"0g".repeat(32), "../hub/x"] {
+            assert!(file_path(bad).is_err(), "{bad}");
+        }
+        // What the server allows: the bytes at 16 KiB a second, and a minute.
+        assert_eq!(upload_timeout(1), Duration::from_secs(60));
+        assert_eq!(
+            upload_timeout(FILE_MAX_BYTES),
+            Duration::from_secs(1024 + 60)
+        );
     }
 
     #[test]

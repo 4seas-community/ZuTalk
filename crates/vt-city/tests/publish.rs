@@ -4,12 +4,14 @@
 //! must hold for any input.
 
 use serde_json::{json, Value};
+use vt_city::hub::{event_tag, FILE_MAX_BYTES};
 use vt_city::identity::Identity;
 use vt_city::publish::{
-    batches, build_take, build_update, build_withdraw, for_tag, text_mark, Correction, Sentence,
-    TakeInput, Translated, SENTENCES_PER_RECORD, SENTENCE_MAX, TRANSLATIONS_PER_RECORD,
+    batches, build_part, build_take, build_update, build_withdraw, for_tag, text_mark, Correction,
+    PartInput, Sentence, TakeInput, Translated, MIME_M4A, PART_LEVELS_MAX, PART_MS,
+    SENTENCES_PER_RECORD, SENTENCE_MAX, TRANSLATIONS_PER_RECORD,
 };
-use vt_city::record;
+use vt_city::{record, CityError};
 
 const NOW: i64 = 1_794_528_000_000;
 
@@ -62,7 +64,6 @@ fn input(sentences: usize) -> TakeInput {
             ("host".into(), " Ada ".into()),
             ("nobody".into(), "Unused".into()),
         ],
-        marks_ms: vec![5_000, 1_000, 5_000],
         channel_ids: vec!["cd".repeat(32), "ab".repeat(32), "cd".repeat(32)],
     }
 }
@@ -93,8 +94,6 @@ fn a_take_is_one_verifiable_chain() {
             "tape/who",
             "tape/who",
             "tape/who",
-            "tape/mark",
-            "tape/mark",
             "tape/tr",
             "tape/tr",
             "tape/end",
@@ -151,7 +150,7 @@ fn a_take_is_one_verifiable_chain() {
 }
 
 #[test]
-fn speakers_marks_and_languages_are_written_for_the_citys_readers() {
+fn speakers_and_languages_are_written_for_the_citys_readers() {
     let built = build_take(&who(), &input(5), NOW).unwrap();
     let text = &of_kind(&built.records, "tape/text")[0]["e"]["body"]["segs"];
     assert_eq!(
@@ -172,11 +171,6 @@ fn speakers_marks_and_languages_are_written_for_the_citys_readers() {
             &json!({"sp": "nobody", "name": "Unused"})
         ]
     );
-    let marks: Vec<&Value> = of_kind(&built.records, "tape/mark")
-        .iter()
-        .map(|rec| &rec["e"]["body"]["t"])
-        .collect();
-    assert_eq!(marks, [&json!(1_000), &json!(5_000)]);
     let translations = of_kind(&built.records, "tape/tr");
     assert_eq!(translations[0]["e"]["body"]["lang"], "th");
     assert_eq!(translations[1]["e"]["body"]["lang"], "zh");
@@ -316,7 +310,6 @@ fn input_that_would_mislead_readers_is_refused() {
     assert!(refuse(|i| i.channel_ids = vec!["short".into()]));
     assert!(refuse(|i| i.duration_ms = -1));
     assert!(refuse(|i| i.started_ms = -1));
-    assert!(refuse(|i| i.marks_ms = vec![-5]));
     assert!(refuse(|i| i.translations[0].0 = "simplified chinese".into()));
     assert!(
         refuse(|i| i.translations[0].1[0].t_ms = 123_456),
@@ -430,4 +423,135 @@ fn corrections_and_withdrawal() {
     assert_eq!(withdraw[0]["e"]["body"], json!({"to": "drop"}));
     assert_eq!(withdraw[0]["e"]["links"], json!([block_id]));
     assert!(build_withdraw(&who, "nope", NOW).is_err());
+}
+
+/// Where someone marked a recording is theirs, not the archive's: nothing
+/// this crate builds for a take, an update or a withdrawal is a highlight.
+#[test]
+fn no_highlight_is_ever_built() {
+    let who = who();
+    let built = build_take(&who, &input(5), NOW).unwrap();
+    let update = build_update(
+        &who,
+        &built.take_id,
+        &[Correction {
+            t_ms: 1_000,
+            text: "Corrected.".into(),
+        }],
+        &[],
+        NOW + 60_000,
+    )
+    .unwrap();
+    let withdraw = build_withdraw(&who, &built.block_id, NOW + 120_000).unwrap();
+    for rec in built.records.iter().chain(&update).chain(&withdraw) {
+        assert_ne!(rec["e"]["type"], "tape/mark");
+    }
+}
+
+fn part(take_id: &str, n: u32) -> PartInput {
+    PartInput {
+        take_id: take_id.to_string(),
+        n,
+        file: format!("{:02x}", n + 1).repeat(32),
+        size: 2_400_000,
+        t0_ms: i64::from(n) * PART_MS,
+        dur_ms: PART_MS,
+        mime: MIME_M4A.into(),
+        levels: "0123456789".repeat(30),
+    }
+}
+
+#[test]
+fn a_part_names_its_file_and_its_place_on_the_take() {
+    let who = who();
+    let take = build_take(&who, &input(3), NOW).unwrap();
+    let signed = build_part(&who, &part(&take.take_id, 1), NOW + 5_000).unwrap();
+    assert!(record::verify(&signed.rec));
+    assert_eq!(record::record_id(&signed.rec).unwrap(), signed.id);
+    let entry = &signed.rec["e"];
+    assert_eq!(entry["type"], "tape/part");
+    assert_eq!(entry["by"], who.id());
+    assert_eq!(entry["at"], NOW + 5_000);
+    // About the take, and standing on the take alone: parts can be sent in
+    // any order and one that failed can be tried again by itself.
+    assert_eq!(entry["links"], json!([take.take_id]));
+    assert_eq!(entry["deps"], json!([take.take_id]));
+    assert_eq!(
+        entry["body"],
+        json!({
+            "n": 1, "file": "02".repeat(32), "size": 2_400_000, "t0": 300_000, "dur": 300_000,
+            "mime": "audio/mp4", "lv": "0123456789".repeat(30),
+        })
+    );
+    // The same input signs the same record, so sending again adds nothing.
+    assert_eq!(
+        build_part(&who, &part(&take.take_id, 1), NOW + 5_000).unwrap(),
+        signed
+    );
+    // It belongs with the transcript, on the event's tag and nowhere else.
+    let records = [signed.rec.clone()];
+    assert_eq!(for_tag(&event_tag(&"ab".repeat(32)), &records).len(), 1);
+    assert!(for_tag("polis:0000000000000000", &records).is_empty());
+}
+
+#[test]
+fn a_part_the_city_would_drop_or_alter_is_refused() {
+    let who = who();
+    let take_id = "cd".repeat(32);
+    let refused = |change: fn(&mut PartInput)| {
+        let mut part = part(&"cd".repeat(32), 0);
+        change(&mut part);
+        build_part(&who, &part, NOW)
+    };
+    for (what, outcome) in [
+        ("no take", refused(|p| p.take_id = "the take".into())),
+        ("a short file name", refused(|p| p.file = "ab".repeat(31))),
+        (
+            "an upper-case file name",
+            refused(|p| p.file = "AB".repeat(32)),
+        ),
+        ("an empty file", refused(|p| p.size = 0)),
+        ("a negative start", refused(|p| p.t0_ms = -1)),
+        ("no length", refused(|p| p.dur_ms = 0)),
+        ("a negative length", refused(|p| p.dur_ms = -300_000)),
+        (
+            "a start no double holds",
+            refused(|p| p.t0_ms = (1 << 53) + 1),
+        ),
+        ("an unknown type", refused(|p| p.mime = "audio/wav".into())),
+        (
+            "a quoted type",
+            refused(|p| p.mime = "audio/mp4;codecs=\"mp4a.40.2\"".into()),
+        ),
+        ("letters for loudness", refused(|p| p.levels = "01a".into())),
+        ("spaces in loudness", refused(|p| p.levels = "0 1 2".into())),
+        (
+            "more than an hour of loudness",
+            refused(|p| p.levels = "5".repeat(PART_LEVELS_MAX + 1)),
+        ),
+    ] {
+        assert!(
+            matches!(outcome, Err(CityError::Malformed(_))),
+            "{what}: {outcome:?}"
+        );
+    }
+    // Too large is its own answer: the caller tells the person so.
+    assert_eq!(
+        refused(|p| p.size = FILE_MAX_BYTES + 1),
+        Err(CityError::FileTooBig)
+    );
+    // At the limits, and with nothing to draw a waveform from, it stands.
+    for ok in [
+        refused(|p| p.size = FILE_MAX_BYTES),
+        refused(|p| p.size = 1),
+        refused(|p| p.levels = String::new()),
+        refused(|p| p.levels = "9".repeat(PART_LEVELS_MAX)),
+        refused(|p| p.n = u32::MAX),
+        refused(|p| p.mime = "audio/webm;codecs=opus".into()),
+        refused(|_| {}),
+    ] {
+        let signed = ok.unwrap();
+        assert!(record::verify(&signed.rec));
+        assert_eq!(signed.rec["e"]["links"], json!([take_id]));
+    }
 }

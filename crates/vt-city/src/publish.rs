@@ -1,17 +1,28 @@
-//! A finished recording's transcript, as the records a city's archive reads.
+//! A finished recording, as the records a city's archive reads.
 //!
 //! The city models a recording as a *take* (`tape/take`, linking the event)
 //! and everything said in it as records that link the take: the sentences
 //! (`tape/text`), per-language translations (`tape/tr`), speaker names
-//! (`tape/who`), highlights (`tape/mark`), later corrections (`tape/fix`) and
-//! the end (`tape/end`). The archive item people open is an `arc/block` of
-//! kind `audio` that names the take, placed into the event's channel — and
-//! any other channel — by an `arc/connect`.
+//! (`tape/who`), later corrections (`tape/fix`) and the end (`tape/end`). The
+//! archive item people open is an `arc/block` of kind `audio` that names the
+//! take, placed into the event's channel — and any other channel — by an
+//! `arc/connect`.
 //!
-//! This device publishes **text only**: no audio segments (`tape/part`) and
-//! no files. The archive page copes — it takes the length from the block and
-//! shows the transcript, speakers, languages and highlights — but it has
-//! nothing to play.
+//! The sound itself is cut into parts, each a file that plays on its own.
+//! A part is one more record that links the take (`tape/part`, see
+//! [`build_part`]): it names the file by the SHA-256 of its bytes and says
+//! where on the take's timeline it sits. The bytes go to the server's file
+//! store ([`crate::hub::Hub::file_put`]), which keeps them only once the
+//! record that claims them is on the event's tag. A take is whole without any
+//! parts — the archive page then shows the transcript and has nothing to
+//! play — so text and audio are published separately, the text first.
+//!
+//! The city also has a record for a highlight (`tape/mark`). This crate does
+//! not build it and has no input for one: where someone marked a recording is
+//! theirs, not the archive's.
+//!
+//! What this module is handed for a part is an encoded file's name, size and
+//! place in time. It never sees samples and could not decode them.
 //!
 //! A sentence's start time in milliseconds is its key. Translations and
 //! corrections find their sentence by it, so two sentences may not share one.
@@ -21,11 +32,12 @@
 //! `now_ms`, which keeps "signed later" meaning "comes later" for readers
 //! that break ties by time.
 
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, HashSet};
 
 use serde_json::{json, Value};
 
 use crate::error::{CityError, Result};
+use crate::hub::FILE_MAX_BYTES;
 use crate::identity::Identity;
 use crate::record::{self, Signed};
 use crate::text::{is_id, js_trim, utf16_len, utf16_prefix};
@@ -49,6 +61,18 @@ pub const TRANSLATIONS_PER_RECORD: usize = 60;
 /// A soft ceiling on the text carried by one record, so that even a run of
 /// maximal sentences cannot produce a record too large to post.
 const RECORD_TEXT_BYTES: usize = 200_000;
+/// The length the city's own recorder cuts a recording's audio into, in
+/// milliseconds. Each part must play on its own; the last one is shorter.
+pub const PART_MS: i64 = 5 * 60 * 1000;
+/// Readers keep this many loudness digits of a part: one a second, an hour.
+pub const PART_LEVELS_MAX: usize = 3_600;
+/// Readers keep this many UTF-16 units of a part's media type.
+pub const PART_MIME_MAX: usize = 60;
+/// AAC in an MPEG-4 container (`.m4a`), by its registered name (RFC 4337).
+pub const MIME_M4A: &str = "audio/mp4";
+/// Every number in a record is a JavaScript double on the other side; an
+/// integer beyond this would be read back as a different one.
+const EXACT_MAX: i64 = (1 << 53) - 1;
 
 /// One sentence of the transcript.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -85,7 +109,6 @@ pub struct TakeInput {
     pub translations: Vec<(String, Vec<Translated>)>,
     /// Speaker label (as in [`Sentence::speaker`]) to display name.
     pub speakers: Vec<(String, String)>,
-    pub marks_ms: Vec<i64>,
     /// Channels, besides the event's own, to place the recording in.
     pub channel_ids: Vec<String>,
 }
@@ -96,6 +119,31 @@ pub struct BuiltTake {
     pub take_id: String,
     pub block_id: String,
     pub records: Vec<Value>,
+}
+
+/// One part of a recording's audio: an encoded file and where it sits.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PartInput {
+    /// The take this is a part of. Its author must be the one signing.
+    pub take_id: String,
+    /// Which part, counted from zero. Readers keep the first record they
+    /// meet for a number and ignore any later one.
+    pub n: u32,
+    /// The file's name: the lowercase hex SHA-256 of its bytes
+    /// ([`crate::hub::file_name`]).
+    pub file: String,
+    /// Exactly how many bytes the file has. The server stores a file only
+    /// under a record that states its size to the byte.
+    pub size: u64,
+    /// Where the part begins on the take's timeline, in milliseconds — the
+    /// same clock as [`Sentence::t_ms`].
+    pub t0_ms: i64,
+    pub dur_ms: i64,
+    /// The media type the server will serve the file as; see [`MIME_M4A`].
+    pub mime: String,
+    /// Loudness, one digit `0`–`9` per second of the part, for the waveform.
+    /// May be shorter than the part (readers pad with silence) or empty.
+    pub levels: String,
 }
 
 /// A corrected sentence. An empty text hides the sentence.
@@ -175,16 +223,6 @@ pub fn build_take(who: &Identity, input: &TakeInput, now_ms: i64) -> Result<Buil
             "a translation is for a sentence the take does not have",
         ));
     }
-    let mut marks = BTreeSet::new();
-    for mark in &input.marks_ms {
-        if *mark < 0 {
-            return Err(CityError::malformed(
-                "a highlight cannot come before the start",
-            ));
-        }
-        marks.insert(*mark);
-    }
-
     let mut chain = Chain::new(who, now_ms, who.id());
     let take_id = chain.sign(
         "tape/take",
@@ -226,9 +264,6 @@ pub fn build_take(who: &Identity, input: &TakeInput, now_ms: i64) -> Result<Buil
             &[take_id.as_str()],
         )?;
     }
-    for mark in marks {
-        chain.sign("tape/mark", json!({ "t": mark }), &[take_id.as_str()])?;
-    }
     sign_translations(&mut chain, &take_id, &languages)?;
     chain.sign("tape/end", json!({}), &[take_id.as_str()])?;
     let block_id = chain.sign(
@@ -254,6 +289,90 @@ pub fn build_take(who: &Identity, input: &TakeInput, now_ms: i64) -> Result<Buil
         block_id,
         records: chain.out,
     })
+}
+
+/// Builds the record that puts one part of the audio on a take: which file,
+/// how large, and where on the take's timeline. It must be on the event's tag
+/// before the file is uploaded; the server looks the claim up there, among
+/// the records it holds in memory, so the take itself is posted again in the
+/// same batch.
+///
+/// The record depends on the take and on nothing else, so parts can be
+/// signed and sent in any order, and a part that failed can be tried again
+/// without touching its neighbours. The same input and `at_ms` always
+/// produce the same record.
+///
+/// Everything a reader or the server would refuse or silently alter is
+/// refused here: readers drop a part with a malformed number or file name,
+/// strip anything but digits from the loudness, and the server serves a file
+/// whose type it does not know as if it were WebM.
+///
+/// Signing this is the last step that can be undone by not sending it. Once
+/// the record is posted and the file accepted, the audio is public by its
+/// name and neither can be removed.
+pub fn build_part(who: &Identity, part: &PartInput, at_ms: i64) -> Result<Signed> {
+    if !is_id(&part.take_id) {
+        return Err(CityError::malformed("not a take"));
+    }
+    if !is_id(&part.file) {
+        return Err(CityError::malformed(
+            "a file is named by the sha-256 of its bytes",
+        ));
+    }
+    if part.size == 0 {
+        return Err(CityError::malformed("an empty file"));
+    }
+    if part.size > FILE_MAX_BYTES {
+        return Err(CityError::FileTooBig);
+    }
+    if !(0..=EXACT_MAX).contains(&part.t0_ms) || !(1..=EXACT_MAX).contains(&part.dur_ms) {
+        return Err(CityError::malformed(
+            "a part starts at or after the beginning and lasts some time",
+        ));
+    }
+    if !audio_mime_ok(&part.mime) {
+        return Err(CityError::malformed("not an audio type the city serves"));
+    }
+    if part.levels.len() > PART_LEVELS_MAX || !part.levels.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        return Err(CityError::malformed(
+            "loudness is one digit a second, an hour at most",
+        ));
+    }
+    record::make(
+        who,
+        "tape/part",
+        json!({
+            "n": part.n,
+            "file": part.file,
+            "size": part.size,
+            "t0": part.t0_ms,
+            "dur": part.dur_ms,
+            "mime": part.mime,
+            "lv": part.levels,
+        }),
+        std::slice::from_ref(&part.take_id),
+        std::slice::from_ref(&part.take_id),
+        at_ms,
+    )
+}
+
+/// The server's own rule for a part's media type
+/// (`^audio/(webm|ogg|mp4|x-m4a|mpeg|aac)(;[ a-z0-9=,.\-]*)?$`), within the
+/// length readers keep.
+fn audio_mime_ok(mime: &str) -> bool {
+    let Some(rest) = mime.strip_prefix("audio/") else {
+        return false;
+    };
+    let (kind, parameters) = match rest.split_once(';') {
+        Some((kind, parameters)) => (kind, parameters),
+        None => (rest, ""),
+    };
+    mime.len() <= PART_MIME_MAX
+        && matches!(kind, "webm" | "ogg" | "mp4" | "x-m4a" | "mpeg" | "aac")
+        && parameters.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || b" =,.-".contains(&byte)
+        })
 }
 
 /// Builds the records for changes made after publishing: corrected sentences
@@ -297,6 +416,8 @@ pub fn build_update(
 ///
 /// The transcript records of the take are not items and are not deleted by
 /// this: a city's log is append-only, and what was said in it stays said.
+/// Neither are the parts of its audio or their files: the item disappears
+/// from the archive's pages, the bytes stay where they were stored.
 pub fn build_withdraw(who: &Identity, block_id: &str, now_ms: i64) -> Result<Vec<Value>> {
     if !is_id(block_id) {
         return Err(CityError::malformed("not an archive item"));
@@ -577,6 +698,40 @@ mod tests {
         assert_eq!(long.len(), 8);
         assert_eq!(long, speaker_label("speaker-0001"));
         assert_ne!(long, speaker_label("speaker-0002"));
+    }
+
+    #[test]
+    fn audio_types_are_the_ones_the_server_serves() {
+        for good in [
+            "audio/mp4",
+            "audio/webm",
+            "audio/webm;codecs=opus",
+            "audio/ogg; codecs=opus",
+            "audio/x-m4a",
+            "audio/mpeg",
+            "audio/aac",
+            "audio/mp4;",
+        ] {
+            assert!(audio_mime_ok(good), "{good}");
+        }
+        let long = format!("audio/mp4;{}", "a".repeat(PART_MIME_MAX));
+        for bad in [
+            "",
+            "audio/",
+            "audio/wav",
+            "audio/mp4a",
+            "Audio/mp4",
+            "audio/MP4",
+            "video/mp4",
+            " audio/mp4",
+            "audio/mp4 ",
+            "audio/mp4;codecs=\"mp4a.40.2\"",
+            "audio/mp4;Codecs=aac",
+            "audio/mp4\n",
+            long.as_str(),
+        ] {
+            assert!(!audio_mime_ok(bad), "{bad}");
+        }
     }
 
     #[test]

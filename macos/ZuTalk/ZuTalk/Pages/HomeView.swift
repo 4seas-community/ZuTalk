@@ -2,6 +2,12 @@
 // Home: where a recording starts, and under it everything recorded so far,
 // by date. Topics are optional folders with their own destination,
 // `TopicsView`, which the sidebar offers once there is a topic.
+//
+// Neither page explains itself (docs/product/interface-layers.md「界面怎么写」).
+// A row is a time, a name, its languages and its topic, and at most one
+// thing that needs saying about it. Where there is nothing to list there is
+// one sentence, with the one thing to do about it when there is one. What
+// used to be printed under titles and rows is in tooltips.
 
 import Combine
 import SwiftUI
@@ -89,81 +95,53 @@ struct TopicsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: Spacing.xl) {
-                HStack(alignment: .top, spacing: Spacing.lg) {
-                    VStack(alignment: .leading, spacing: Spacing.xs) {
-                        Text(String(localized: "home.library.title"))
-                            .font(.titleLG)
-                            .foregroundColor(.textPrimary)
-                            .accessibilityAddTraits(.isHeader)
-
-                        Text(String(localized: "home.library.subtitle"))
-                            .font(.bodySM)
-                            .foregroundColor(.textSecondary)
+            VStack(alignment: .leading, spacing: Spacing.lg) {
+                // The window's header already says where this is; the page
+                // starts with what can be done here.
+                HStack(spacing: Spacing.sm) {
+                    // Nothing to search before there is a topic.
+                    if viewModel.hasNoResearchTopics == false {
+                        HomeSearchField(
+                            placeholder: String(localized: "topics.search.placeholder"),
+                            text: $searchText,
+                            identifier: "topics.search"
+                        )
                     }
 
-                    Spacer(minLength: Spacing.md)
+                    Spacer(minLength: 0)
 
-                    Button {
+                    ActionPill(
+                        String(localized: "topic.collab.join_button"),
+                        systemImage: "person.2"
+                    ) {
                         isJoiningTopic = true
-                    } label: {
-                        Label(String(localized: "topic.collab.join_button"), systemImage: "person.2")
-                            .font(.bodyMedium)
-                            .padding(.horizontal, Spacing.md)
-                            .frame(minHeight: 40)
                     }
-                    .buttonStyle(.plain)
-                    .foregroundColor(.textPrimary)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: Radius.sm)
-                            .strokeBorder(Color.borderGhost, lineWidth: Stroke.thin)
-                    )
-                    .help(String(localized: "topic.collab.join_explain"))
                     .accessibilityIdentifier("topics.join")
 
-                    Button {
+                    // The page's one main action. What a topic is, for
+                    // whoever wonders before making one, is its tooltip.
+                    PrimaryPill(
+                        String(localized: "home.topics.new"),
+                        systemImage: "plus",
+                        help: String(localized: "topics.empty.description")
+                    ) {
                         isCreatingNotebook = true
-                    } label: {
-                        Label(String(localized: "home.notebook.new"), systemImage: "plus")
-                            .font(.bodyMedium)
-                            .padding(.horizontal, Spacing.md)
-                            .frame(minHeight: 40)
                     }
-                    .buttonStyle(.plain)
-                    .foregroundColor(.bgSunken)
-                    .background(Color.textPrimary)
-                    .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+                    // "New" leans on the page around it; said alone it is
+                    // "New topic".
+                    .accessibilityLabel(Text(String(localized: "home.notebook.new")))
                     .accessibilityIdentifier("topics.create")
                 }
-
-                TextField(
-                    String(localized: "topics.search.placeholder"),
-                    text: $searchText
-                )
-                .textFieldStyle(.plain)
-                .font(.body)
-                .padding(.horizontal, Spacing.md)
-                .frame(minHeight: 44)
-                .background(Color.bgSunken.opacity(0.42))
-                .overlay(
-                    RoundedRectangle(cornerRadius: Radius.sm)
-                        .strokeBorder(Color.borderGhost.opacity(0.65), lineWidth: Stroke.thin)
-                )
-                .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
-                .accessibilityIdentifier("topics.search")
 
                 if viewModel.notebookWorkspaceError != nil,
                    viewModel.hasNoResearchTopics {
                     HomeWorkspaceFailureView(onRetry: reload)
                 } else if viewModel.hasNoResearchTopics {
-                    HomeNoNotebookView {
-                        isCreatingNotebook = true
-                    }
+                    HomeNoNotebookView()
                 } else if filteredTopics.isEmpty {
-                    EmptyState(
+                    HomeStateLine(
                         icon: "magnifyingglass",
-                        title: String(localized: "topics.search.empty.title"),
-                        description: String(localized: "topics.search.empty.description")
+                        text: String(localized: "topics.search.empty.title")
                     )
                 } else {
                     LazyVGrid(columns: columns, alignment: .leading, spacing: Spacing.md) {
@@ -241,6 +219,8 @@ struct TopicsView: View {
     }
 }
 
+/// A topic: its name, how many recordings are in it, and when it was last
+/// recorded into — as a word ("yesterday"), with the whole phrase on hover.
 private struct HomeNotebookCard: View {
     let notebook: FfiNotebook
     let sessionCount: Int
@@ -250,52 +230,33 @@ private struct HomeNotebookCard: View {
 
     var body: some View {
         Button(action: onOpen) {
-            VStack(alignment: .leading, spacing: Spacing.lg) {
-                HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: Spacing.sm) {
+                HStack(spacing: Spacing.sm) {
                     Image(systemName: "folder.fill")
-                        .font(.system(size: 18, weight: .semibold))
+                        .font(.bodyMedium)
                         .foregroundColor(.brandAccent)
-                        .frame(width: 36, height: 36)
-                        .background(Color.bgElevated)
-                        .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+                        .accessibilityHidden(true)
 
-                    Spacer()
-
-                    Image(systemName: "arrow.up.right")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(isHovering ? .textPrimary : .textTertiary)
-                }
-
-                VStack(alignment: .leading, spacing: Spacing.xs) {
                     Text(notebook.title)
                         .font(.titleMD)
                         .foregroundColor(.textPrimary)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-
-                    Text(metadata)
-                        .font(.bodySM)
-                        .foregroundColor(.textSecondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
 
-                // When it was last used says more than two lines every card
-                // shared ("recordings, transcripts and shared notes", "saved
-                // on this Mac").
-                if let lastRecordedAt {
-                    Label(
-                        String(
-                            format: String(localized: "topics.card.last_recorded_format"),
-                            lastRecordedAt.formatted(.relative(presentation: .named))
-                        ),
-                        systemImage: "clock"
-                    )
-                    .font(.bodySM)
-                    .foregroundColor(.textTertiary)
-                    .lineLimit(1)
+                HStack(spacing: Spacing.sm) {
+                    Text(TopicCardFacts.count(sessionCount))
+                    if let lastWord = TopicCardFacts.lastActivityWord(lastRecordedAt) {
+                        Text(verbatim: "·").foregroundColor(.textTertiary)
+                        Label(lastWord, systemImage: "clock")
+                    }
                 }
+                .font(.bodySM)
+                .foregroundColor(.textSecondary)
+                .lineLimit(1)
             }
-            .padding(Spacing.lg)
-            .frame(maxWidth: .infinity, minHeight: 148, alignment: .topLeading)
+            .padding(Spacing.md)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
             .surfaceCard(
                 fill: isHovering ? Color.bgElevated.opacity(0.58) : Color.bgElevated.opacity(0.3),
                 cornerRadius: Radius.md,
@@ -306,65 +267,167 @@ private struct HomeNotebookCard: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
+        // The whole name, for one that was cut, and when it was last used.
+        .help(
+            [notebook.title, TopicCardFacts.lastActivitySentence(lastRecordedAt)]
+                .compactMap { $0 }
+                .joined(separator: "\n")
+        )
         .accessibilityLabel(notebook.title)
+        .accessibilityValue(
+            [TopicCardFacts.count(sessionCount), TopicCardFacts.lastActivitySentence(lastRecordedAt)]
+                .compactMap { $0 }
+                .joined(separator: ", ")
+        )
         .accessibilityHint(String(localized: "home.library.open_hint"))
         .accessibilityIdentifier("topics.card.\(notebook.id)")
     }
+}
 
-    private var metadata: String {
+/// The two facts a topic's card carries under its name.
+enum TopicCardFacts {
+    static func count(_ recordings: Int) -> String {
         String(
             format: String(localized: "home.library.session_count_format"),
-            Int64(sessionCount)
+            Int64(recordings)
         )
+    }
+
+    /// When the topic was last recorded into, as the system says it in a
+    /// word or two: "yesterday", "2 weeks ago". Anything within the last
+    /// minute is "now" — nobody counts seconds on a folder.
+    static func lastActivityWord(_ date: Date?, relativeTo now: Date = Date()) -> String? {
+        guard let date else { return nil }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.dateTimeStyle = .named
+        formatter.unitsStyle = .full
+        let recent = now.timeIntervalSince(date) < 60
+        return formatter.localizedString(for: recent ? now : date, relativeTo: now)
+    }
+
+    /// The same, said in full for the tooltip and VoiceOver.
+    static func lastActivitySentence(_ date: Date?, relativeTo now: Date = Date()) -> String? {
+        lastActivityWord(date, relativeTo: now).map {
+            String(format: String(localized: "topics.card.last_recorded_format"), $0)
+        }
     }
 }
 
-// MARK: - Legacy active Notebook components
+// MARK: - States: one sentence, at most one action
 
-private struct HomeNoNotebookView: View {
-    let onCreate: () -> Void
+/// One sentence where content would be — nothing to list, something that
+/// failed, something still coming — and at most one thing to do about it.
+private struct HomeStateLine: View {
+    struct Action {
+        let title: String
+        let systemImage: String
+        /// What the surface no longer spells out, for whoever asks.
+        var help: String?
+        var identifier: String?
+        let perform: () -> Void
+    }
+
+    var icon: String?
+    var tint: Color = .textSecondary
+    var isBusy = false
+    let text: String
+    /// A sentence that used to sit under this one.
+    var help: String?
+    var action: Action?
 
     var body: some View {
-        VStack(spacing: Spacing.lg) {
-            Image(systemName: "book.closed")
-                .font(.system(size: 30, weight: .light))
+        HStack(spacing: Spacing.sm) {
+            if isBusy {
+                ProgressView()
+                    .controlSize(.small)
+            } else if let icon {
+                Image(systemName: icon)
+                    .font(PillMetrics.iconFont)
+                    .foregroundColor(tint)
+                    .accessibilityHidden(true)
+            }
+
+            Text(text)
+                .font(.body)
+                .foregroundColor(.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .help(help ?? "")
+                .accessibilityHint(Text(help ?? ""))
+
+            Spacer(minLength: Spacing.sm)
+
+            if let action {
+                ActionPill(
+                    action.title,
+                    systemImage: action.systemImage,
+                    help: action.help,
+                    action: action.perform
+                )
+                .accessibilityIdentifier(action.identifier ?? "")
+            }
+        }
+        .padding(.horizontal, Spacing.md)
+        .frame(maxWidth: .infinity, minHeight: PillMetrics.height, alignment: .leading)
+    }
+}
+
+/// The search field of a page: Home's recordings, the Topics page's topics.
+private struct HomeSearchField: View {
+    let placeholder: String
+    @Binding var text: String
+    let identifier: String
+    /// Asked to take the keyboard from outside — after "clear search".
+    var focusRequests = 0
+    @FocusState private var isSearchFocused: Bool
+
+    var body: some View {
+        HStack(spacing: Spacing.sm) {
+            Image(systemName: "magnifyingglass")
+                .font(PillMetrics.iconFont)
                 .foregroundColor(.textSecondary)
                 .accessibilityHidden(true)
 
-            VStack(spacing: Spacing.sm) {
-                Text(String(localized: "home.no_notebook.title"))
-                    .font(.titleLG)
-                    .foregroundColor(.textPrimary)
+            TextField(placeholder, text: $text)
+                .textFieldStyle(.plain)
+                .font(.body)
+                .foregroundColor(.textPrimary)
+                .focused($isSearchFocused)
+                .accessibilityIdentifier(identifier)
 
-                Text(String(localized: "topics.empty.description"))
-                    .font(.body)
-                    .foregroundColor(.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 460)
+            if text.isEmpty == false {
+                Button {
+                    text = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.textSecondary)
+                }
+                .buttonStyle(.plain)
+                .help(String(localized: "home.catalog.search.clear"))
+                .accessibilityLabel(String(localized: "home.catalog.search.clear"))
             }
-
-            HomeActionButton(
-                title: String(localized: "home.first_use.action"),
-                icon: "plus",
-                style: .primary,
-                action: onCreate
-            )
-            .accessibilityIdentifier("home.notebook.create_first")
-
-            Label(
-                String(localized: "home.notebook.local_first"),
-                systemImage: "lock.shield.fill"
-            )
-            .font(.bodySM)
-            .foregroundColor(.textSecondary)
         }
-        .frame(maxWidth: .infinity, minHeight: 240)
-        .padding(Spacing.xl)
+        .padding(.horizontal, Spacing.md)
+        .frame(maxWidth: 420)
+        .frame(minHeight: 36)
+        .background(Color.bgElevated.opacity(0.42))
         .overlay(
-            RoundedRectangle(cornerRadius: Radius.md)
-                .strokeBorder(Color.borderGhost.opacity(0.45), lineWidth: Stroke.thin)
+            RoundedRectangle(cornerRadius: Radius.sm)
+                .strokeBorder(Color.borderGhost.opacity(0.6), lineWidth: Stroke.thin)
         )
-        .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+        .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+        .focusRing(isSearchFocused, cornerRadius: Radius.sm)
+        // Return here is the end of a search, not the Start button.
+        .preference(key: TextEntryFocusKey.self, value: isSearchFocused)
+        .montereyOnChange(of: focusRequests) { _, _ in isSearchFocused = true }
+    }
+}
+
+/// No topic yet. The New button is right above; the page needs no second
+/// one, only a word about why it is empty.
+private struct HomeNoNotebookView: View {
+    var body: some View {
+        HomeStateLine(icon: "folder", text: String(localized: "home.no_notebook.title"))
+            .accessibilityIdentifier("topics.empty")
     }
 }
 
@@ -372,33 +435,19 @@ private struct HomeWorkspaceFailureView: View {
     let onRetry: () -> Void
 
     var body: some View {
-        VStack(spacing: Spacing.lg) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 34, weight: .regular))
-                .foregroundColor(.signalAmber)
-                .accessibilityHidden(true)
-
-            VStack(spacing: Spacing.sm) {
-                Text(String(localized: "home.workspace.load_failed.title"))
-                    .font(.titleLG)
-                    .foregroundColor(.textPrimary)
-                Text(String(localized: "home.workspace.load_failed.description"))
-                    .font(.body)
-                    .foregroundColor(.textSecondary)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: 460)
-            }
-
-            HomeActionButton(
+        HomeStateLine(
+            icon: "exclamationmark.triangle.fill",
+            tint: .signalAmber,
+            text: String(localized: "home.workspace.load_failed.title"),
+            action: .init(
                 title: String(localized: "home.workspace.retry"),
-                icon: "arrow.clockwise",
-                style: .primary,
-                action: onRetry
+                systemImage: "arrow.clockwise",
+                // "Your existing data was not changed": said on request.
+                help: String(localized: "home.workspace.load_failed.description"),
+                identifier: "home.workspace.retry",
+                perform: onRetry
             )
-            .accessibilityIdentifier("home.workspace.retry")
-        }
-        .frame(maxWidth: .infinity, minHeight: 420)
-        .padding(Spacing.xl)
+        )
     }
 }
 
@@ -406,26 +455,17 @@ private struct HomeWorkspaceRefreshWarning: View {
     let onRetry: () -> Void
 
     var body: some View {
-        HStack(spacing: Spacing.md) {
-            Label(
-                String(localized: "home.workspace.refresh_failed"),
-                systemImage: "exclamationmark.triangle.fill"
+        HomeStateLine(
+            icon: "exclamationmark.triangle.fill",
+            tint: .signalAmber,
+            text: String(localized: "home.workspace.refresh_failed"),
+            action: .init(
+                title: String(localized: "home.workspace.retry"),
+                systemImage: "arrow.clockwise",
+                identifier: "home.workspace.retry",
+                perform: onRetry
             )
-            .font(.bodySM)
-            .foregroundColor(.signalAmber)
-
-            Spacer()
-
-            Button(String(localized: "home.workspace.retry"), action: onRetry)
-                .buttonStyle(.plain)
-                .font(.bodyMedium)
-                .foregroundColor(.textPrimary)
-                .frame(minHeight: 44)
-                .accessibilityIdentifier("home.workspace.retry")
-        }
-        .padding(.horizontal, Spacing.md)
-        .background(Color.bgElevated.opacity(0.25))
-        .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+        )
     }
 }
 
@@ -435,7 +475,8 @@ private struct HomeSessionCatalog: View {
     @ObservedObject var viewModel: LibraryViewModel
     let onOpenSession: (String) -> Void
     let onOpenTopic: (String) -> Void
-    @FocusState private var isSearchFocused: Bool
+    /// Bumped to hand the keyboard back to the search field.
+    @State private var searchFocusRequests = 0
 
     private var groups: [SessionGroup] { viewModel.catalogGroupedSessions }
 
@@ -465,7 +506,7 @@ private struct HomeSessionCatalog: View {
             if viewModel.hasLoadedTopicMemberships == false,
                viewModel.notebookWorkspaceError != nil {
                 HomeCatalogRefreshWarning(
-                    message: String(localized: "home.workspace.membership_unavailable"),
+                    message: String(localized: "home.catalog.membership_failed"),
                     onRetry: { viewModel.loadNotebookWorkspace() }
                 )
             }
@@ -501,21 +542,22 @@ private struct HomeSessionCatalog: View {
                 } else if viewModel.hasCatalogSearchText {
                     HomeNoSearchResults {
                         viewModel.searchText = ""
-                        isSearchFocused = true
+                        searchFocusRequests += 1
                     }
                 } else if viewModel.selectedTopicFilterId
                     == LibraryViewModel.unfiledTopicFilterId {
-                    HomeCatalogEmptyLine(text: String(localized: "home.filter.no_topic_empty"))
+                    HomeStateLine(icon: "tray", text: String(localized: "home.filter.no_topic_empty"))
                 } else if viewModel.selectedTopicFilterId != nil {
-                    HomeCatalogEmptyState(
-                        title: String(localized: "home.catalog.topic_empty.title"),
-                        description: String(localized: "home.catalog.topic_empty.description"),
-                        icon: "folder"
+                    // How a recording gets into a topic is said on request.
+                    HomeStateLine(
+                        icon: "folder",
+                        text: String(localized: "home.catalog.topic_empty.title"),
+                        help: String(localized: "home.catalog.topic_empty.description")
                     )
                 } else {
                     // The Start button is right above; the list needs no
-                    // second one, only a word about what will appear here.
-                    HomeCatalogEmptyLine(text: String(localized: "home.empty.sentence"))
+                    // second one, only a word about why it is empty.
+                    HomeStateLine(icon: "tray", text: String(localized: "home.catalog.empty.title"))
                         .accessibilityIdentifier("home.catalog.empty")
                 }
             } else {
@@ -544,8 +586,13 @@ private struct HomeSessionCatalog: View {
     /// happening or can be done — no title repeating the page's name, no
     /// count of what the list already shows.
     private var catalogTools: some View {
-        HStack(spacing: Spacing.md) {
-            compactSearch
+        HStack(spacing: Spacing.sm) {
+            HomeSearchField(
+                placeholder: String(localized: "home.search.placeholder"),
+                text: $viewModel.searchText,
+                identifier: "home.catalog.search",
+                focusRequests: searchFocusRequests
+            )
 
             if viewModel.isSearchingTranscripts {
                 ProgressView()
@@ -558,78 +605,23 @@ private struct HomeSessionCatalog: View {
 
             if let topicId = viewModel.selectedTopicFilterId,
                topicId != LibraryViewModel.unfiledTopicFilterId {
-                Button {
+                ActionPill(
+                    String(localized: "home.library.open_hint"),
+                    systemImage: "arrow.up.right",
+                    style: .quiet
+                ) {
                     onOpenTopic(topicId)
-                } label: {
-                    Label(String(localized: "home.library.open_hint"), systemImage: "arrow.up.right")
-                        .font(.bodyMedium)
-                        .frame(minHeight: 36)
                 }
-                .buttonStyle(.plain)
-                .foregroundColor(.textPrimary)
-                .fixedSize()
                 .accessibilityIdentifier("home.topic.open_selected")
             }
         }
-    }
-
-    private var compactSearch: some View {
-        HStack(spacing: Spacing.sm) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.textSecondary)
-
-            TextField(
-                String(localized: "home.search.placeholder"),
-                text: $viewModel.searchText
-            )
-            .textFieldStyle(.plain)
-            .font(.body)
-            .foregroundColor(.textPrimary)
-            .focused($isSearchFocused)
-            .accessibilityIdentifier("home.catalog.search")
-
-            if viewModel.hasCatalogSearchText {
-                Button {
-                    viewModel.searchText = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.textSecondary)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(String(localized: "home.catalog.search.clear"))
-            }
-        }
-        .padding(.horizontal, Spacing.md)
-        .frame(maxWidth: 420)
-        .frame(minHeight: 36)
-        .background(Color.bgElevated.opacity(0.42))
-        .overlay(
-            RoundedRectangle(cornerRadius: Radius.sm)
-                .strokeBorder(Color.borderGhost.opacity(0.6), lineWidth: Stroke.thin)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
-        .focusRing(isSearchFocused, cornerRadius: Radius.sm)
-        // Return here is the end of a search, not the Start button.
-        .preference(key: TextEntryFocusKey.self, value: isSearchFocused)
     }
 }
 
 private struct HomeCatalogSearchingState: View {
     var body: some View {
-        HStack(spacing: Spacing.md) {
-            ProgressView()
-                .controlSize(.small)
-            Text(String(localized: "home.catalog.searching_transcripts"))
-                .font(.bodySM)
-                .foregroundColor(.textSecondary)
-            Spacer(minLength: 0)
-        }
-        .padding(Spacing.lg)
-        .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
-        .background(Color.bgElevated.opacity(0.2))
-        .clipShape(RoundedRectangle(cornerRadius: Radius.md))
-        .accessibilityElement(children: .combine)
+        HomeStateLine(isBusy: true, text: String(localized: "home.catalog.searching_transcripts"))
+            .accessibilityElement(children: .combine)
     }
 }
 
@@ -638,271 +630,147 @@ private struct HomeCatalogLoadFailureState: View {
     let onRetry: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Spacing.md) {
-            Label(message, systemImage: "exclamationmark.triangle.fill")
-                .font(.bodySM)
-                .foregroundColor(.signalAmber)
-
-            HomeActionButton(
-                title: String(localized: "home.workspace.retry"),
-                icon: "arrow.clockwise",
-                style: .secondary,
-                action: onRetry
-            )
-        }
-        .padding(Spacing.lg)
-        .frame(maxWidth: .infinity, minHeight: 96, alignment: .leading)
-        .background(Color.bgElevated.opacity(0.2))
-        .clipShape(RoundedRectangle(cornerRadius: Radius.md))
-        .accessibilityIdentifier("home.catalog.load_failure")
+        HomeCatalogProblemLine(message: message, onRetry: onRetry)
+            .accessibilityIdentifier("home.catalog.load_failure")
     }
 }
 
+/// Something about the list could not be brought up to date; the list
+/// itself, as far as it is known, is still shown below.
 private struct HomeCatalogRefreshWarning: View {
     let message: String
     let onRetry: () -> Void
 
     var body: some View {
-        HStack(spacing: Spacing.md) {
-            Label(message, systemImage: "exclamationmark.triangle.fill")
-                .font(.bodySM)
-                .foregroundColor(.signalAmber)
+        HomeCatalogProblemLine(message: message, onRetry: onRetry)
+            .accessibilityIdentifier("home.catalog.refresh_warning")
+    }
+}
 
-            Spacer(minLength: 0)
+/// What went wrong, and the one thing to do about it.
+private struct HomeCatalogProblemLine: View {
+    let message: String
+    let onRetry: () -> Void
 
-            Button(String(localized: "home.workspace.retry"), action: onRetry)
-                .buttonStyle(.plain)
-                .font(.bodyMedium)
-                .foregroundColor(.textPrimary)
-                .frame(minHeight: 36)
-        }
-        .padding(.horizontal, Spacing.md)
-        .background(Color.bgElevated.opacity(0.25))
-        .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
-        .accessibilityIdentifier("home.catalog.refresh_warning")
+    var body: some View {
+        HomeStateLine(
+            icon: "exclamationmark.triangle.fill",
+            tint: .signalAmber,
+            text: message,
+            action: .init(
+                title: String(localized: "home.workspace.retry"),
+                systemImage: "arrow.clockwise",
+                perform: onRetry
+            )
+        )
     }
 }
 
 private struct HomeCatalogLoadingState: View {
     var body: some View {
-        HStack(spacing: Spacing.md) {
-            ProgressView()
-                .controlSize(.small)
-
-            Text(String(localized: "home.catalog.loading"))
-                .font(.bodySM)
-                .foregroundColor(.textSecondary)
-
-            Spacer(minLength: 0)
-        }
-        .padding(Spacing.lg)
-        .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
-        .background(Color.bgElevated.opacity(0.2))
-        .clipShape(RoundedRectangle(cornerRadius: Radius.md))
-        .accessibilityElement(children: .combine)
+        HomeStateLine(isBusy: true, text: String(localized: "home.catalog.loading"))
+            .accessibilityElement(children: .combine)
     }
 }
 
+/// The filters over the list: all, the ones in no topic, then a topic each.
+/// One strip of pills; a long topic name is cut rather than stretching it,
+/// and the topics past the first few wait in a menu at the end.
 private struct HomeTopicFilterBar: View {
     @ObservedObject var viewModel: LibraryViewModel
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: Spacing.sm) {
-                HomeTopicFilterChip(
-                    title: String(localized: "home.catalog.filter.all"),
-                    count: viewModel.sessions.count,
-                    isSelected: viewModel.selectedTopicFilterId == nil,
-                    action: { viewModel.selectTopicFilter(nil) }
-                )
-                .accessibilityIdentifier("home.topic.filter.all")
-
-                if viewModel.hasLoadedTopicMemberships {
-                    HomeTopicFilterChip(
-                        title: String(localized: "home.filter.no_topic"),
-                        count: viewModel.unfiledSessionCount,
-                        isSelected: viewModel.selectedTopicFilterId
-                            == LibraryViewModel.unfiledTopicFilterId,
-                        action: viewModel.selectUnfiledFilter
-                    )
-                    .accessibilityIdentifier("home.topic.filter.unfiled")
-                }
-
-                ForEach(visibleTopics, id: \.id) { notebook in
-                    HomeTopicFilterChip(
-                        title: notebook.title,
-                        count: viewModel.notebookSessionCounts[notebook.id] ?? 0,
-                        isSelected: viewModel.selectedTopicFilterId == notebook.id,
-                        action: { viewModel.selectTopicFilter(notebook.id) }
-                    )
-                    .accessibilityIdentifier("home.topic.filter.\(notebook.id)")
-                }
-
-                // Topics past the first few used to scroll off the edge with
-                // no indicator that they were there.
-                if overflowTopics.isEmpty == false {
-                    Menu {
-                        ForEach(overflowTopics, id: \.id) { notebook in
-                            Button {
-                                viewModel.selectTopicFilter(notebook.id)
-                            } label: {
-                                Text("\(notebook.title)  \(viewModel.notebookSessionCounts[notebook.id] ?? 0)")
-                            }
-                        }
-                    } label: {
-                        Label(
-                            String(
-                                format: String(localized: "home.catalog.filter.more_format"),
-                                Int64(overflowTopics.count)
-                            ),
-                            systemImage: "chevron.down"
-                        )
-                        .font(.bodySM)
-                    }
-                    .menuStyle(.borderlessButton)
-                    .fixedSize()
-                    .accessibilityIdentifier("home.topic.filter.more")
-                }
-            }
+        GeometryReader { proxy in
+            strip(topicLimit: CatalogFilterLayout.limit(forWidth: proxy.size.width))
         }
+        .frame(height: PillMetrics.height)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("home.topic.filters")
     }
 
-    private static let chipLimit = 6
-
-    /// The most recently used topics, plus the selected one wherever it is.
-    private var visibleTopics: [FfiNotebook] {
-        let all = viewModel.researchNotebooks
-        var shown = Array(all.prefix(Self.chipLimit))
-        if let selected = viewModel.selectedTopicFilterId,
-           shown.contains(where: { $0.id == selected }) == false,
-           let topic = all.first(where: { $0.id == selected }) {
-            shown.append(topic)
-        }
-        return shown
-    }
-
-    private var overflowTopics: [FfiNotebook] {
-        let shown = Set(visibleTopics.map(\.id))
-        return viewModel.researchNotebooks.filter { shown.contains($0.id) == false }
-    }
-}
-
-private struct HomeTopicFilterChip: View {
-    let title: String
-    let count: Int
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: Spacing.xs) {
-                Text(title)
-                    .lineLimit(1)
-
-                Text("\(count)")
-                    .monospacedDigit()
-                    .foregroundColor(isSelected ? .brandAccentForeground.opacity(0.82) : .textTertiary)
-            }
-            .font(.bodySM)
-            .foregroundColor(isSelected ? .brandAccentForeground : .textSecondary)
-            .padding(.horizontal, Spacing.md)
-            .frame(minHeight: 34)
-            .background(isSelected ? Color.brandAccent : Color.bgElevated.opacity(0.32))
-            .overlay(
-                Capsule()
-                    .strokeBorder(
-                        isSelected ? Color.brandAccent : Color.borderGhost.opacity(0.55),
-                        lineWidth: Stroke.thin
-                    )
-            )
-            .clipShape(Capsule())
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-}
-
-/// One quiet sentence where the list would be, set in from the edge as far
-/// as the start card's own sentence above it.
-private struct HomeCatalogEmptyLine: View {
-    let text: String
-
-    var body: some View {
-        Text(text)
-            .font(.body)
-            .foregroundColor(.textSecondary)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, Spacing.md)
-    }
-}
-
-private struct HomeCatalogEmptyState: View {
-    let title: String
-    let description: String
-    let icon: String
-
-    var body: some View {
-        HStack(spacing: Spacing.md) {
-            Image(systemName: icon)
-                .font(.system(size: 22, weight: .regular))
-                .foregroundColor(.textSecondary)
-                .frame(width: 40, height: 40)
-                .background(Color.bgElevated.opacity(0.35))
-                .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: Spacing.xs) {
-                Text(title)
-                    .font(.bodyMedium)
-                    .foregroundColor(.textPrimary)
-
-                Text(description)
-                    .font(.bodySM)
-                    .foregroundColor(.textSecondary)
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(Spacing.lg)
-        .background(Color.bgElevated.opacity(0.2))
-        .overlay(
-            RoundedRectangle(cornerRadius: Radius.md)
-                .strokeBorder(Color.borderGhost.opacity(0.45), lineWidth: Stroke.thin)
+    private func strip(topicLimit: Int) -> some View {
+        let layout = CatalogFilterLayout.split(
+            topicIds: viewModel.researchNotebooks.map(\.id),
+            selected: viewModel.selectedTopicFilterId,
+            limit: topicLimit
         )
-        .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+        return PillStrip {
+            CatalogFilterPill(
+                String(localized: "home.catalog.filter.all"),
+                count: viewModel.sessions.count,
+                isSelected: viewModel.selectedTopicFilterId == nil
+            ) {
+                viewModel.selectTopicFilter(nil)
+            }
+            .accessibilityIdentifier("home.topic.filter.all")
+
+            if viewModel.hasLoadedTopicMemberships {
+                CatalogFilterPill(
+                    String(localized: "home.filter.no_topic"),
+                    count: viewModel.unfiledSessionCount,
+                    isSelected: viewModel.selectedTopicFilterId
+                        == LibraryViewModel.unfiledTopicFilterId,
+                    action: viewModel.selectUnfiledFilter
+                )
+                .accessibilityIdentifier("home.topic.filter.unfiled")
+            }
+
+            ForEach(topics(layout.shown), id: \.id) { notebook in
+                CatalogFilterPill(
+                    notebook.title,
+                    count: viewModel.notebookSessionCounts[notebook.id] ?? 0,
+                    isSelected: viewModel.selectedTopicFilterId == notebook.id
+                ) {
+                    viewModel.selectTopicFilter(notebook.id)
+                }
+                .accessibilityIdentifier("home.topic.filter.\(notebook.id)")
+            }
+
+            if layout.more.isEmpty == false {
+                MenuPill(
+                    String(
+                        format: String(localized: "home.catalog.filter.more_format"),
+                        Int64(layout.more.count)
+                    ),
+                    systemImage: "folder"
+                ) {
+                    topics(layout.more).map { notebook in
+                        PillMenuItem(
+                            "\(notebook.title)  \(viewModel.notebookSessionCounts[notebook.id] ?? 0)"
+                        ) {
+                            viewModel.selectTopicFilter(notebook.id)
+                        }
+                    }
+                }
+                .accessibilityIdentifier("home.topic.filter.more")
+            }
+        }
+    }
+
+    private func topics(_ ids: [String]) -> [FfiNotebook] {
+        let byId = Dictionary(
+            viewModel.researchNotebooks.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        return ids.compactMap { byId[$0] }
     }
 }
 
+/// Nothing matched. What a search looks at is said on request.
 private struct HomeNoSearchResults: View {
     let onClear: () -> Void
 
     var body: some View {
-        HStack(spacing: Spacing.md) {
-            VStack(alignment: .leading, spacing: Spacing.xs) {
-                Text(String(localized: "home.catalog.no_match.title"))
-                    .font(.bodyMedium)
-                    .foregroundColor(.textPrimary)
-                Text(String(localized: "home.catalog.no_match.description"))
-                    .font(.bodySM)
-                    .foregroundColor(.textSecondary)
-            }
-
-            Spacer()
-
-            HomeActionButton(
+        HomeStateLine(
+            icon: "magnifyingglass",
+            text: String(localized: "home.catalog.no_match.title"),
+            help: String(localized: "home.catalog.no_match.description"),
+            action: .init(
                 title: String(localized: "home.catalog.search.clear"),
-                icon: "xmark",
-                style: .secondary,
-                action: onClear
+                systemImage: "xmark",
+                perform: onClear
             )
-        }
-        .padding(Spacing.lg)
-        .background(Color.bgElevated.opacity(0.2))
-        .clipShape(RoundedRectangle(cornerRadius: Radius.md))
+        )
     }
 }
 
@@ -957,10 +825,14 @@ private struct HomeSessionRow: View {
     @State private var isConfirmingDelete = false
     @FocusState private var isFocused: Bool
 
+    /// The width each small button at the end of a row is given, so the
+    /// buttons — and the arrows before them — line up down the list.
+    private static let trailingSlot = PillMetrics.height + Spacing.xs
+
     var body: some View {
-        HStack(spacing: Spacing.sm) {
+        HStack(spacing: Spacing.xs) {
             Button(action: onOpen) {
-                HStack(alignment: .top, spacing: Spacing.md) {
+                HStack(spacing: Spacing.md) {
                     Text(session.timeString)
                         .font(.bodyMedium)
                         .foregroundColor(.textSecondary)
@@ -980,14 +852,13 @@ private struct HomeSessionRow: View {
                     Spacer(minLength: Spacing.sm)
 
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.textSecondary)
-                        .padding(.top, Spacing.xs)
+                        .font(PillMetrics.chevronFont)
+                        .foregroundColor(.textTertiary)
                         .accessibilityHidden(true)
                 }
                 .padding(.horizontal, Spacing.md)
-                .padding(.vertical, Spacing.xsm)
-                .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+                .padding(.vertical, Spacing.sm)
+                .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -995,6 +866,8 @@ private struct HomeSessionRow: View {
             .focusable()
             .focused($isFocused)
             .focusRing(isFocused, cornerRadius: Radius.sm)
+            // How long it is, and what the row had no room to say.
+            .help(hoverDetail)
             .accessibilityLabel(accessibilityLabel)
             .accessibilityHint(
                 String(localized: membershipKnown == false
@@ -1017,16 +890,23 @@ private struct HomeSessionRow: View {
                     }
                 } label: {
                     Image(systemName: "folder.badge.plus")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(PillMetrics.iconFont)
                         .foregroundColor(.brandAccent)
-                        .frame(width: 36, height: 44)
+                        .frame(width: PillMetrics.height, height: PillMetrics.height)
                         .contentShape(Rectangle())
                 }
                 .menuStyle(.borderlessButton)
                 .menuIndicator(.hidden)
                 .fixedSize()
+                .frame(width: Self.trailingSlot)
                 .help(String(localized: "home.row.put_in_topic"))
                 .accessibilityLabel(String(localized: "home.row.put_in_topic"))
+            } else if topics.isEmpty == false {
+                // A row already in a topic keeps the button's place, so the
+                // arrows of neighbouring rows stay in one column.
+                Color.clear
+                    .frame(width: Self.trailingSlot, height: PillMetrics.height)
+                    .accessibilityHidden(true)
             }
 
             // Whether this recording reached the city's archive. Nothing, and
@@ -1037,57 +917,50 @@ private struct HomeSessionRow: View {
                 isRecording: session.isRecording
             )
 
-            Menu {
-                // 正在录的删不了(Core 软删与彻底删除都拒绝)。禁用而不是
-                // 藏起来 —— 按钮消失了用户会以为是别的毛病,禁用配一句
-                // 原因才说得清「等录完」。
-                Button {
-                    isRenaming = true
-                } label: {
-                    Label(String(localized: "library.rename.recording"), systemImage: "pencil")
-                }
-                // 录好的才共享;正在录的从录音条直播。
+            // The same words, in the same order, as the recording's own
+            // menu, behind the same ⋯ a recording has wherever it is listed.
+            MorePill(
+                String(format: String(localized: "home.catalog.row.actions_format"), titleForDisplay)
+            ) {
+                // 录好的才分享;正在录的从录音条给观众看。
                 Button {
                     ShareActivityStore.shared.presentRecordingShare(
                         sessionId: session.id,
                         title: titleForDisplay
                     )
                 } label: {
-                    Label(String(localized: "share.recording.menu"), systemImage: "square.and.arrow.up")
+                    Label(String(localized: "recording.word.share"), systemImage: "square.and.arrow.up")
                 }
                 .disabled(session.isRecording)
+                Divider()
+                Button {
+                    isRenaming = true
+                } label: {
+                    Label(String(localized: "recording.word.rename"), systemImage: "pencil")
+                }
                 Button {
                     MainNavigationStore.shared.openSession(session.id, surface: .settings)
                 } label: {
-                    Label(String(localized: "session.menu.settings"), systemImage: "slider.horizontal.3")
+                    Label(String(localized: "session.tab.settings"), systemImage: "info.circle")
                 }
                 // The recording in progress has no details page yet: its
                 // tab bar shows only the transcript and the notes.
                 .disabled(canOpen == false || session.isRecording)
                 Divider()
+                // 正在录的删不了(Core 软删与彻底删除都拒绝)。这一项不藏也
+                // 不禁:点下去,库会答一句「录音结束后才能删除」。原来那句话
+                // 是挂在菜单里的一行灰字。
                 Button(role: .destructive) {
-                    isConfirmingDelete = true
+                    if HomeRowDelete.asksFirst(isRecording: session.isRecording) {
+                        isConfirmingDelete = true
+                    } else {
+                        onDelete()
+                    }
                 } label: {
-                    Label(String(localized: "resources.delete"), systemImage: "trash")
+                    Label(String(localized: "common.delete"), systemImage: "trash")
                 }
-                .disabled(session.isRecording)
-
-                if session.isRecording {
-                    Text(String(localized: "home.recording.delete_while_recording"))
-                }
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.textSecondary)
-                    .frame(width: 36, height: 44)
-                    .contentShape(Rectangle())
             }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .accessibilityLabel(
-                String(format: String(localized: "home.catalog.row.actions_format"), titleForDisplay)
-            )
+            .frame(width: Self.trailingSlot)
         }
         .padding(.trailing, Spacing.sm)
         .background(
@@ -1127,19 +1000,26 @@ private struct HomeSessionRow: View {
         }
     }
 
-    /// Length, languages, and the topic if it is in one — in that order,
-    /// because the first two describe the recording and the last only its
-    /// place. A recording in no topic is just a recording: it says nothing.
+    /// Under the name: the languages, the topic if it is in one, and at most
+    /// one thing more — where the audio is when that is another Mac, or that
+    /// it was imported — and not even that when the name already carries a
+    /// state that needs attention. A recording in no topic says nothing
+    /// about topics.
     private var metadata: some View {
         HStack(spacing: Spacing.sm) {
             let parts = metadataParts
             ForEach(Array(parts.enumerated()), id: \.offset) { index, part in
                 if index > 0 {
-                    Text("·").foregroundColor(.textTertiary)
+                    Text(verbatim: "·").foregroundColor(.textTertiary)
                 }
                 if let icon = part.icon {
+                    // A topic's or a device's name: cut where any name on
+                    // a pill is cut, so one long name does not take the row.
                     Label(part.text, systemImage: icon)
                         .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: PillMetrics.maxTitleWidth + PillMetrics.height)
+                        .fixedSize(horizontal: true, vertical: false)
                 } else {
                     Text(part.text).lineLimit(1)
                 }
@@ -1149,26 +1029,49 @@ private struct HomeSessionRow: View {
         .foregroundColor(.textTertiary)
     }
 
+    private var rowMark: RecordingPresentation.RowMark? {
+        RecordingPresentation.RowMark.resolve(
+            status: rowStatus,
+            recordedOn: session.recordedOn,
+            isImport: session.sessionType == "import"
+        )
+    }
+
     private var metadataParts: [(text: String, icon: String?)] {
         var parts: [(text: String, icon: String?)] = []
-        if let duration = RecordingPresentation.duration(ms: session.durationMs) {
-            parts.append((duration, nil))
-        }
         let languages = RecordingPresentation.languageList(session.languageCodes)
         if languages.isEmpty == false {
             parts.append((languages, nil))
         }
-        if session.sessionType == "import" {
-            parts.append((String(localized: "home.row.kind.import"), "square.and.arrow.down"))
-        }
         if let membershipLabel {
             parts.append((membershipLabel, "folder"))
         }
-        if let device = session.recordedOn {
+        switch rowMark {
+        case .otherDevice(let device):
             // 另一台 Mac 录的:音频在那台上。
             parts.append((RecordingOrigin.badge(device), "laptopcomputer"))
+        case .imported:
+            parts.append((String(localized: "home.row.kind.import"), "square.and.arrow.down"))
+        case .status, .none:
+            break
         }
         return parts
+    }
+
+    /// What the row does not print: how long the recording is, and whichever
+    /// of "imported" and "recorded on another Mac" the one mark left out.
+    private var hoverDetail: String {
+        var parts: [String] = []
+        if let duration = RecordingPresentation.duration(ms: session.durationMs) {
+            parts.append(duration)
+        }
+        if session.sessionType == "import", rowMark != .imported {
+            parts.append(String(localized: "home.row.kind.import"))
+        }
+        if let device = session.recordedOn, rowMark != .otherDevice(device) {
+            parts.append(RecordingOrigin.badge(device))
+        }
+        return parts.joined(separator: " · ")
     }
 
     /// Only a state that needs attention is shown; finished is the norm.
@@ -1252,6 +1155,15 @@ private struct HomeSessionRow: View {
     }
 }
 
+/// Deleting from a row's menu asks first — except for the recording still
+/// being made, which cannot be deleted: there the library answers at once
+/// with why not, and there is nothing to confirm.
+nonisolated enum HomeRowDelete {
+    static func asksFirst(isRecording: Bool) -> Bool {
+        isRecording == false
+    }
+}
+
 // MARK: - Creation and actions
 
 /// Names a new topic. Topics offers it, and so does the start card's
@@ -1273,23 +1185,14 @@ struct HomeCreateNotebookSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.lg) {
-            VStack(alignment: .leading, spacing: Spacing.sm) {
-                Text(String(localized: "home.create.title"))
-                    .font(.titleLG)
-                    .foregroundColor(.textPrimary)
-
-                Text(String(localized: "home.create.description"))
-                    .font(.bodySM)
-                    .foregroundColor(.textSecondary)
-            }
+            Text(String(localized: "home.create.title"))
+                .font(.titleMD)
+                .foregroundColor(.textPrimary)
+                .accessibilityAddTraits(.isHeader)
 
             VStack(alignment: .leading, spacing: Spacing.sm) {
-                Text(String(localized: "home.create.name_label"))
-                    .font(.bodyMedium)
-                    .foregroundColor(.textPrimary)
-
                 TextField(
-                    String(localized: "home.create.name_placeholder"),
+                    String(localized: "home.create.name_label"),
                     text: $title
                 )
                 .textFieldStyle(.plain)
@@ -1320,13 +1223,6 @@ struct HomeCreateNotebookSheet: View {
                 }
             }
 
-            Label(
-                String(localized: "home.create.local_first"),
-                systemImage: "lock.shield.fill"
-            )
-            .font(.bodySM)
-            .foregroundColor(.textSecondary)
-
             HStack(spacing: Spacing.sm) {
                 Spacer()
 
@@ -1335,7 +1231,7 @@ struct HomeCreateNotebookSheet: View {
                 }
                 .keyboardShortcut(.cancelAction)
 
-                Button(String(localized: "home.create.action")) {
+                Button(String(localized: "home.create.confirm")) {
                     guard isTitleValid else { return }
                     if onCreate(normalizedTitle) {
                         dismiss()
@@ -1347,89 +1243,9 @@ struct HomeCreateNotebookSheet: View {
             }
         }
         .padding(Spacing.xl)
-        .frame(width: 440)
+        .frame(width: 400)
         .background(Color.bgRoot)
         .onAppear { isTitleFocused = true }
-    }
-}
-
-private enum HomeActionButtonStyle {
-    case primary
-    case secondary
-}
-
-private struct HomeActionButton: View {
-    let title: String
-    let icon: String
-    let style: HomeActionButtonStyle
-    var isLoading = false
-    var isEnabled = true
-    let action: () -> Void
-    @State private var isHovering = false
-    @FocusState private var isFocused: Bool
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: Spacing.sm) {
-                if isLoading {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Image(systemName: icon)
-                        .font(.system(size: 12, weight: .semibold))
-                }
-
-                Text(title)
-                    .font(.bodyMedium)
-                    .lineLimit(1)
-            }
-            .foregroundColor(foregroundColor)
-            .padding(.horizontal, Spacing.md)
-            .frame(minHeight: 44)
-            .background(backgroundColor)
-            .overlay(
-                RoundedRectangle(cornerRadius: Radius.sm)
-                    .strokeBorder(borderColor, lineWidth: Stroke.thin)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
-        }
-        .buttonStyle(.plain)
-        .disabled(isEnabled == false || isLoading)
-        .focusable(isEnabled && isLoading == false)
-        .focused($isFocused)
-        .focusRing(isFocused, cornerRadius: Radius.sm)
-        .onHover { isHovering = $0 && isEnabled && isLoading == false }
-        .animation(Motion.microInteraction, value: isHovering)
-        .accessibilityLabel(title)
-    }
-
-    private var foregroundColor: Color {
-        switch style {
-        case .primary:
-            return .brandAccentForeground.opacity(isEnabled ? 1 : 0.45)
-        case .secondary:
-            return .textPrimary
-        }
-    }
-
-    private var backgroundColor: Color {
-        switch style {
-        case .primary:
-            return isHovering ? .brandAccentHover : .brandAccent
-        case .secondary:
-            return isHovering
-                ? Color.bgElevated.opacity(0.75)
-                : Color.bgElevated.opacity(0.45)
-        }
-    }
-
-    private var borderColor: Color {
-        switch style {
-        case .primary:
-            return .clear
-        case .secondary:
-            return Color.borderGhost.opacity(0.65)
-        }
     }
 }
 

@@ -1,17 +1,24 @@
 // OnboardingView.swift
-// 首次启动引导 — 认识产品 → 出字要用到的 → 麦克风 → 完成
-// ZuTalk onboarding。
+// 首次启动 — 三步:认识 ZuTalk → 出字 → 麦克风。
 // 每一步都由用户主动点击继续，不自动推进。
 //
-// 第二步以前一上来就要一把 Soniox API 密钥。大多数人手里有的是邀请码,而邀请码
-// 在这里根本填不了,只能先跳过、再去设置里找。现在第二步的主栏是邀请码,下面
-// 两个安静的选择:用自己的密钥,或者先跳过、只录音。登录不在这里:它今天给
-// 一个普通人的东西不是开始录音所必需的,而且在设置里一步就到。
+// 每一步是一个标题和它的控件,没有说明句(docs/product/interface-layers.md
+// 「界面怎么写」):
+//   1. ZuTalk:一句话,和「开始」;
+//   2. 出字:邀请码那一栏和「启用」;下面两颗安静的胶囊 ——「用自己的密钥」
+//      (换成密钥那一面)和「先跳过，只录音」;
+//   3. 麦克风:「允许」;拒绝过的人看到那一句和「打开系统设置」。
+// 原来铺在页面上的句子都还在:怎么录的那三条在「开始」的提示里;录音存在哪、
+// 声音什么时候会发出去,在「出字」标题旁边的 ⓘ 里;密钥未加密保存、验证时不
+// 上传录音,在密钥那一栏旁边的 ⓘ 里。
 //
-// 布局规范:
-// - 顶部 StepIndicator: 认识 ZuTalk > 出字 > 麦克风
-// - 左主内容区 60% : 定位 · 能力 · CTA
-// - 右视觉区 40%    : 多语转录 / 录音状态的 blueprint 预览
+// 第二步的主栏是邀请码,不是密钥:大多数人手里有的是邀请码。登录不在这里:
+// 它今天给一个普通人的东西不是开始录音所必需的,而且在设置里一步就到。
+//
+// 布局:
+// - 顶上三个点:走到第几步
+// - 左:标题和控件;最下面一行是返回和这一步的主按钮
+// - 右:一幅没有字的蓝图(出字的样子、麦克风),只是装饰
 
 import SwiftUI
 import Combine
@@ -49,15 +56,27 @@ final class OnboardingController: ObservableObject {
     /// standard domain is the installed app's real preferences.
     private let defaults: UserDefaults
     private let openSystemSettings: @MainActor (AppPermission) -> Void
+    /// What the system says about a permission. The app asks the system; a
+    /// test answers for it, to look at "denied" without denying anything.
+    private let permissionStatus: @MainActor (AppPermission) -> PermissionStatus
+
+    /// Whether this is a walk through it again, opened from Settings: then
+    /// nothing here is required and every step offers a way out.
+    let hasCompletedBefore: Bool
 
     init(
         defaults: UserDefaults = .standard,
         openSystemSettings: @escaping @MainActor (AppPermission) -> Void = {
             AppPermissions.openSystemSettings(for: $0)
+        },
+        permissionStatus: @escaping @MainActor (AppPermission) -> PermissionStatus = {
+            AppPermissions.status(for: $0)
         }
     ) {
         self.defaults = defaults
         self.openSystemSettings = openSystemSettings
+        self.permissionStatus = permissionStatus
+        hasCompletedBefore = defaults.bool(forKey: Self.completedKey)
         refreshPermissions()
     }
 
@@ -103,7 +122,7 @@ final class OnboardingController: ObservableObject {
     func refreshPermissions() {
         var next: [AppPermission: PermissionStatus] = [:]
         for perm in AppPermission.allCases {
-            next[perm] = AppPermissions.status(for: perm)
+            next[perm] = permissionStatus(perm)
         }
         permissionStatuses = next
     }
@@ -115,7 +134,7 @@ final class OnboardingController: ObservableObject {
         }
     }
 
-    /// 权限卡片上那个按钮做的事。还没问过就问;已经拒绝过,系统不会再弹第二次,
+    /// 麦克风那一步的按钮做的事。还没问过就问;已经拒绝过,系统不会再弹第二次,
     /// 再「请求」一遍什么也不会发生 —— 这时候只能带人去系统设置里打开。按钮
     /// 以前写着「打开系统设置」,按下去却是再请求一遍。
     func resolvePermission(_ perm: AppPermission) {
@@ -148,23 +167,40 @@ enum OnboardingLiveTextMode: Equatable {
     }
 }
 
+/// 首次启动里的尺寸。标题大,控件比设置里的高一档:这一屏只有一两样东西。
+private enum OnboardingMetrics {
+    static let controlHeight: CGFloat = 40
+    static let titleFont = Font.system(size: 34, weight: .bold)
+    static let controlFont = Font.system(size: 14, weight: .semibold)
+    static let fieldFont = Font.bodyLG
+    /// Left and right of each step's content.
+    static let gutter: CGFloat = Spacing.xxl
+    /// The decorative panel: this share of the window, within these bounds.
+    static let visualShare: CGFloat = 0.36
+    static let visualMinWidth: CGFloat = 280
+    static let visualMaxWidth: CGFloat = 420
+}
+
 // MARK: - OnboardingView (shell)
 
 struct OnboardingView: View {
-    @StateObject private var controller = OnboardingController()
+    @StateObject private var controller: OnboardingController
     @StateObject private var providerViewModel = ProviderConnectionsViewModel()
     var onComplete: () -> Void
 
-    var body: some View {
-        ZStack {
-            Color.bgRoot.ignoresSafeArea()
+    /// The app passes no controller and gets the real one. A test passes one
+    /// that keeps "done" to itself and answers for the microphone.
+    init(controller: OnboardingController? = nil, onComplete: @escaping () -> Void) {
+        _controller = StateObject(wrappedValue: controller ?? OnboardingController())
+        self.onComplete = onComplete
+    }
 
+    var body: some View {
+        GeometryReader { window in
             HStack(spacing: 0) {
-                // Left: 60% 主内容区
                 VStack(spacing: 0) {
                     StepIndicator(currentStep: controller.phase.stepIndex)
-                        .padding(.horizontal, 48)
-                        .padding(.top, 24)
+                        .padding(.top, Spacing.lg)
 
                     Group {
                         switch controller.phase {
@@ -205,102 +241,89 @@ struct OnboardingView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                // Right: 40% 视觉区 (blueprint wireframe on bpBlueDeep)
+                // 右:没有字的蓝图。窗口窄的时候它先让出宽度。
                 OnboardingVisual(phase: controller.phase)
-                    .frame(width: 420)
+                    .frame(width: min(
+                        OnboardingMetrics.visualMaxWidth,
+                        max(OnboardingMetrics.visualMinWidth, window.size.width * OnboardingMetrics.visualShare)
+                    ))
                     .frame(maxHeight: .infinity)
+                    .accessibilityHidden(true)
             }
         }
-        .cornerCrosshairs(color: .textTertiary.opacity(0.5), inset: 16, size: 10)
+        .background(Color.bgRoot.ignoresSafeArea())
         .overlay(alignment: .topTrailing) {
             // Opened again from Settings: nothing here is required any more,
             // so there is a way out at every step.
-            if hasCompletedBefore {
-                Button(String(localized: "common.close")) {
+            if controller.hasCompletedBefore {
+                ActionPill(
+                    String(localized: "common.close"),
+                    systemImage: "xmark",
+                    style: .quiet
+                ) {
                     onComplete()
                 }
                 .keyboardShortcut(.cancelAction)
-                .padding(Spacing.lg)
+                .padding(.horizontal, Spacing.lg)
+                .padding(.top, Spacing.md)
                 .accessibilityIdentifier("onboarding.close")
             }
         }
     }
-
-    private let hasCompletedBefore = UserDefaults.standard.bool(forKey: OnboardingController.completedKey)
 
     private func withPhaseAnim(_ action: () -> Void) {
         withAnimation(.easeInOut(duration: 0.35)) { action() }
     }
 }
 
-// MARK: - Step Indicator (顶部进度导航)
+// MARK: - Step Indicator (顶上三个点)
 
+/// 走到第几步:三个点,当前那个长一些。每一步的名字就是它自己的大标题,这里
+/// 不再写一遍。
 private struct StepIndicator: View {
     let currentStep: Int
 
-    private let steps: [LocalizedStringKey] = [
-        "onboarding.step.signup",
-        "onboarding.step.live_text",
-        "onboarding.step.microphone"
-    ]
+    private static let stepCount = 3
 
     var body: some View {
-        HStack(spacing: 12) {
-            Spacer()
-            ForEach(0..<steps.count, id: \.self) { i in
-                stepLabel(index: i)
-                if i < steps.count - 1 {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 10, weight: .regular))
-                        .foregroundColor(.textTertiary)
-                }
+        HStack(spacing: Spacing.sm) {
+            ForEach(0..<Self.stepCount, id: \.self) { index in
+                Capsule()
+                    .fill(color(for: index))
+                    .frame(width: index == currentStep ? 24 : 8, height: 4)
             }
-            Spacer()
-        }
-    }
-
-    @ViewBuilder
-    private func stepLabel(index: Int) -> some View {
-        let isActive = index == currentStep
-        let isDone = index < currentStep
-        let color: Color = isActive ? .textPrimary : (isDone ? .textSecondary : .textTertiary)
-
-        VStack(spacing: 6) {
-            Text(steps[index])
-                .font(.captionMedium)
-                .tracking(1.0)
-                .foregroundColor(color)
-                .textCase(.uppercase)
-            Rectangle()
-                .fill(isActive ? Color.brandAccent : Color.clear)
-                .frame(width: 32, height: 2)
         }
         .animation(.easeInOut(duration: 0.2), value: currentStep)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text("\(min(currentStep + 1, Self.stepCount)) / \(Self.stepCount)"))
+    }
+
+    private func color(for index: Int) -> Color {
+        if index == currentStep { return .brandAccent }
+        return index < currentStep ? .textSecondary : .borderActive
     }
 }
 
-// MARK: - Right Visual (柔和渐变 + 抽象 wireframe)
+// MARK: - Right Visual (没有字的蓝图)
 
 private struct OnboardingVisual: View {
     let phase: OnboardingController.Phase
 
     var body: some View {
         ZStack {
-            // bp-blue-deep 深蓝底 · 比左主区深一档,视觉上"深入机器内部"
+            // 比左边深一档的底。
             Color.bgSunken
                 .overlay(
                     Rectangle()
                         .fill(Color.borderGhost.opacity(0.4))
-                        .frame(width: 0.5),
+                        .frame(width: Stroke.hairline),
                     alignment: .leading
                 )
 
-            // 蓝图视觉使用的背景网格。
             BlueprintGrid()
-                .stroke(Color.borderFaint.opacity(0.15), lineWidth: 0.5)
+                .stroke(Color.borderFaint.opacity(0.15), lineWidth: Stroke.hairline)
                 .allowsHitTesting(false)
 
-            // 中央产品预览 (白线 on 深蓝)
             visualElement(for: phase)
                 .transition(.opacity)
 
@@ -318,7 +341,7 @@ private struct OnboardingVisual: View {
                     CornerCrosshair(color: .textTertiary, size: 10)
                 }
             }
-            .padding(18)
+            .padding(Spacing.md)
             .allowsHitTesting(false)
         }
     }
@@ -339,7 +362,7 @@ private struct OnboardingVisual: View {
 }
 
 private struct BlueprintGrid: Shape {
-    var spacing: CGFloat = 24
+    var spacing: CGFloat = Spacing.grid
 
     func path(in rect: CGRect) -> Path {
         var p = Path()
@@ -359,66 +382,45 @@ private struct BlueprintGrid: Shape {
     }
 }
 
-// MARK: - Product blueprint previews
+// MARK: - 蓝图:只有线条,没有字
 
+/// 一条用线代替的字。
+private func blueprintBar(width: CGFloat, color: Color) -> some View {
+    Capsule()
+        .fill(color)
+        .frame(width: width, height: 4)
+}
+
+/// 第一步的图:几个人轮流说,每人一句原文(灰)、一句译文(金)。
 private struct TranscriptBlueprintVisual: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 8) {
+            HStack(spacing: Spacing.sm) {
                 Circle()
                     .fill(Color.brandAccent)
                     .frame(width: 7, height: 7)
-                Text("onboarding.visual.live")
-                    .font(.captionMedium)
-                    .tracking(1.0)
-                    .foregroundColor(.textPrimary)
+                blueprintBar(width: 56, color: .textSecondary)
                 Spacer()
-                Text("00:12:48")
-                    .font(.captionXs)
-                    .monospacedDigit()
-                    .foregroundColor(.textTertiary)
             }
 
             Rectangle()
                 .fill(Color.borderGhost)
-                .frame(height: 0.5)
+                .frame(height: Stroke.hairline)
 
-            transcriptLine(
-                speaker: "onboarding.visual.speaker.host",
-                language: "onboarding.visual.language.zh",
-                widths: [0.84, 0.58]
-            )
-            transcriptLine(
-                speaker: "onboarding.visual.speaker.guest",
-                language: "onboarding.visual.language.en",
-                widths: [0.72, 0.9]
-            )
-            transcriptLine(
-                speaker: "onboarding.visual.speaker.guest",
-                language: "onboarding.visual.language.ja",
-                widths: [0.62, 0.76]
-            )
-
-            HStack(spacing: 8) {
-                languageChip("onboarding.visual.language.zh")
-                languageChip("onboarding.visual.language.en")
-                languageChip("onboarding.visual.language.ja")
-            }
+            transcriptLine(widths: [150, 104])
+            transcriptLine(widths: [128, 162])
+            transcriptLine(widths: [112, 136])
         }
-        .padding(24)
-        .frame(width: 310)
+        .padding(Spacing.lg)
+        .frame(width: 256)
         .overlay(
-            Rectangle()
+            RoundedRectangle(cornerRadius: Radius.sm)
                 .strokeBorder(Color.borderGhost.opacity(0.8), lineWidth: 0.75)
         )
     }
 
-    private func transcriptLine(
-        speaker: LocalizedStringKey,
-        language: LocalizedStringKey,
-        widths: [CGFloat]
-    ) -> some View {
-        HStack(alignment: .top, spacing: 12) {
+    private func transcriptLine(widths: [CGFloat]) -> some View {
+        HStack(alignment: .top, spacing: Spacing.xsm) {
             Circle()
                 .strokeBorder(Color.textTertiary, lineWidth: 1)
                 .frame(width: 24, height: 24)
@@ -428,42 +430,16 @@ private struct TranscriptBlueprintVisual: View {
                         .foregroundColor(.textSecondary)
                 )
 
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 6) {
-                    Text(speaker)
-                        .font(.captionXs)
-                        .foregroundColor(.textSecondary)
-                    Text(language)
-                        .font(.captionXs)
-                        .foregroundColor(.accentGold)
-                }
-                ForEach(Array(widths.enumerated()), id: \.offset) { _, width in
-                    GeometryReader { proxy in
-                        Capsule()
-                            .fill(Color.textTertiary)
-                            .frame(width: proxy.size.width * width, height: 4)
-                    }
-                    .frame(height: 4)
-                }
+            VStack(alignment: .leading, spacing: Spacing.sm) {
+                blueprintBar(width: widths[0], color: .textTertiary)
+                blueprintBar(width: widths[1], color: .accentGold)
             }
+            .padding(.top, Spacing.sm)
         }
-    }
-
-    private func languageChip(_ key: LocalizedStringKey) -> some View {
-        Text(key)
-            .font(.captionXs)
-            .foregroundColor(.textSecondary)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .overlay(
-                Capsule()
-                    .strokeBorder(Color.borderGhost, lineWidth: 0.75)
-            )
     }
 }
 
-/// 第二步的图:一句原文、一句译文,正在往外出。不写供应商和模型的名字 ——
-/// 这一步的主角是邀请码,用邀请码的人不需要认识它们。
+/// 第二步的图:一句原文、一句译文,正在往外出。
 private struct LiveTextBlueprintVisual: View {
     var body: some View {
         VStack(spacing: 22) {
@@ -477,26 +453,11 @@ private struct LiveTextBlueprintVisual: View {
             }
 
             VStack(alignment: .leading, spacing: 9) {
-                textBar(width: 150, color: .textTertiary)
-                textBar(width: 112, color: .accentGold)
-            }
-
-            HStack(spacing: 9) {
-                Circle()
-                    .fill(Color.brandAccent)
-                    .frame(width: 7, height: 7)
-                Text("onboarding.live_text.visual")
-                    .font(.captionMedium)
-                    .foregroundColor(.textPrimary)
+                blueprintBar(width: 150, color: .textTertiary)
+                blueprintBar(width: 112, color: .accentGold)
             }
         }
-        .frame(width: 280)
-    }
-
-    private func textBar(width: CGFloat, color: Color) -> some View {
-        Capsule()
-            .fill(color)
-            .frame(width: width, height: 4)
+        .frame(width: 240)
     }
 }
 
@@ -504,7 +465,7 @@ private struct MicrophoneBlueprintVisual: View {
     private let barHeights: [CGFloat] = [12, 24, 38, 20, 48, 32, 16, 36, 24, 12]
 
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: Spacing.lg) {
             ZStack {
                 Circle()
                     .strokeBorder(Color.borderGhost, lineWidth: 0.75)
@@ -525,63 +486,61 @@ private struct MicrophoneBlueprintVisual: View {
                 }
             }
             .frame(height: 48)
-
-            VStack(spacing: 6) {
-                Text("onboarding.visual.microphone.title")
-                    .font(.captionMedium)
-                    .foregroundColor(.textPrimary)
-                Text("onboarding.visual.microphone.detail")
-                    .font(.captionXs)
-                    .foregroundColor(.textTertiary)
-            }
-            .multilineTextAlignment(.center)
         }
-        .frame(width: 280)
+        .frame(width: 240)
     }
 }
 
-// MARK: - Pill Button
+// MARK: - 这一步的主按钮
 
+/// 首次启动里的大按钮。每一步只有一个实心的(`primary`):那一步现在该按的
+/// 那一个;别的是描边的(`ghost`)。
 struct OnbPillButton: View {
-    let title: LocalizedStringKey
+    let title: String
     var icon: String? = nil
     var style: Style = .primary
     var disabled: Bool = false
+    var help: String? = nil
     let action: () -> Void
 
     enum Style {
-        case primary    // 黑底白字
-        case secondary  // 浅灰底黑字
-        case ghost      // 透明白底黑字描边
+        case primary    // 实心
+        case ghost      // 描边
     }
 
     @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
+            HStack(spacing: Spacing.sm) {
                 if let icon = icon {
                     Image(systemName: icon)
                         .font(.system(size: 13, weight: .semibold))
+                        .accessibilityHidden(true)
                 }
                 Text(title)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(OnboardingMetrics.controlFont)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
             }
             .foregroundColor(fg)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 12)
+            .padding(.horizontal, Spacing.lg)
+            .frame(height: OnboardingMetrics.controlHeight)
             .background(bg)
             .overlay(
                 RoundedRectangle(cornerRadius: Radius.sm)
                     .strokeBorder(border, lineWidth: borderWidth)
             )
             .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+            .contentShape(RoundedRectangle(cornerRadius: Radius.sm))
         }
         .buttonStyle(.plain)
         .opacity(disabled && style != .primary ? 0.35 : 1.0)
         .disabled(disabled)
         .onHover { hovering = $0 && !disabled }
         .animation(.easeOut(duration: 0.15), value: hovering)
+        .help(help ?? "")
+        .accessibilityHint(Text(help ?? ""))
     }
 
     /// 还不能点的主按钮换成灰底灰字,不是把绿底调淡:调淡以后白字压在浅绿上,
@@ -593,195 +552,153 @@ struct OnbPillButton: View {
     private var fg: Color {
         if isInactivePrimary { return Color.textTertiary }
         switch style {
-        case .primary:   return .brandAccentForeground
-        case .secondary: return Color.textPrimary
-        case .ghost:     return Color.textPrimary
+        case .primary: return .brandAccentForeground
+        case .ghost:   return Color.textPrimary
         }
     }
     private var bg: Color {
         if isInactivePrimary { return Color.bgElevated }
         switch style {
-        case .primary:   return hovering ? Color.brandAccentHover : Color.brandAccent
-        case .secondary: return hovering ? Color.bgElevated : Color.bgElevated
-        case .ghost:     return hovering ? Color.bgElevated : Color.clear
+        case .primary: return hovering ? Color.brandAccentHover : Color.brandAccent
+        case .ghost:   return hovering ? Color.bgElevated : Color.clear
         }
     }
     private var border: Color {
         if isInactivePrimary { return Color.borderGhost }
         switch style {
-        case .primary, .secondary: return .clear
-        case .ghost: return Color.borderGhost
+        case .primary: return .clear
+        case .ghost:   return Color.borderActive
         }
     }
     private var borderWidth: CGFloat {
-        style == .ghost || isInactivePrimary ? 1 : 0
+        style == .ghost || isInactivePrimary ? Stroke.thin : 0
     }
 }
 
-// MARK: - Small Pill (permission "允许" 按钮)
+/// 首次启动里的一栏输入:和大按钮一样高。
+private struct OnboardingField: View {
+    let placeholder: String
+    @Binding var text: String
+    var isSecure = false
 
-private struct OnbSmallPill: View {
-    let title: LocalizedStringKey
-    var icon: String? = nil
-    var style: OnbPillButton.Style = .primary
-    let action: () -> Void
-    @State private var hovering = false
+    @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                if let icon = icon {
-                    Image(systemName: icon)
-                        .font(.system(size: 10, weight: .semibold))
-                }
-                Text(title)
-                    .font(.system(size: 12, weight: .medium))
+        Group {
+            if isSecure {
+                SecureField(placeholder, text: $text)
+            } else {
+                TextField(placeholder, text: $text)
             }
-            .foregroundColor(style == .primary ? .brandAccentForeground : Color.textPrimary)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 7)
-            .background(
-                style == .primary
-                    ? (hovering ? Color.brandAccentHover : Color.brandAccent)
-                    : (hovering ? Color.bgElevated : Color.bgElevated)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
         }
-        .buttonStyle(.plain)
-        .onHover { hovering = $0 }
+        .textFieldStyle(.plain)
+        .font(OnboardingMetrics.fieldFont)
+        .foregroundColor(.textPrimary)
+        .padding(.horizontal, Spacing.xsm)
+        .frame(height: OnboardingMetrics.controlHeight)
+        .background(Color.bgRoot)
+        .overlay(
+            RoundedRectangle(cornerRadius: Radius.sm)
+                .strokeBorder(Color.borderActive, lineWidth: Stroke.thin)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+        .opacity(isEnabled ? 1 : 0.5)
     }
 }
 
-// MARK: - Welcome Screen
+/// 一步的骨架:标题(旁边可以有一个 ⓘ)、控件、最下面一行返回和主按钮。
+private struct OnboardingStep<Controls: View, Footer: View>: View {
+    let title: String
+    var info: String?
+    @ViewBuilder let controls: () -> Controls
+    @ViewBuilder let footer: () -> Footer
 
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Spacer(minLength: Spacing.lg)
+                .frame(maxHeight: Spacing.xxl * 2)
+
+            HStack(alignment: .center, spacing: Spacing.xs) {
+                Text(title)
+                    .font(OnboardingMetrics.titleFont)
+                    .foregroundColor(Color.textPrimary)
+                    .tracking(-0.5)
+                    .accessibilityAddTraits(.isHeader)
+                if let info {
+                    InfoButton(info, accessibilityLabel: title)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: Spacing.md) {
+                controls()
+            }
+            .padding(.top, Spacing.lg)
+
+            Spacer(minLength: Spacing.lg)
+
+            HStack(spacing: Spacing.xsm) {
+                footer()
+            }
+            .padding(.bottom, Spacing.xxl)
+        }
+        .padding(.horizontal, OnboardingMetrics.gutter)
+        .frame(maxWidth: 640, maxHeight: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .center)
+    }
+}
+
+// MARK: - 第一步:ZuTalk
+
+/// 名字、一句话、「开始」。怎么录的那三条(选语言按开始、⌃⌥S 标记、录完在
+/// 一处看)在「开始」的提示里。
 struct WelcomeScreen: View {
     var onContinue: () -> Void
     @State private var appeared = false
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Spacer().frame(height: 48)
-
-            // 品牌标识
-            VStack(alignment: .leading, spacing: 6) {
-                Text("onboarding.brand.name")
-                    .font(.heroSerif)
-                    .foregroundColor(Color.line100)
-                    .tracking(-0.8)
-                Text("onboarding.brand.subtitle")
-                    .font(.caption)
-                    .foregroundColor(Color.line50)
-                    .tracking(1.0)
-                    .textCase(.uppercase)
-            }
-            .opacity(appeared ? 1 : 0)
-            .offset(y: appeared ? 0 : 12)
-            .animation(.easeOut(duration: 0.5).delay(0.05), value: appeared)
-
-            Spacer().frame(height: 24)
-
-            Text("onboarding.brand.tagline")
-                .font(.system(size: 18, weight: .regular))
-                .foregroundColor(Color.textPrimary)
-                .opacity(appeared ? 1 : 0)
-                .offset(y: appeared ? 0 : 10)
-                .animation(.easeOut(duration: 0.5).delay(0.15), value: appeared)
-
-            Spacer().frame(height: 40)
-
-            // 用用户会实际执行的三步解释产品，不要求先理解 Notebook / Session。
-            VStack(alignment: .leading, spacing: 12) {
-                journeyStep(
-                    number: "1",
-                    icon: "record.circle",
-                    key: "onboarding.welcome.bullet1",
-                    delayIdx: 0
-                )
-                journeyStep(
-                    number: "2",
-                    icon: "bookmark",
-                    key: "onboarding.welcome.bullet2",
-                    delayIdx: 1
-                )
-                journeyStep(
-                    number: "3",
-                    icon: "text.page",
-                    key: "onboarding.welcome.bullet3",
-                    delayIdx: 2
-                )
-            }
-
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "lock.shield")
-                    .font(.system(size: 11))
-                    .foregroundColor(Color.textTertiary)
-                    .frame(width: 18)
-                Text("onboarding.welcome.privacy_plain")
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundColor(Color.textTertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.top, 22)
-            .opacity(appeared ? 1 : 0)
-            .animation(.easeOut(duration: 0.4).delay(0.58), value: appeared)
-
-            Spacer()
-
-            // Primary CTA
-            HStack {
-                Spacer()
-                OnbPillButton(
-                    title: "onboarding.welcome.button",
-                    style: .primary,
-                    action: onContinue
-                )
-                .opacity(appeared ? 1 : 0)
-                .offset(y: appeared ? 0 : 10)
-                .animation(.easeOut(duration: 0.4).delay(0.6), value: appeared)
-            }
-
-            Spacer().frame(height: 56)
-        }
-        .padding(.horizontal, 64)
-        .onAppear { appeared = true }
+    private var howItGoes: String {
+        [
+            "onboarding.welcome.bullet1",
+            "onboarding.welcome.bullet2",
+            "onboarding.welcome.bullet3",
+        ]
+        .map { String(localized: String.LocalizationValue($0)) }
+        .joined(separator: "\n")
     }
 
-    private func journeyStep(
-        number: String,
-        icon: String,
-        key: LocalizedStringKey,
-        delayIdx: Int
-    ) -> some View {
-        HStack(spacing: 14) {
-            Text(number)
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(.brandAccentForeground)
-                .frame(width: 24, height: 24)
-                .background(Color.brandAccent)
-                .clipShape(Circle())
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .regular))
-                .foregroundColor(Color.textTertiary)
-                .frame(width: 18)
-            Text(key)
-                .font(.system(size: 14, weight: .regular))
-                .foregroundColor(Color.textPrimary)
+    var body: some View {
+        OnboardingStep(title: String(localized: "onboarding.brand.name")) {
+            Text(String(localized: "onboarding.brand.tagline"))
+                .font(.system(size: 18, weight: .regular))
+                .foregroundColor(Color.textSecondary)
+                .lineSpacing(4)
+                .fixedSize(horizontal: false, vertical: true)
+        } footer: {
             Spacer()
+            OnbPillButton(
+                title: String(localized: "onboarding.start"),
+                style: .primary,
+                help: howItGoes,
+                action: onContinue
+            )
+            .keyboardShortcut(.defaultAction)
+            .accessibilityIdentifier("onboarding.welcome.start")
         }
         .opacity(appeared ? 1 : 0)
-        .offset(x: appeared ? 0 : -12)
-        .animation(.easeOut(duration: 0.4).delay(0.3 + Double(delayIdx) * 0.08), value: appeared)
+        .animation(.easeOut(duration: 0.4), value: appeared)
+        .onAppear { appeared = true }
     }
 }
 
-// MARK: - 出字要用到的
+// MARK: - 第二步:出字
 
-/// 第二步。主栏是邀请码;下面两个安静的选择:用自己的密钥(换成密钥那一面),
-/// 或者先跳过、只录音。「继续」要等真的能出字了才亮,所以跳过是人自己选的,
-/// 不是按了「继续」才发现什么都没设。
+/// 主栏是邀请码;下面两颗安静的胶囊:用自己的密钥(换成密钥那一面),或者
+/// 先跳过、只录音。「继续」要等真的能出字了才亮,所以跳过是人自己选的,不是
+/// 按了「继续」才发现什么都没设。这一步只有一个实心按钮:还不能出字的时候
+/// 是「启用」(或「验证并保存」),能出字了是「继续」。
 struct LiveTextSetupScreen: View {
     @ObservedObject var viewModel: ProviderConnectionsViewModel
     @ObservedObject private var invite = CommunityInviteSession.shared
+    @Environment(\.settingsFixture) private var fixture
     var onContinue: () -> Void
     var onSkip: () -> Void
     var onBack: () -> Void
@@ -792,7 +709,8 @@ struct LiveTextSetupScreen: View {
 
     /// 现在靠什么出字。密钥那一面存上以后 `viewModel` 会变,这里跟着重算。
     private var source: LiveTextSource {
-        LiveTextSource.resolve(
+        if let fixture { return fixture.liveText.source }
+        return LiveTextSource.resolve(
             inviteActive: invite.isActive,
             inviteEnabled: invite.isEnabled,
             remainingSeconds: invite.remainingSeconds,
@@ -801,60 +719,53 @@ struct LiveTextSetupScreen: View {
         )
     }
 
+    private var isWorking: Bool { fixture?.liveText.isWorking ?? invite.isWorking }
+    private var errorMessage: String? {
+        if let fixture { return fixture.liveText.errorMessage }
+        return invite.errorMessage
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Spacer().frame(height: 48)
-
-            Text("onboarding.live_text.title")
-                .font(.system(size: 34, weight: .bold))
-                .foregroundColor(Color.textPrimary)
-                .tracking(-0.5)
-
-            Text("onboarding.live_text.subtitle")
-                .font(.system(size: 14, weight: .regular))
-                .foregroundColor(Color.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 10)
-
-            Spacer().frame(height: 28)
-
+        OnboardingStep(
+            title: String(localized: "onboarding.step.live_text"),
+            // 录音存在哪、声音什么时候会发出去:必须让人读得到。
+            info: String(localized: "onboarding.welcome.privacy_plain")
+        ) {
             switch mode {
             case .inviteCode:
-                inviteBox
+                inviteEntry
             case .ownKey:
-                OwnSonioxKeyBox(viewModel: viewModel)
+                OwnSonioxKeyEntry(viewModel: viewModel, isPrimary: source.powersLiveText == false)
             }
 
             quietChoices
-                .padding(.top, 16)
+        } footer: {
+            OnbPillButton(
+                title: String(localized: "onboarding.back"),
+                icon: "arrow.left",
+                style: .ghost,
+                action: onBack
+            )
 
             Spacer()
 
-            HStack(spacing: 12) {
-                OnbPillButton(
-                    title: "onboarding.common.back",
-                    style: .ghost,
-                    action: onBack
-                )
-
-                Spacer()
-
-                OnbPillButton(
-                    title: "onboarding.keys.continue",
-                    style: .primary,
-                    disabled: source.powersLiveText == false,
-                    action: onContinue
-                )
-                .accessibilityIdentifier("onboarding.live-text.continue")
-            }
-
-            Spacer().frame(height: 56)
+            OnbPillButton(
+                title: String(localized: "onboarding.keys.continue"),
+                style: .primary,
+                disabled: source.powersLiveText == false,
+                action: onContinue
+            )
+            .accessibilityIdentifier("onboarding.live-text.continue")
         }
-        .padding(.horizontal, 64)
         .opacity(appeared ? 1 : 0)
         .animation(.easeOut(duration: 0.4), value: appeared)
         .onAppear {
             appeared = true
+            if let fixture {
+                // 画给测试看:摆哪一面由它说,不读真的 store。
+                mode = fixture.onboardingMode ?? .inviteCode
+                return
+            }
             viewModel.refresh()
             mode = .initial(
                 inviteActive: invite.isActive,
@@ -864,111 +775,108 @@ struct LiveTextSetupScreen: View {
         .onDisappear {
             code = ""
         }
-        // 再走一遍引导的人已经有邀请码:把还能录多久问回来,那一句才报得出数。
-        .task { await invite.refreshQuota() }
+        // 再走一遍引导的人已经有邀请码:把还能录多久问回来,状态才报得出数。
+        .task {
+            guard fixture == nil else { return }
+            await invite.refreshQuota()
+        }
     }
 
     // MARK: 邀请码
 
-    private var inviteBox: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(String(localized: "settings.live_text.invite_field_label"))
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundColor(.textPrimary)
-
-            HStack(spacing: 10) {
-                TextField(
-                    String(localized: "community_invite.placeholder"),
+    private var inviteEntry: some View {
+        VStack(alignment: .leading, spacing: Spacing.xsm) {
+            HStack(spacing: Spacing.sm) {
+                OnboardingField(
+                    placeholder: String(localized: "community_invite.placeholder"),
                     text: $code
                 )
-                .textFieldStyle(.roundedBorder)
-                .controlSize(.large)
-                .disabled(invite.isWorking)
+                .disabled(isWorking)
                 .onSubmit(redeem)
+                .settingsExplained(String(localized: "onboarding.live_text.subtitle"))
                 .accessibilityLabel(String(localized: "settings.live_text.invite_field_label"))
                 .accessibilityIdentifier("onboarding.live-text.invite-code")
 
-                // 栏和按钮用同一个尺寸:按钮比栏高出一倍的话,人先看到的是按钮。
-                Button {
-                    redeem()
-                } label: {
-                    if invite.isWorking {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        Text(String(localized: "onboarding.live_text.redeem"))
-                    }
+                if isWorking {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(width: OnboardingMetrics.controlHeight, height: OnboardingMetrics.controlHeight)
+                } else {
+                    // 能出字以前,这一步该按的是它;能出字以后,该按的是「继续」。
+                    OnbPillButton(
+                        title: String(localized: "onboarding.live_text.redeem"),
+                        style: source.powersLiveText ? .ghost : .primary,
+                        disabled: code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                        action: redeem
+                    )
+                    .accessibilityIdentifier("onboarding.live-text.redeem")
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled(
-                    invite.isWorking
-                        || code.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                )
-                .accessibilityIdentifier("onboarding.live-text.redeem")
             }
 
             inviteStatus
         }
-        .padding(20)
-        .background(Color.bgSunken.opacity(0.38))
-        .overlay(
-            RoundedRectangle(cornerRadius: Radius.md)
-                .strokeBorder(Color.borderGhost.opacity(0.7), lineWidth: 0.75)
-        )
     }
 
-    /// 栏下面那一句:出了错说错在哪;已经能出字了,说靠的是什么、还能录多久。
+    /// 栏下面那一行:出了错说错在哪;已经能出字了,一个图标加几个词 —— 靠的
+    /// 是什么、还能录多久。
     @ViewBuilder
     private var inviteStatus: some View {
-        if let error = invite.errorMessage {
-            Label(error, systemImage: "exclamationmark.triangle.fill")
-                .font(.system(size: 12, weight: .regular))
-                .foregroundColor(.signalAmber)
-                .fixedSize(horizontal: false, vertical: true)
+        if let error = errorMessage {
+            SettingsProblem(error)
         } else if source != .nothing {
-            Label(
-                source.sentence,
-                systemImage: source.powersLiveText ? "checkmark.circle.fill" : source.symbol
+            SettingsStatus(
+                source.status,
+                systemImage: source.powersLiveText ? "checkmark.circle.fill" : source.symbol,
+                tint: source.powersLiveText ? .signalGreen : .signalAmber,
+                help: source.sentence
             )
-            .font(.system(size: 12, weight: .regular))
-            .foregroundColor(source.powersLiveText ? .signalGreen : .signalAmber)
-            .fixedSize(horizontal: false, vertical: true)
             .accessibilityIdentifier("onboarding.live-text.status")
         }
     }
 
-    // MARK: 两个安静的选择
+    // MARK: 两颗安静的胶囊
 
-    /// 上下摆,不并排:窗口窄、字又长的语言里,并排的两句会各自折成两行。
+    /// 上下摆,不并排:窗口窄、字又长的语言里,并排摆不下。
     private var quietChoices: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 0) {
             switch mode {
             case .inviteCode:
                 // 供应商的名字只在这一处和「设置 › 高级」出现:要用自己密钥的人
                 // 得知道是哪家的密钥。名字从账户来,不在这里写死。
-                Button(String(
-                    format: String(localized: "onboarding.live_text.use_own_key_format"),
-                    ProviderCredentialAccount.soniox.displayName
-                )) {
+                ActionPill(
+                    String(
+                        format: String(localized: "onboarding.live_text.use_own_key_format"),
+                        ProviderCredentialAccount.soniox.displayName
+                    ),
+                    systemImage: "key",
+                    style: .quiet
+                ) {
                     mode = .ownKey
                 }
                 .accessibilityIdentifier("onboarding.live-text.use-own-key")
             case .ownKey:
-                Button(String(localized: "onboarding.live_text.use_invite")) {
+                ActionPill(
+                    String(localized: "onboarding.live_text.use_invite"),
+                    systemImage: "gift",
+                    style: .quiet
+                ) {
                     mode = .inviteCode
                 }
                 .accessibilityIdentifier("onboarding.live-text.use-invite")
             }
 
             if source.powersLiveText == false {
-                Button(String(localized: "onboarding.live_text.skip"), action: onSkip)
-                    .accessibilityIdentifier("onboarding.live-text.skip")
+                // 「先跳过，只录音」那一句在提示里。
+                ActionPill(
+                    String(localized: "onboarding.skip"),
+                    systemImage: "forward",
+                    style: .quiet,
+                    help: String(localized: "onboarding.live_text.skip"),
+                    action: onSkip
+                )
+                .accessibilityIdentifier("onboarding.live-text.skip")
             }
         }
-        .buttonStyle(.link)
-        .font(.system(size: 13, weight: .regular))
-        .multilineTextAlignment(.leading)
     }
 
     private func redeem() {
@@ -984,18 +892,23 @@ struct LiveTextSetupScreen: View {
 
 // MARK: - 自己的 Soniox 密钥
 
-/// 第二步里选了「用自己的密钥」以后换上来的那一面:去哪拿、粘贴、验证并保存。
-/// 密钥仍然只经 `ProviderConnectionsViewModel` 进凭据会话,验证通过才存。
-private struct OwnSonioxKeyBox: View {
+/// 第二步里选了「用自己的密钥」以后换上来的那一面:一栏、「验证并保存」,
+/// 下面一颗去拿密钥的胶囊。密钥仍然只经 `ProviderConnectionsViewModel` 进
+/// 凭据会话,验证通过才存。栏旁边的 ⓘ 里是两句告知:验证只检查密钥、不上传
+/// 录音;密钥未加密保存在这台 Mac 上。
+private struct OwnSonioxKeyEntry: View {
     @ObservedObject var viewModel: ProviderConnectionsViewModel
+    /// Whether this is the thing to press at this step.
+    let isPrimary: Bool
     @ObservedObject private var verificationStore = ProviderConnectionVerificationStore.shared
+    @Environment(\.settingsFixture) private var fixture
 
     @State private var draft = ""
     @State private var errorMessage: String?
     @State private var isWorking = false
 
     private var snapshot: ProviderCredentialSnapshot {
-        viewModel.snapshot(for: .soniox)
+        fixture?.keys[.soniox]?.snapshot ?? viewModel.snapshot(for: .soniox)
     }
 
     private var isConfigured: Bool {
@@ -1003,110 +916,96 @@ private struct OwnSonioxKeyBox: View {
     }
 
     private var verificationState: ProviderConnectionVerificationState {
-        verificationStore.state(for: .soniox)
+        fixture?.keys[.soniox]?.verification ?? verificationStore.state(for: .soniox)
+    }
+
+    /// 去哪拿密钥的三步,在那颗胶囊的提示里。
+    private var guide: String {
+        [
+            "onboarding.keys.guide.create",
+            "onboarding.keys.guide.copy",
+            "onboarding.keys.guide.paste",
+        ]
+        .map { String(localized: String.LocalizationValue($0)) }
+        .joined(separator: " → ")
+    }
+
+    private var disclosure: String {
+        [
+            String(localized: "onboarding.keys.soniox.help"),
+            String(localized: "settings.credentials.trust_boundary_notice"),
+        ].joined(separator: "\n")
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Soniox")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(.textPrimary)
-                    Text("onboarding.keys.voice_label")
-                        .font(.captionXs)
-                        .foregroundColor(.textTertiary)
-                }
-                Spacer()
-                verificationBadge
-            }
-
+        VStack(alignment: .leading, spacing: Spacing.xsm) {
             if isConfigured {
-                Button {
-                    viewModel.verifySavedCredential(for: .soniox)
-                } label: {
-                    Label(
-                        String(localized: "onboarding.keys.verify_saved"),
+                HStack(spacing: Spacing.sm) {
+                    verificationBadge
+                    ActionPill(
+                        String(localized: "settings.credentials.verify"),
                         systemImage: "checkmark.shield"
-                    )
-                    .frame(minHeight: 44)
+                    ) {
+                        viewModel.verifySavedCredential(for: .soniox)
+                    }
+                    .disabled(verificationState == .checking)
                 }
-                .buttonStyle(.bordered)
-                .disabled(verificationState == .checking)
+                .frame(minHeight: OnboardingMetrics.controlHeight)
             } else {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "1.circle.fill")
-                    Text("onboarding.keys.guide.create")
-                    Image(systemName: "arrow.right")
-                    Image(systemName: "2.circle.fill")
-                    Text("onboarding.keys.guide.copy")
-                    Image(systemName: "arrow.right")
-                    Image(systemName: "3.circle.fill")
-                    Text("onboarding.keys.guide.paste")
-                }
-                .font(.caption)
-                .foregroundColor(.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-                Link(destination: URL(string: "https://console.soniox.com")!) {
-                    Label(
-                        String(localized: "onboarding.keys.open_soniox"),
-                        systemImage: "arrow.up.right.square"
+                HStack(spacing: Spacing.sm) {
+                    OnboardingField(
+                        placeholder: String(localized: "onboarding.keys.paste"),
+                        text: $draft,
+                        isSecure: true
                     )
-                    .frame(minHeight: 32)
-                }
-                .font(.bodyMedium)
+                    .disabled(isWorking)
+                    .onSubmit(verifyAndSave)
+                    .accessibilityIdentifier("onboarding.live-text.own-key")
 
-                SecureField(
-                    String(localized: "onboarding.keys.paste"),
-                    text: $draft
-                )
-                .textFieldStyle(.roundedBorder)
-                .frame(minHeight: 44)
-                .disabled(isWorking)
-                .onSubmit(verifyAndSave)
+                    if isWorking {
+                        ProgressView()
+                            .controlSize(.small)
+                            .frame(width: OnboardingMetrics.controlHeight, height: OnboardingMetrics.controlHeight)
+                    } else {
+                        // 两个词:旁边 ⓘ 里的告知说的就是这颗按钮的名字。验证通过
+                        // 才存的那一句在提示里。
+                        OnbPillButton(
+                            title: String(localized: "onboarding.keys.verify_and_save"),
+                            style: isPrimary ? .primary : .ghost,
+                            disabled: draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                            help: String(
+                                format: String(localized: "settings.credentials.verify_before_save_format"),
+                                ProviderCredentialAccount.soniox.displayName
+                            ),
+                            action: verifyAndSave
+                        )
+                    }
 
-                Button {
-                    verifyAndSave()
-                } label: {
-                    Label(
-                        String(localized: "onboarding.keys.verify_and_save"),
-                        systemImage: "checkmark.shield"
-                    )
-                    .frame(minHeight: 44)
+                    InfoButton(disclosure)
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(
-                    isWorking
-                        || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                )
+
+                verificationBadge
+
+                ActionPill(
+                    String(localized: "onboarding.keys.open_soniox"),
+                    systemImage: "arrow.up.right",
+                    style: .quiet,
+                    help: guide
+                ) {
+                    NSWorkspace.shared.open(Self.consoleURL)
+                }
             }
-
-            Text("onboarding.keys.soniox.help")
-                .font(.caption)
-                .foregroundColor(.textTertiary)
-                .fixedSize(horizontal: false, vertical: true)
 
             if let errorMessage {
-                Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
-                    .foregroundColor(.signalRed)
-                    .fixedSize(horizontal: false, vertical: true)
+                SettingsProblem(errorMessage, tint: .signalRed)
             }
         }
-        .padding(20)
-        .background(Color.bgSunken.opacity(0.38))
-        .overlay(
-            RoundedRectangle(cornerRadius: Radius.md)
-                .strokeBorder(Color.borderGhost.opacity(0.7), lineWidth: 0.75)
-        )
         .onAppear {
-            if isConfigured {
-                verificationStore.verifyIfNeeded(
-                    account: .soniox,
-                    isConfigured: true
-                )
-            }
+            guard fixture == nil, isConfigured else { return }
+            verificationStore.verifyIfNeeded(
+                account: .soniox,
+                isConfigured: true
+            )
         }
         .onDisappear {
             draft = ""
@@ -1114,29 +1013,36 @@ private struct OwnSonioxKeyBox: View {
         }
     }
 
+    private static let consoleURL = URL(string: "https://console.soniox.com")!
+
     @ViewBuilder
     private var verificationBadge: some View {
         switch verificationState {
         case .checking:
-            ProgressView()
-                .controlSize(.small)
-                .accessibilityLabel(Text("onboarding.keys.testing_status"))
+            SettingsStatus(
+                String(localized: "settings.credentials.verifying"),
+                systemImage: "arrow.triangle.2.circlepath",
+                tint: .signalBlue
+            )
         case .ready:
-            Label(
-                String(localized: "onboarding.keys.connected_status"),
-                systemImage: "checkmark.shield.fill"
+            SettingsStatus(
+                String(localized: "settings.credentials.status.verified"),
+                systemImage: "checkmark.shield.fill",
+                tint: .signalGreen
             )
-            .foregroundColor(.signalGreen)
         case .unverified:
-            EmptyView()
+            if isConfigured {
+                SettingsStatus(
+                    String(localized: "settings.credentials.status.saved"),
+                    systemImage: "key.fill",
+                    tint: .signalBlue
+                )
+            }
         default:
-            Label(
+            SettingsProblem(
                 ProviderConnectionVerificationFailure(verificationState, account: .soniox)
-                    .localizedDescription,
-                systemImage: "exclamationmark.triangle.fill"
+                    .localizedDescription
             )
-            .foregroundColor(.signalAmber)
-            .lineLimit(2)
         }
     }
 
@@ -1151,6 +1057,9 @@ private struct OwnSonioxKeyBox: View {
             do {
                 try await viewModel.verifyAndApply(candidate, for: .soniox)
                 draft = ""
+            } catch is ProviderConnectionVerificationFailure {
+                // The line under the field already shows this verdict.
+                errorMessage = nil
             } catch {
                 errorMessage = error.localizedDescription
             }
@@ -1158,8 +1067,11 @@ private struct OwnSonioxKeyBox: View {
     }
 }
 
-// MARK: - Permissions Screen
+// MARK: - 第三步:麦克风
 
+/// 「允许」。允许了是一个勾和一个词;拒绝过的人,系统不会再问第二次,所以是
+/// 那一句(去系统设置里打开,再回来)和「打开系统设置」。不允许也能进去:
+/// 第一次录音的时候还会再问 —— 那一句在「进入 ZuTalk」的提示里。
 struct PermissionsScreen: View {
     @ObservedObject var controller: OnboardingController
     var onContinue: () -> Void
@@ -1168,77 +1080,77 @@ struct PermissionsScreen: View {
     @State private var pollTimer: Timer?
     @State private var appeared = false
 
+    private var status: PermissionStatus {
+        controller.permissionStatuses[.microphone] ?? .notDetermined
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Spacer().frame(height: 48)
-
-            Text("onboarding.permissions.title")
-                .font(.system(size: 34, weight: .bold))
-                .foregroundColor(Color.textPrimary)
-                .tracking(-0.5)
-                .opacity(appeared ? 1 : 0)
-                .offset(y: appeared ? 0 : 10)
-                .animation(.easeOut(duration: 0.5).delay(0.05), value: appeared)
-
-            Text("onboarding.permissions.subtitle")
-                .font(.system(size: 14, weight: .regular))
-                .foregroundColor(Color.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 10)
-                .opacity(appeared ? 1 : 0)
-                .animation(.easeOut(duration: 0.5).delay(0.12), value: appeared)
-
-            Spacer().frame(height: 28)
-
-            // 权限卡片列表（只保留 Notebook capture 所需的麦克风权限）。
-            VStack(spacing: 14) {
-                permissionCard(perm: .microphone, icon: "mic.fill", delayIdx: 0)
-            }
-
-            if !controller.allPermissionsGranted {
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "info.circle")
-                        .font(.system(size: 12))
-                        .foregroundColor(Color.textTertiary)
-                    // 拒绝过的人按了按钮会被带到系统设置:说清楚去那里做什么、
-                    // 做完回哪。
-                    Text(isDenied
-                        ? "onboarding.permissions.denied_hint"
-                        : "onboarding.permissions.hint")
-                        .font(.system(size: 12, weight: .regular))
-                        .foregroundColor(Color.textTertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(.top, 16)
+        OnboardingStep(title: String(localized: "onboarding.step.microphone")) {
+            switch status {
+            case .granted:
+                SettingsStatus(
+                    String(localized: "onboarding.permissions.allowed"),
+                    systemImage: "checkmark.circle.fill",
+                    tint: .signalGreen,
+                    font: OnboardingMetrics.fieldFont
+                )
+                .frame(minHeight: OnboardingMetrics.controlHeight)
                 .transition(.opacity)
+                .accessibilityIdentifier("onboarding.permissions.granted")
+            case .notDetermined:
+                OnbPillButton(
+                    title: String(localized: "onboarding.permissions.allow"),
+                    icon: "mic.fill",
+                    style: .primary,
+                    help: [
+                        String(localized: "onboarding.permissions.subtitle"),
+                        String(localized: "onboarding.permissions.mic.usage"),
+                    ].joined(separator: "\n")
+                ) {
+                    controller.resolvePermission(.microphone)
+                }
+                .accessibilityIdentifier("onboarding.permissions.action")
+            case .denied:
+                // 拒绝过的人按了按钮会被带到系统设置:说清楚去那里做什么、
+                // 做完回哪。
+                SettingsProblem(
+                    String(localized: "onboarding.permissions.denied_hint"),
+                    font: OnboardingMetrics.fieldFont
+                )
+                .accessibilityIdentifier("onboarding.permissions.denied")
+                OnbPillButton(
+                    title: String(localized: "onboarding.permissions.action.open_system_settings"),
+                    icon: "gearshape",
+                    style: .primary
+                ) {
+                    controller.resolvePermission(.microphone)
+                }
+                .accessibilityIdentifier("onboarding.permissions.action")
             }
+        } footer: {
+            OnbPillButton(
+                title: String(localized: "onboarding.back"),
+                icon: "arrow.left",
+                style: .ghost,
+                action: onBack
+            )
 
             Spacer()
 
-            // Navigation
-            HStack(spacing: 12) {
-                OnbPillButton(
-                    title: "onboarding.common.back",
-                    style: .ghost,
-                    action: onBack
-                )
-
-                Spacer()
-
-                OnbPillButton(
-                    title: "onboarding.permissions.continue",
-                    style: .primary,
-                    action: onContinue
-                )
-                .animation(.easeInOut(duration: 0.25), value: controller.allPermissionsGranted)
-                .modifier(ReadyPulseModifier(active: controller.allPermissionsGranted))
-            }
-            .opacity(appeared ? 1 : 0)
-            .animation(.easeOut(duration: 0.4).delay(0.55), value: appeared)
-
-            Spacer().frame(height: 56)
+            // 麦克风允许了,这一步该按的就是它;还没允许,它是描边的那一个。
+            OnbPillButton(
+                title: String(localized: "onboarding.finish"),
+                style: controller.allPermissionsGranted ? .primary : .ghost,
+                help: controller.allPermissionsGranted
+                    ? nil
+                    : String(localized: "onboarding.permissions.hint"),
+                action: onContinue
+            )
+            .modifier(ReadyPulseModifier(active: controller.allPermissionsGranted))
+            .accessibilityIdentifier("onboarding.permissions.finish")
         }
-        .padding(.horizontal, 64)
+        .opacity(appeared ? 1 : 0)
+        .animation(.easeOut(duration: 0.4), value: appeared)
         .animation(.easeInOut(duration: 0.25), value: controller.allPermissionsGranted)
         .onAppear {
             appeared = true
@@ -1261,77 +1173,7 @@ struct PermissionsScreen: View {
             controller.refreshPermissions()
         }
     }
-
-    @ViewBuilder
-    private func permissionCard(perm: AppPermission, icon: String, delayIdx: Int) -> some View {
-        let status = controller.permissionStatuses[perm] ?? .notDetermined
-        HStack(alignment: .center, spacing: 16) {
-            Image(systemName: icon)
-                .font(.system(size: 18, weight: .regular))
-                .foregroundColor(Color.textSecondary)
-                .frame(width: 24)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(nameKey(for: perm))
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(Color.textPrimary)
-                Text(usageKey(for: perm))
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundColor(Color.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer()
-
-            switch status {
-            case .granted:
-                ZStack {
-                    Circle()
-                        .fill(Color.accentGold)
-                        .frame(width: 24, height: 24)
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(.white)
-                }
-                .transition(.scale(scale: 0.6).combined(with: .opacity))
-            case .notDetermined, .denied:
-                OnbSmallPill(
-                    title: status == .denied
-                        ? "onboarding.permissions.action.open_system_settings"
-                        : "onboarding.permissions.action.grant",
-                    style: .primary
-                ) {
-                    controller.resolvePermission(perm)
-                }
-                .accessibilityIdentifier("onboarding.permissions.action")
-            }
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 18)
-        .surfaceCard(fill: Color.bgElevated, cornerRadius: Radius.sm)
-        .animation(.easeInOut(duration: 0.3), value: status)
-        .opacity(appeared ? 1 : 0)
-        .offset(y: appeared ? 0 : 14)
-        .animation(.easeOut(duration: 0.45).delay(0.25 + Double(delayIdx) * 0.08), value: appeared)
-    }
-
-    private var isDenied: Bool {
-        AppPermission.allCases.contains { controller.permissionStatuses[$0] == .denied }
-    }
-
-    private func nameKey(for perm: AppPermission) -> LocalizedStringKey {
-        switch perm {
-        case .microphone: return "onboarding.permissions.mic.name"
-        }
-    }
-
-    private func usageKey(for perm: AppPermission) -> LocalizedStringKey {
-        switch perm {
-        case .microphone: return "onboarding.permissions.mic.usage"
-        }
-    }
 }
-
 
 // MARK: - Ready Pulse Modifier
 

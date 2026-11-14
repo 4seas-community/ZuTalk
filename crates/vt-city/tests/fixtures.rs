@@ -421,3 +421,55 @@ fn channels_reduce_as_the_city_reduces_them() {
     );
     assert_eq!(by_id(reduce_channels(list(&fixtures, "recs"))), want);
 }
+
+/// A part of a recording's audio is signed exactly when the city would make
+/// of it what was signed: its reader keeps the record and hands every field
+/// on unchanged, its server serves the type as itself and stores a file of
+/// that size. (One rule is stricter than the city's: a part of no length is
+/// kept by its reader, and refused here — there is nothing in it to play.)
+#[test]
+fn parts_are_signed_exactly_when_the_city_keeps_them_as_signed() {
+    let fixtures = fixture(include_str!("fixtures/parts.json"));
+    assert_eq!(fixtures["file_max"], vt_city::hub::FILE_MAX_BYTES);
+    assert_eq!(fixtures["levels_max"], publish::PART_LEVELS_MAX);
+    assert_eq!(fixtures["mime_max"], publish::PART_MIME_MAX);
+    assert_eq!(fixtures["part_ms"], publish::PART_MS);
+    let identities = fixture(include_str!("fixtures/identity.json"));
+    let who = Identity::from_key_string(text(&identities["people"][0], "key_string")).unwrap();
+    let (mut signed, mut refused) = (0, 0);
+    for case in list(&fixtures, "cases") {
+        let body = &case["body"];
+        let input = publish::PartInput {
+            take_id: "cd".repeat(32),
+            n: u32::try_from(body["n"].as_u64().expect("a part number")).unwrap(),
+            file: text(body, "file").to_string(),
+            size: body["size"].as_u64().expect("a size"),
+            t0_ms: body["t0"].as_i64().expect("a start"),
+            dur_ms: body["dur"].as_i64().expect("a length"),
+            mime: text(body, "mime").to_string(),
+            levels: text(body, "lv").to_string(),
+        };
+        let kept_as_signed = case["read"] == *body;
+        let expect =
+            kept_as_signed && case["served"] == true && case["stored"] == true && input.dur_ms > 0;
+        let built = publish::build_part(&who, &input, 1_794_528_000_000);
+        assert_eq!(built.is_ok(), expect, "{body}: {built:?}");
+        match built {
+            Ok(part) => {
+                assert!(record::verify(&part.rec));
+                assert_eq!(part.rec["e"]["body"], *body, "signed as the city reads it");
+                signed += 1;
+            }
+            Err(error) => {
+                // Too large is told apart; everything else is one answer.
+                let too_large = input.size > vt_city::hub::FILE_MAX_BYTES;
+                assert_eq!(error == CityError::FileTooBig, too_large, "{body}");
+                refused += 1;
+            }
+        }
+    }
+    assert!(
+        signed >= 8 && refused >= 15,
+        "{signed} signed, {refused} refused"
+    );
+}

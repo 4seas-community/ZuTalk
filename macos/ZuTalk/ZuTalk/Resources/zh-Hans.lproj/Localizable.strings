@@ -6,35 +6,21 @@
 "common.delete" = "删除";
 
 /* Onboarding — Welcome */
-"onboarding.welcome.button" = "继续 →";
 "onboarding.welcome.bullet1" = "选好会用到的语言，按「开始录音」——或在任何应用里按 ⌃⌥R。";
 "onboarding.welcome.bullet2" = "说话时文字边录边出；听到要紧处按 ⌃⌥S 标记。";
 "onboarding.welcome.bullet3" = "录完后在同一处查看文字稿、标记和笔记，需要时再把录音放进主题。";
 "onboarding.welcome.privacy" = "录音默认只存在这台 Mac；要不要边录边出字（会把音频发给 Soniox），每次录音时由你决定。";
-"onboarding.visual.live" = "边录边出字";
-"onboarding.visual.speaker.host" = "主持人";
-"onboarding.visual.speaker.guest" = "参与者";
-"onboarding.visual.language.zh" = "中文";
-"onboarding.visual.language.en" = "English";
-"onboarding.visual.language.ja" = "日本語";
-"onboarding.visual.microphone.title" = "麦克风已准备";
-"onboarding.visual.microphone.detail" = "录下现场 · 边录边出字";
 
 /* Onboarding — Permissions */
-"onboarding.permissions.title" = "准备记录第一场对话";
 "onboarding.permissions.subtitle" = "允许 ZuTalk 使用麦克风，就能录下现场的声音，并边录边出字。";
 "onboarding.permissions.hint" = "也可以先进入应用，稍后在第一次录音时授权。";
-"onboarding.permissions.mic.name" = "麦克风";
 "onboarding.permissions.mic.usage" = "用来录现场的声音，并边录边出字。";
-"onboarding.permissions.action.grant" = "授予权限";
 "onboarding.permissions.action.open_settings" = "打开系统设置";
-"onboarding.permissions.continue" = "进入 ZuTalk →";
 
 /* Onboarding — API Keys */
 "onboarding.keys.title" = "开启边录边出字";
 "onboarding.keys.subtitle" = "输入你自己的 Soniox API 密钥，开启边录边出字。";
 "community_invite.placeholder" = "输入邀请码";
-"community_invite.action" = "启用邀请";
 "community_invite.active" = "社区邀请已生效";
 "community_invite.thirty_hours" = "5 Give · 约 30 小时";
 "community_invite.shared_detail" = "边录边出字和翻译共用这段时间；精修要用你自己的 Soniox 密钥。";
@@ -62,11 +48,8 @@
 "community_invite.fallback_personal_key" = "邀请时长暂时不可用——本次录音将使用你自己的 Soniox 密钥。";
 "community_invite.async.needs_personal_key" = "精修需要你自己的 Soniox 密钥。请在设置中填入。";
 "community_invite.async.wait_for_recording" = "当前有录音正在使用邀请时长。请先停止录音，再精修。";
-"editor.transcript.async.start" = "精修";
 "editor.transcript.async.start_failed" = "无法开始精修";
-"editor.transcript.async.invite_add_key" = "用自己的 Soniox 密钥…";
 "editor.transcript.async.invite_add_key_hint" = "邀请时长仅覆盖实时转录。音频文件转录会以你自己的密钥把这段录音上传给语音引擎——在设置中录入密钥后开启。";
-"onboarding.keys.voice_label" = "边录边出字的服务";
 "onboarding.keys.guide.create" = "注册";
 "onboarding.keys.guide.copy" = "复制密钥";
 "onboarding.keys.guide.paste" = "粘贴到下方";
@@ -74,18 +57,15 @@
 "onboarding.keys.soniox.help" = "点击“验证并保存”只检查密钥是否可用，不会上传录音。";
 "onboarding.keys.paste" = "Soniox API 密钥";
 "onboarding.keys.verify_and_save" = "验证并保存";
-"onboarding.keys.verify_saved" = "验证连接";
 "onboarding.keys.skip" = "暂时跳过";
 "onboarding.keys.continue" = "继续";
 "onboarding.keys.private_status" = "验证通过后才在本机保存";
 
 /* Onboarding — Step Indicator */
-"onboarding.step.signup" = "认识 ZuTalk";
 "onboarding.step.setup" = "准备录音";
 "onboarding.step.tryout" = "边录边出字";
 
 /* Onboarding — Common */
-"onboarding.common.back" = "← 返回";
 
 "sidebar.help" = "使用帮助";
 "updates.install_and_relaunch" = "更新并重启";
@@ -154,15 +134,12 @@
 "settings.language.title" = "App 语言";
 "settings.language.hint" = "ZuTalk 的窗口、菜单和提示所使用的语言。";
 "settings.language.restart_hint" = "重启 ZuTalk 后完全生效。";
-"settings.appearance.title" = "外观";
 
 /* Permissions */
 "permission.microphone.name" = "麦克风";
 "permission.microphone.usage" = "录下你说的话，发给 Soniox 转成文字";
 
 /* Library — export sheet */
-"export.dialog.title" = "导出选项";
-"export.dialog.text_format" = "文本格式";
 "export.dialog.audio_group" = "音频";
 "export.dialog.audio_include" = "包含音频文件 (.wav)";
 "export.dialog.markdown" = "Markdown (.md)";
@@ -182,7 +159,6 @@
 "doc.scratchpad" = "个人笔记";
 
 /* Onboarding brand line */
-"onboarding.brand.subtitle" = "多语言沟通与会议 · LIVE MULTILINGUAL MEETINGS";
 
 /* Settings sidebar section rawValues */
 "settings.section.general_name" = "通用";
@@ -190,11 +166,9 @@
 /* Settings sidebar groups */
 
 /* Settings — API panels */
-"settings.credentials.enter_key" = "输入 API 密钥";
 "settings.credentials.local_storage_hint" = "以未加密文件保存在当前 macOS 登录账户的应用私有目录中，并在启动时自动加载。";
 "settings.credentials.trust_boundary_notice" = "在此保存的凭据不会加密。ZuTalk 信任当前 macOS 登录环境，将凭据保存在应用私有本地文件中，并在启动时自动加载。";
 "settings.credentials.verify" = "验证";
-"settings.credentials.verify_and_save" = "验证并保存";
 "settings.credentials.verifying" = "正在验证…";
 "settings.credentials.verifying_hint_format" = "正在连接 %@ 验证此密钥。";
 "settings.credentials.verified_hint_capture" = "这把 Soniox 密钥可以用来边录边出字和精修。";
@@ -271,7 +245,7 @@
 "settings.services.model.title" = "语言模型";
 "settings.services.model.subtitle_format" = "可选。把标记的段落整理清楚，并据此成文。使用 %@。";
 "settings.services.model.egress_notice" = "只有你标记的段落会被发送，完整的文字稿留在这台 Mac 上。";
-"settings.services.model.audio_notice" = "录音从不发送——填不填 DeepSeek 密钥都一样。";
+"settings.services.model.audio_notice" = "录音不会发给 DeepSeek——填不填密钥都一样。";
 "settings.services.model.invite_included" = "邀请已包含段落整理";
 "settings.services.model.invite_included_detail_format" = "不用填 DeepSeek 密钥。打开上面的开关后，标记的段落经 ZuTalk 邀请服务转交 %1$@ 整理，服务不保存内容。今天还能整理 %2$lld 段。";
 "settings.services.model.invite_superseded_format" = "你已保存自己的 %@ 密钥，段落只发给 %@，不经过邀请服务。";
@@ -304,7 +278,6 @@
 /* Settings — Privacy section */
 
 /* Settings — Shortcuts */
-"settings.shortcuts.title" = "键盘快捷键";
 "settings.shortcuts.subtitle" = "前三个在任何应用里都能用，ZuTalk 在后台时也有效。";
 "settings.shortcuts.toggle_recording" = "开始 / 停止录音";
 "settings.shortcuts.cycle_display" = "切换显示模式";
@@ -349,13 +322,12 @@
 
 /* Document editor residuals */
 "editor.tab.transcript" = "实时转录";
-"editor.transcript.realtime.empty_title" = "没有边录边出的那一版";
-"editor.transcript.realtime.empty_desc" = "这场录音没有边录边出的那一版。";
+"editor.transcript.realtime.empty_title" = "没有现场稿";
+"editor.transcript.realtime.empty_desc" = "这场录音没有现场稿。";
 "editor.transcript.async.pending_title" = "正在精修";
 "editor.transcript.async.pending_desc" = "你要求的精修还在进行。";
 "editor.transcript.async.metadata_missing_notice" = "这份精修稿不含说话人与语言信息。";
 "editor.transcript.async.failed_title" = "精修失败";
-"editor.transcript.async.failed_desc" = "精修没有成功，录音仍安全保存在本机。";
 "editor.transcript.async.empty_title" = "没有精修稿";
 "editor.transcript.async.empty_desc" = "精修默认不做，这场录音也没有要求过。";
 "editor.transcript.async.no_session_title" = "未选择录音";
@@ -381,7 +353,6 @@
 
 /* Home page */
 "home.workspace.load_failed" = "无法载入主题数据。";
-"home.workspace.membership_unavailable" = "读不出录音放在哪个主题。录音仍保存在这台 Mac 上；重试之前不显示，也不能改。";
 "home.workspace.select_failed" = "无法打开这个主题。";
 "home.workspace.resolve_failed" = "无法确定这条录音所属的主题。";
 "home.workspace.refresh_failed" = "无法刷新主题数据。";
@@ -390,15 +361,11 @@
 "home.workspace.retry" = "重试";
 "home.notebook.new" = "新建主题";
 "home.notebook.new.help" = "创建并命名一个主题";
-"home.notebook.local_first" = "保存在本机";
-"home.library.title" = "主题";
-"home.library.subtitle" = "每个主题都有自己的工作区，用来整理录音、文字稿与主题笔记。";
 "home.library.open_hint" = "打开主题";
 "home.topic.workspace_contents" = "录音、转录与共享笔记";
 "home.library.session_count_format" = "%lld 场录音";
 "topics.search.placeholder" = "搜索主题";
 "topics.search.empty.title" = "未找到主题";
-"topics.search.empty.description" = "请尝试其他关键词，或新建一个主题。";
 "home.no_notebook.title" = "还没有主题";
 "home.no_notebook.description" = "可以先从上方直接录音；需要把多次访谈串起来时再创建主题。";
 "home.first_use.step1.title" = "先创建主题";
@@ -407,7 +374,6 @@
 "home.first_use.step2.detail" = "打开主题后，红色录音按钮就在顶部。";
 "home.first_use.step3.title" = "最后查看结果";
 "home.first_use.step3.detail" = "停止录音后，字幕、音频和笔记都会留在里面。";
-"home.first_use.action" = "新建主题";
 "home.import.action" = "导入音频";
 "home.import.in_progress" = "正在导入…";
 "home.import.completed" = "音频已导入";
@@ -449,11 +415,7 @@
 "home.recording.delete_while_recording" = "录音结束后才能删除这段录音。";
 "home.recording.bulk_delete_failed" = "无法将这些录音移到回收站。";
 "home.create.title" = "新建主题";
-"home.create.description" = "为要持续追踪的主题命名。";
 "home.create.name_label" = "主题名称";
-"home.create.name_placeholder" = "例如：AI 与下一代长期命运";
-"home.create.local_first" = "主题及其笔记保存在这台 Mac 上。";
-"home.create.action" = "创建主题";
 "home.create.completed" = "主题已创建";
 "home.create.failed" = "无法创建主题。";
 "home.create.invalid_title" = "需要填写主题名称";
@@ -466,7 +428,7 @@
 "resources.load_failed" = "无法载入资源";
 "resources.empty" = "这个主题还没有录音资源";
 "resources.audio" = "音频";
-"resources.realtime" = "边录边出的那一版";
+"resources.realtime" = "现场稿";
 "resources.async" = "精修稿";
 "resources.note" = "个人笔记";
 "resources.untitled_recording" = "未命名录音";
@@ -474,7 +436,6 @@
 "resources.status.pending" = "处理中";
 "resources.status.ready" = "可用";
 "resources.status.failed" = "失败";
-"resources.move" = "将录音移动到其他主题…";
 "resources.move.title" = "移动录音";
 "resources.move.message" = "“%@”的音频与已有的文字稿会一起移动；主题笔记仍保留在当前主题。";
 "resources.move.action" = "移动";
@@ -491,7 +452,7 @@
 "resources.audio.destroy" = "删除音频";
 "resources.audio.destroy.confirm_title" = "永久删除“%@”的音频？";
 "resources.audio.destroy.confirm_button" = "删除音频";
-"resources.audio.destroy.confirm_message" = "音频文件会被安全销毁且无法恢复；文字稿、笔记和本次录音都会保留。";
+"resources.audio.destroy.confirm_message" = "这台 Mac 上的音频会被安全销毁，无法恢复；文字稿和笔记保留。";
 "resources.audio.destroy.failed" = "无法删除音频";
 "resources.audio.destroy.done" = "音频已删除";
 "resources.audio.destroy.while_recording" = "请先停止录音，再删除音频。";
@@ -545,7 +506,6 @@
 "editor.failed.subtitle"      = "可能是网络抖动或 API 限流。点下方重试一次。";
 
 /* Trash page */
-"trash.empty.title" = "回收站为空";
 "trash.empty.desc" = "删除的录音会留在这里，直到你恢复或永久删除它们。";
 "trash.action.restore" = "恢复";
 "trash.action.purge" = "永久删除";
@@ -558,8 +518,6 @@
 /* Onboarding — residuals */
 "onboarding.brand.name" = "ZuTalk";
 "onboarding.brand.tagline" = "让每一场多语言交流，从现场理解到会后整理，都在同一个地方完成。";
-"onboarding.keys.testing_status" = "测试中…";
-"onboarding.keys.connected_status" = "已连接";
 
 /* Trust bar */
 "trust.version_format" = "ZuTalk · v%@";
@@ -570,7 +528,6 @@
 "updates.unavailable.title" = "尚未配置更新";
 "updates.unavailable.message" = "此开发版本未包含更新签名公钥。";
 "updates.unavailable.dismiss" = "好";
-"settings.updates.title" = "软件更新";
 "settings.updates.subtitle" = "新版本在安装前都会先验证签名。";
 "settings.updates.automatic" = "自动检查更新";
 "settings.updates.automatic_hint" = "ZuTalk 会定期检查经过签名的更新源，并在新版本可用时提醒你。";
@@ -660,7 +617,6 @@
 "subtitle.overlay.font_auto.enable" = "字号随窗口自动适配";
 "subtitle.overlay.font_auto.disable" = "改为手动调整字号";
 "subtitle.overlay.font_auto.on" = "字号跟随窗口大小";
-"subtitle.overlay.font_auto.off" = "字号为手动设定";
 "subtitle.overlay.move_resize_hint" = "拖动窗口可移动；拖动任意边缘或四角可调整大小。";
 "subtitle.overlay.maximize" = "铺满当前屏幕";
 "subtitle.overlay.banner" = "在屏幕顶部铺一条整宽字幕带";
@@ -723,7 +679,6 @@
 "capture.toast.context_update_failed" = "无法更新参考资料";
 "capture.toast.edit_failed" = "无法更新文字稿的语言列";
 "capture.toast.projection_retry_failed" = "没能重新保存文字稿";
-"capture.settings.title" = "录音选项";
 "capture.settings.subtitle" = "更改自动保存，作为下一次录音的默认设置。";
 "capture.settings.subtitle.topic" = "更改自动保存，作为这个主题下一次录音的默认值；声音来源整台 Mac 通用。";
 "capture.settings.subtitle.quick_capture" = "更改自动保存，作为下一次从首页开始的录音的默认值；声音来源整台 Mac 通用。";
@@ -747,8 +702,6 @@
 "capture.settings.languages.no_results" = "没有找到尚未选择的匹配语言。";
 "capture.settings.languages.maximum_reached" = "每场最多可选择三种语言。";
 "capture.settings.languages.add_format" = "添加 %@";
-"capture.settings.languages.move_earlier" = "将语言向前移动";
-"capture.settings.languages.move_later" = "将语言向后移动";
 "capture.settings.languages.remove" = "移除语言";
 "capture.settings.languages.roles.all_spoken" = "这几种语言都可能有人说，都算「说的语言」，每种各开一条翻译连接（%d 条）。确定没人说的语言，点它前面的声波图标改成「另外译成」，可以少开连接。";
 "capture.settings.languages.roles.some_subtitle_only" = "说的语言：%1$@。另外译成：%2$@ · %3$d 条连接。";
@@ -766,13 +719,7 @@
 "capture.settings.context.current_topic" = "当前主题";
 "capture.settings.context.current_quick_capture" = "不在主题里的录音";
 "capture.settings.context.current_notebook_detail" = "用于当前录音范围";
-"capture.settings.context.selected" = "正在编辑";
-"capture.settings.context.not_selected" = "未选中";
 "capture.settings.context.create_library" = "创建";
-"capture.settings.after_stop.title" = "精修";
-"capture.settings.after_stop.engine" = "处理方式";
-"capture.settings.after_stop.detail" = "停止录音后，可以用当前的引擎精修。";
-"capture.settings.after_stop.unavailable_detail" = "当前版本没有可用的精修方式。";
 "capture.state.recording" = "录音中";
 "capture.state.paused" = "已暂停";
 "capture.state.draining" = "收尾中";
@@ -868,9 +815,7 @@
 "knowledge.create" = "创建";
 "knowledge.untitled" = "未命名资料";
 "knowledge.name" = "资料名称";
-"knowledge.empty.title" = "建立第一份资料";
 "knowledge.empty.description" = "把一个主题的背景、人物、机构和术语整理在同一张档案中。";
-"knowledge.card.no_summary" = "尚未填写说明";
 "knowledge.card.counts" = "%lld 个专有词 · %lld 条固定译法";
 "knowledge.back" = "专有词与背景";
 "knowledge.summary.placeholder" = "用一句话说明这份资料帮助识别什么";
@@ -897,16 +842,14 @@
 "knowledge.translation.source" = "原文";
 "knowledge.translation.target" = "固定译法";
 "knowledge.translation.add" = "添加固定译法";
-"capture.settings.context.current" = "当前使用";
 "capture.settings.context.no_selection" = "未选择";
-"capture.settings.context.choose" = "切换";
 "knowledge.import_json" = "导入 JSON";
 "knowledge.import_json.message" = "选择一个 ZuTalk 资料 JSON 文件（.zutalk-pack.json）。";
 "knowledge.import_json.done" = "资料已导入";
 "knowledge.import_json.failed" = "无法导入这份资料";
 
 /* 分享:点对点字幕与文档协同 */
-"share.audio_never" = "音频从不离开这台 Mac，别人只看得到文字。";
+"share.audio_never" = "分享出去的只有文字，不带音频。";
 
 /* 设置:分享(点对点)传输 */
 
@@ -983,7 +926,7 @@
 "topic.route.unavailable_detail" = "这个主题的工作区暂时不可用，请返回首页后重试。";
 "topic.session.no_preview" = "暂无文字稿预览";
 "topic.session.recording_label" = "实时录音";
-"topic.session.tab.live" = "边录边出的那一版";
+"topic.session.tab.live" = "现场稿";
 "topic.session.tab.processed" = "精修稿";
 "topic.sessions.tab" = "录音";
 "topic.sessions.tab.hint" = "查看这个主题中的录音与导入音频";
@@ -1017,16 +960,11 @@
 "session.notes.context" = "只属于这次录音";
 "session.settings.title" = "录音设置";
 "session.settings.workspace.configuration" = "录音配置";
-"session.settings.workspace.snapshot" = "本次快照";
 "session.settings.workspace.scope" = "录音配置可编辑；本次录音已经使用的历史设置请在「本次快照」查看。";
 "session.settings.workspace.scope.topic" = "录音配置可编辑，作用于当前主题的下一次录音；这一场实际用过的配置见页面底部的快照。";
 "session.settings.workspace.scope.quick_capture" = "录音配置可编辑，作用于下一次从首页开始的录音；这一场实际用过的配置见页面底部的快照。";
-"session.settings.resources.title" = "本次资源";
 "session.settings.resources.subtitle" = "查看本次录音当前拥有的资源状态。删除音频不会删除文字稿、笔记或录音。";
-"session.settings.resources.note.detail" = "可编辑";
 "session.settings.subtitle" = "这场录音实际用过的配置，不会改变主题默认值。";
-"session.settings.section.session" = "录音信息";
-"session.settings.section.capture" = "录音快照";
 "session.settings.field.created" = "创建时间";
 "session.settings.field.duration" = "时长";
 "session.settings.field.type" = "类型";
@@ -1068,11 +1006,7 @@
 "recording_bar.stop_hint" = "结束并保存这场录音（⌃⌥R，在任何应用里都能用）";
 "recording_bar.retry_stop" = "重试停止";
 "recording_bar.captions.off" = "只录音";
-"captions_choice.on" = "边录边出字";
 "captions_choice.off" = "只录音";
-"captions_choice.on_hint" = "边录边出字和翻译：录音期间音频会发送给 Soniox。点一下改为只在这台 Mac 上录音。";
-"captions_choice.off_hint" = "录音只留在这台 Mac 上，不出字。点一下改为边录边出字。";
-"captions_choice.unavailable_hint" = "边录边出字需要 Soniox 密钥或邀请码。点一下去设置里添加。";
 "capture.toast.stopped_saved" = "录音已保存（%@）";
 "capture.toast.stopped_by_sleep" = "电脑进入睡眠，录音已结束并保存（%@）";
 "menubar.action.start_recording" = "开始录音";
@@ -1091,7 +1025,6 @@
 "common.save" = "保存";
 "library.rename.recording" = "重命名录音…";
 "library.rename.recording_placeholder" = "留空则显示开头的几句话";
-"library.rename.topic" = "重命名主题…";
 "library.rename.failed" = "无法重命名";
 "topic.actions" = "主题操作";
 "topic.delete" = "删除主题…";
@@ -1103,7 +1036,6 @@
 "topic.delete.confirm_message_format" = "其中 %lld 场录音会保留，文字稿和笔记都在，只是不再属于任何主题。主题自己的笔记会被删除。";
 "topic.delete.confirm_message_empty" = "这个主题里没有录音。主题笔记会被删除。";
 
-"captions_choice.on_invite_format" = "边录边出字 · 约可录 %@";
 
 "topics.card.last_recorded_format" = "最近录音：%@";
 
@@ -1203,7 +1135,6 @@
 "record.page.input_detail_microphone_or_meeting" = "录麦克风收到的声音：面对面开会、上课、自己说话。要录线上会议里的对方，选「电脑里的声音」。";
 "record.page.input_detail_microphone" = "录麦克风收到的声音：面对面开会、上课、自己说话。";
 "record.page.captions" = "边录边出字";
-"record.page.captions_detail" = "开着时，音频会发给 Soniox 转成文字并翻译；关着只在本机录音。";
 "record.page.captions_needs_key" = "要边录边出字，先在设置里填 Soniox 密钥或社区邀请码。现在只能录音。";
 "record.page.shortcut_hint" = "在任何 App 里按 ⌃⌥R 也能开始或停止录音。";
 "record.page.import" = "导入音频";
@@ -1217,11 +1148,10 @@
 "capture.settings.context.manage" = "编辑专有词与背景…";
 
 "session.tab.transcript" = "文字稿";
-"session.transcript.live_version" = "边录边出的那一版";
+"session.transcript.live_version" = "现场稿";
 "session.transcript.refined_version" = "精修稿";
 "session.menu.hint" = "分享、导出与录音详情";
 "session.menu.settings" = "录音文件与详情…";
-"editor.export.menu" = "导出…";
 
 "trash.subtitle" = "删掉的录音在这里。恢复就回到原来的地方；永久删除会连同加密音频一起清掉，不能撤销。";
 "trash.empty_all" = "清空回收站…";
@@ -1250,10 +1180,9 @@
 "settings.devices.subtitle" = "在你自己的几台 Mac 之间同步录音、文字稿和笔记。直接在它们之间传，不经服务器，不需要账号。";
 "settings.devices.sync_title" = "同步";
 "settings.devices.enable" = "在我的 Mac 之间同步";
-"settings.devices.enable_hint" = "音频只留在录音的那台 Mac 上；其他 Mac 上只有文字。";
+"settings.devices.enable_hint" = "同步的只有文字；音频不同步到其他 Mac。";
 "settings.devices.this_mac" = "这台 Mac 的名字";
 "settings.devices.this_mac_hint" = "其他 Mac 用它说明录音是在哪台上录的。";
-"settings.devices.my_macs" = "我的 Mac";
 "settings.devices.only_this" = "现在只有这台。在另一台 Mac 上打开同步、输入配对码，它就会出现在这里。";
 "settings.devices.unnamed" = "未命名的 Mac";
 "settings.devices.online_direct" = "在线 · 直连";
@@ -1263,7 +1192,6 @@
 "settings.devices.remove" = "移除";
 "settings.devices.remove_confirm_title" = "移除「%@」？";
 "settings.devices.remove_confirm_message" = "它会留着已经同步到的内容，但再也不会和你的 Mac 同步。要再加回来，得在那台 Mac 上重置同步后重新配对。";
-"settings.devices.add_title" = "添加一台 Mac";
 "settings.devices.add_subtitle" = "在这里生成配对码，到另一台 Mac 的「设置 › 我的设备」里输入；或者反过来。";
 "settings.devices.create_code" = "生成配对码";
 "settings.devices.create_code_hint" = "十分钟内有效，只能用一次。";
@@ -1273,9 +1201,8 @@
 "settings.devices.join_placeholder" = "粘贴另一台 Mac 的配对码";
 "settings.devices.join" = "加入";
 "settings.devices.joined_format" = "已经和「%@」连上了。录音会在接下来几分钟里陆续过来。";
-"settings.devices.how" = "它怎么工作";
 "settings.devices.how_direct" = "同一网络里直接传；不在同一网络时，经 ZuTalk 的中继转发加密后的内容，中继看不到内容。";
-"settings.devices.how_audio" = "音频永远不离开录音的那台 Mac。";
+"settings.devices.how_audio" = "设备之间不同步音频。";
 "settings.devices.how_recording" = "正在录的那一场，录完才出现在其他 Mac 上。";
 "settings.devices.how_code" = "配对码是进你资料库的钥匙：十分钟内有效、只能用一次。不要发到公开的地方。";
 "sync.invite.copied" = "配对码已拷贝";
@@ -1306,7 +1233,7 @@
 
 "topic.collab.menu" = "协作…";
 "topic.collab.title_format" = "协作「%@」";
-"topic.collab.explain" = "邀请别人和你一起做这个主题。双方都能看到、修改里面录音的文字稿、笔记和标记，改动会自动合并。内容在两台 Mac 之间直接传，不用账号，也没有服务器留存。音频只留在录音的那台 Mac 上。";
+"topic.collab.explain" = "邀请别人和你一起做这个主题。双方都能看到、修改里面录音的文字稿、笔记和标记，改动会自动合并。内容在两台 Mac 之间直接传，不用账号，也没有服务器留存。音频不会传给对方。";
 "topic.collab.removed" = "你已被移出这个主题。已经同步到的内容留在这台 Mac 上，但不再同步。";
 "topic.collab.members" = "参与的人";
 "topic.collab.this_mac_format" = "%@（这台 Mac）";
@@ -1321,7 +1248,7 @@
 "topic.collab.remove_confirm_format" = "把「%@」移出这个主题？";
 "topic.collab.remove_confirm_message" = "对方留着已经同步到的内容，但再也不能同步这个主题。";
 "topic.collab.join_title" = "加入协作主题";
-"topic.collab.join_explain" = "粘贴别人发给你的邀请码。主题和里面录音的文字稿、笔记会同步到这台 Mac；音频留在对方那里。";
+"topic.collab.join_explain" = "粘贴别人发给你的邀请码。主题和里面录音的文字稿、笔记会同步到这台 Mac；音频不会同步过来。";
 "topic.collab.join_placeholder" = "邀请码";
 "topic.collab.join_button" = "加入协作";
 "topic.collab.joined_format" = "已加入「%@」。里面的录音会在接下来几分钟里陆续过来。";
@@ -1394,8 +1321,6 @@
 "backup.made" = "已备份";
 "backup.unchanged" = "上次备份之后没有改动，不用再备份";
 "backup.failed" = "备份没有成功";
-"backup.add" = "备份到另一台 Mac";
-"backup.add_another" = "再备份到一台 Mac";
 "backup.add_hint" = "生成备份码，到要保管备份的那台 Mac 的「设置 › 我的设备」里粘贴。之后每天自动备份，资料库没变就不做。";
 "backup.create_code" = "生成备份码";
 "backup.code_hint" = "到要保管备份的那台 Mac 上，打开「设置 › 我的设备」，把这个码粘贴进去。十分钟内有效，只能用一次。";
@@ -1439,7 +1364,6 @@
 
 /* City: signing in. */
 "city.signin.title" = "登录";
-"city.signin.title_format" = "登录 %@";
 "city.signin.address_hint" = "先填城的网址。";
 "city.signin.address_placeholder" = "城的网址";
 "city.signin.address_label" = "城的网址";
@@ -1463,47 +1387,29 @@
 "city.signin.recovery_placeholder" = "恢复密钥";
 "city.signin.sign_in" = "登录";
 "city.signin.recovery_hint" = "恢复密钥就是你在城里的身份本身。别在公用电脑上填。";
-"city.signin.trust" = "登录就是把你在这座城的身份交给这台 Mac：它能以你的名义做你在城里能做的任何事。ZuTalk 只用它把你归到活动的文字稿交到档案馆。场地的公用电脑用完请退出登录。";
 
 /* City: signed in. */
-"city.settings.signed_in" = "已登录";
 "city.settings.unnamed" = "没有名字的居民";
-"city.settings.stored_title" = "登录信息存在哪";
 "city.settings.stored_detail" = "只存在这台 Mac 上。退出登录会把它从这台 Mac 删掉，你在城里的身份不受影响。";
 "city.role.resident_format" = "%@ 居民";
 "city.role.founder_format" = "%@ 创始人";
 "city.role.coordinator_format" = "%@ 协调者";
 "city.role.curator_format" = "%@ 策展人";
 "city.role.inviter_format" = "%@ 邀请人";
-"city.signout.action" = "退出登录…";
 "city.signout.button" = "退出登录";
 "city.signout.confirm_title" = "从这台 Mac 退出登录？";
-"city.signout.confirm_message" = "登录信息只从这台 Mac 上删掉。你在城里的身份、已经交到档案馆的内容都不受影响。退出以后，这台 Mac 不能再以你的名义做任何事，还在排队的文字稿也不会再交。";
 "city.signout.failed" = "没能退出登录";
 
 /* City: what is filed, and when. */
-"city.what.title" = "交什么";
-"city.what.subtitle" = "每场录音开始前会再列一遍。";
-"city.what.text" = "原文和译文";
 "city.what.text_detail" = "每种语言一份，按时间对齐。";
 "city.what.always" = "总是交";
-"city.what.speakers" = "说话人的名字";
 "city.what.speakers_detail" = "关掉后只写「说话人 1」「说话人 2」。";
-"city.what.marks" = "标记";
-"city.what.marks_detail" = "只交标了哪几处，不交你写的笔记。";
 "city.what.audio" = "音频";
-"city.what.never" = "不交";
-"city.when.title" = "录完以后";
-"city.when.row" = "什么时候交";
-"city.when.automatic" = "自动交";
-"city.when.ask" = "先问我";
 "city.when.automatic_detail" = "停止录音后在后台交，不用等；一时交不上会排队，自动再试。";
 "city.when.ask_detail" = "停止录音后只归到活动，不发出去；等你点了「交到档案馆」才交。";
 "city.options.save_failed" = "没能保存这项设置";
 
 /* City: the list in Settings of every recording assigned to an event from this Mac. */
-"city.filings.title" = "交到档案馆的录音";
-"city.filings.subtitle" = "在这台 Mac 上归过活动的录音都在这里：交了的、排队的、没交上的，每一场都能在这里处理。";
 "city.filings.empty" = "还没有归过活动的录音。";
 "city.filings.more_format" = "「%@」的更多操作";
 
@@ -1518,8 +1424,6 @@
 "city.action.change_event" = "换一场活动…";
 "city.action.drop" = "不交了";
 "city.action.show_recording" = "打开这场录音";
-"city.withdraw.confirm_title" = "从档案馆撤下这份文字稿？";
-"city.withdraw.confirm_message" = "它会从档案馆的页面上消失。但已经交上去的文字记录仍留在城的日志里，目前删不掉。";
 "city.withdraw.button" = "撤下";
 
 /* City: where one recording’s filing stands. One vocabulary, used by the recording’s page, the lists of recordings, the Share panel, Settings and the sidebar. */
@@ -1568,12 +1472,7 @@
 "city.event.today_format" = "今天 %@";
 "city.summary.as_languages_format" = "以 %1$@ 的名义交 %2$@的文字稿。";
 "city.summary.as_format" = "以 %@ 的名义交文字稿。";
-"city.summary.extras.names_marks" = "带说话人的名字和标记。";
-"city.summary.extras.names_only" = "带说话人的名字，不带标记。";
-"city.summary.extras.marks_only" = "带标记，不写说话人的名字。";
-"city.summary.extras.neither" = "不写说话人的名字，不带标记。";
 "city.summary.channel_format" = "同时放进频道「%@」。";
-"city.summary.audio_stays" = "音频留在这台 Mac。";
 "city.content.language_format" = "%1$@ %2$lld 句";
 "city.content.speakers_format" = "说话人 %lld 位";
 "city.content.marks_format" = "标记 %lld 处";
@@ -1624,27 +1523,15 @@
 
 /* City: the archive section of a recording’s Share panel. */
 "city.share.title" = "档案馆";
-"city.share.filed_format" = "已交到档案馆 · %@";
 "city.share.fact.event" = "活动";
 "city.share.fact.channel" = "频道";
 "city.share.fact.signer" = "署名";
 "city.share.fact.content" = "内容";
-"city.share.fact.last" = "上次";
-"city.share.last_format" = "%1$@，%2$@ 交的";
-"city.share.changed_format" = "你改了 %lld 句，档案馆里还是旧的。";
 "city.share.changed_detail" = "更新只交改过的这几句。";
-"city.share.update" = "更新档案馆";
-"city.share.open" = "在浏览器打开";
-"city.share.withdraw" = "从档案馆撤下…";
 "city.share.public_note" = "档案馆里的内容是公开的，会一直留着，和下面 24 小时失效的链接不一样。";
-"city.share.queued" = "排队中：刚才连不上城的服务器。稍后会自动再试，也可以现在重试。";
-"city.share.queued_offline" = "这台 Mac 现在没有联网。联网后会自动交到档案馆。";
-"city.share.retry_now" = "现在重试";
 "city.share.failed_format" = "没交上：%@";
 "city.share.failed_safe" = "文字稿都在这台 Mac 上，没有丢。";
 "city.share.not_filed" = "这场录音还没有交到档案馆。";
-"city.share.withdrawn" = "这份文字稿已经从档案馆撤下。可以换一场活动，或者重新交。";
-"city.share.pick" = "从日历里选活动…";
 "city.share.change" = "换一场…";
 
 /* City: what is said once filing finishes in the background. */
@@ -1697,12 +1584,10 @@
 /* 0.8.2 after */
 "recording.result.title" = "录好了";
 "recording.result.title_format" = "录好了 · %@";
-"recording.result.summary.text_and_audio" = "文字稿在下面。音频留在这台 Mac。";
 "recording.result.summary.text_only" = "文字稿在下面。音频已经按这场录音的设置删掉了。";
 "recording.result.summary.audio_only" = "这一场只录了音。精修一遍就有文字稿。";
 "recording.result.refine.detail" = "把整段录音重新转一遍，比边录边出的更准。";
 "recording.result.refine.needs_setup" = "精修要先在设置里开通。";
-"recording.result.refine.open_settings" = "打开设置";
 "recording.result.refine.in_progress" = "正在精修，要等一会儿。";
 "recording.result.refine.ready" = "精修稿好了。";
 "recording.result.refine.failed" = "上一次精修没成。";
@@ -1717,14 +1602,9 @@
 "transcript.copy_all.failed" = "没能复制全文";
 "session.share_link" = "分享链接…";
 "session.version.show_refined" = "看精修稿";
-"session.version.show_live" = "看边录边出的那一版";
+"session.version.show_live" = "看现场稿";
 "session.menu.label" = "这场录音的更多操作";
-"session.menu.rename" = "改名…";
-"session.menu.file_into_topic" = "放进主题…";
-"session.menu.destroy_audio" = "删掉音频，只留文字…";
 "session.menu.destroy_audio.refining" = "正在精修，要用到音频。等它做完再删。";
-"session.menu.delete" = "删除这场录音…";
-"session.rename.title" = "给这场录音改名";
 "session.delete.confirm_title_format" = "删除“%@”？";
 "session.delete.confirm_message" = "这场录音连同文字稿和音频会移到回收站，可以在那里恢复。";
 "session.delete.done" = "已移到回收站";
@@ -1744,13 +1624,11 @@
 /* 0.8.2 settings */
 "settings.section.account_name" = "账号";
 "settings.section.advanced_name" = "高级";
-"settings.account.subtitle" = "你的身份、出字靠什么、你的设备，都在这一页。";
 "settings.account.signin_title" = "用你的 Zu 身份登录";
 "settings.account.signin_detail" = "登录以后，可以用你自己的名义把文字稿交到你那座城的档案馆；不登录也能照常录音和出字。";
 "settings.account.identity_title" = "你的 Zu 身份";
 "city.archive.title" = "城的档案馆";
 "city.archive.subtitle" = "交什么、录完以后什么时候交，还有已经交出去的录音。";
-"settings.live_text.title" = "出字和翻译";
 "settings.live_text.source.invite" = "现在靠邀请码出字。";
 "settings.live_text.source.invite_time_format" = "现在靠邀请码出字，约可再录 %1$lld 小时 %2$lld 分钟。";
 "settings.live_text.source.invite_spent" = "邀请码的时间用完了，现在出不了字。";
@@ -1759,22 +1637,16 @@
 "settings.live_text.shared_detail" = "边录边出的文字和译文都用这段时间。精修要用自己的密钥。";
 "settings.live_text.invite_field_label" = "邀请码";
 "settings.live_text.invite_hint" = "有邀请码就填在这里，填好就能边录边出字。";
-"settings.live_text.invite_on" = "邀请码已启用";
 "settings.live_text.use_invite" = "用邀请码出字";
 "settings.live_text.use_own_key" = "用自己的密钥…";
-"settings.account.devices_title" = "我的设备";
 "settings.account.devices_subtitle" = "在你自己的几台 Mac 之间同步录音、文字稿和笔记。直接在它们之间传，不经服务器，也不用登录。";
 "settings.account.devices_add_subtitle" = "在这里生成配对码，到另一台 Mac 的「设置 › 账号 › 我的设备」里输入；或者反过来。";
-"settings.general.subtitle_plain" = "界面语言、外观、更新和快捷键。";
 "settings.general.welcome_again_hint_plain" = "再走一遍：出字要用到的、麦克风、怎么录。已有的录音和设置不受影响。";
 "settings.advanced.subtitle" = "大多数人用不到这一页。";
-"settings.advanced.own_key_format" = "自己的 %@ 密钥";
+"settings.advanced.own_key_format" = "%@ 密钥";
 "settings.advanced.capture_key_subtitle" = "没有邀请码，或者要做精修的时候才用得到。";
-"settings.advanced.sharing_title" = "正在分享的链接";
-"settings.advanced.sharing_how" = "怎么分享";
 "settings.advanced.sharing_how_live" = "录音时可以给观众看字幕：会场的人扫码就能看到。";
 "settings.advanced.sharing_how_recording" = "录好的录音可以从它的菜单里分享：发一份副本，或者生成 24 小时的只读链接。";
-"settings.advanced.backup_title" = "备份与恢复";
 "backup.add_hint_account" = "生成备份码，到要保管备份的那台 Mac 的「设置 › 账号 › 我的设备」里粘贴。之后每天自动备份，资料库没变就不做。";
 "backup.code_hint_account" = "到要保管备份的那台 Mac 上，打开「设置 › 账号 › 我的设备」，把这个码粘贴进去。十分钟内有效，只能用一次。";
 "backup.restore_explain_account" = "在要恢复的那台 Mac 上，打开「设置 › 账号 › 我的设备」，粘贴恢复码。恢复是把这份备份合并进去：那台已经有的不动，永久删除过的不会回来。只有文字，没有音频。";
@@ -1793,23 +1665,17 @@
 "settings.diagnostics.recording_keeping_up" = "跟得上";
 "onboarding.step.live_text" = "出字";
 "onboarding.step.microphone" = "麦克风";
-"onboarding.live_text.title" = "出字要用到的";
 "onboarding.live_text.subtitle" = "有邀请码就填在这里，录音时文字和译文会边录边出。没有也可以先录音。";
 "onboarding.live_text.redeem" = "启用";
-"onboarding.live_text.visual" = "文字和译文，边录边出";
 "onboarding.live_text.use_own_key_format" = "用自己的 %@ 密钥";
 "onboarding.live_text.use_invite" = "改用邀请码";
 "onboarding.live_text.skip" = "先跳过，只录音";
-"onboarding.welcome.privacy_plain" = "录音默认只存在这台 Mac。要不要边录边出字（声音会发给转录服务），每场录音都由你决定。";
+"onboarding.welcome.privacy_plain" = "录音存在这台 Mac 上。要不要边录边出字（声音会发给转录服务），每场录音都由你决定。";
 "onboarding.permissions.action.open_system_settings" = "打开系统设置";
 "onboarding.permissions.denied_hint" = "在系统设置的「麦克风」里打开 ZuTalk，再回到这里。";
 "sidebar.account.sign_in" = "登录";
 "sidebar.account.hint" = "打开「设置 › 账号」";
 /* 0.8.2 home */
-"home.start.change" = "更改";
-"home.start.change_done" = "收起";
-"home.start.change_hint" = "更改语言、声音来源和别的选项";
-"home.start.offline_hint" = "这台 Mac 现在没有联网，边录边出字用不了。先连上网络，或者点「更改」把它关掉再录。";
 "home.plan.speak_format" = "说%@";
 "home.plan.speak_translate_format" = "说%1$@，同时译成%2$@";
 "home.plan.speak_many_format" = "说%@，互相翻译";
@@ -1825,21 +1691,16 @@
 "home.options.languages_detail" = "最多三种。选了两种以上，会互相翻译。";
 "home.options.source_detail_microphone_or_mac" = "录麦克风收到的声音：面对面开会、上课、自己说话。要录线上会议里对方的声音，选「电脑里的声音」。";
 "home.options.live_text" = "边录边出字";
-"home.options.live_text_detail" = "打开时，声音会发给网上的服务来出字和翻译；关掉，录音只留在这台 Mac 上。";
 "home.options.live_text_needs_setup" = "边录边出字需要邀请码，或者你自己的密钥。现在只能录音。";
-"home.options.live_text_setup" = "去设置";
 "home.options.live_text_invite_format" = "用的是邀请码，大约还能录 %@。";
 "home.options.topic" = "放进主题";
 "home.options.topic_detail" = "主题是给一个系列归类用的文件夹。不放也行，录完随时可以再放。";
 "home.options.topic.none" = "不放";
 "home.options.topic.new" = "新建主题…";
-"home.options.hosting" = "我在主持活动";
-"home.options.hosting_detail" = "打开后多出：给观众看字幕、把文字稿交到城的档案馆。";
+"home.options.hosting_detail" = "打开后多出：给观众看字幕、把录音交到城的档案馆。";
 "home.options.import" = "导入一段已有的录音…";
-"home.hosting.sign_in_hint" = "登录你的 Zu 身份后，录完可以把文字稿交到城的档案馆。";
-"home.hosting.sign_in_button" = "去登录";
+"home.hosting.sign_in_hint" = "登录你的 Zu 身份后，录完可以把文字稿和音频交到城的档案馆。";
 "home.search.placeholder" = "搜索录音";
-"home.empty.sentence" = "还没有录音。按上面的「开始录音」，录好的会按日期排在这里。";
 "home.filter.no_topic" = "没放进主题";
 "home.filter.no_topic_empty" = "没有还没放进主题的录音。";
 "home.row.put_in_topic" = "放进主题";
@@ -1852,3 +1713,160 @@
 "capture.languages.role.spoken_format" = "%@是说的语言 — 没人说的话，点一下改成「另外译成」";
 "capture.languages.role.translated_format" = "%@只是另外译成 — 有人说的话，点一下改回「说的语言」";
 "audio_input.sound_from_mac" = "电脑里的声音（线上会议、视频）";
+
+/* 0.8.3 home card */
+"home.card.sound_from_mac" = "电脑里的声音";
+"home.card.hosting" = "主持活动";
+"home.card.choose_event" = "选活动";
+"home.card.dont_file" = "不交";
+"home.card.move_earlier" = "前移";
+"home.card.move_later" = "后移";
+
+/* 0.8.3 home */
+"home.card.live_text_disclosure" = "开着时，音频会发给 Soniox 转成文字并翻译。";
+"home.catalog.membership_failed" = "读不出录音放在哪个主题。";
+"home.topics.new" = "新建";
+"home.create.confirm" = "创建";
+/* 0.8.3 topics */
+"topics.options.header" = "默认";
+"topics.options.languages" = "语言";
+"topics.options.sound" = "声音";
+"topics.options.audio" = "音频";
+"topics.options.edit" = "编辑";
+"topics.options.preview" = "预览";
+"knowledge.action.new" = "新建";
+"knowledge.action.import" = "导入";
+"knowledge.meter.title" = "篇幅";
+"trash.action.empty" = "清空";
+"topic.collab.action.copy" = "复制";
+"topic.collab.action.invite" = "邀请";
+"topic.collab.action.stop" = "停止";
+"topic.collab.action.leave" = "退出";
+/* 0.8.3 windows */
+"share.fact.no_audio" = "不含音频";
+"share.fact.encrypted" = "端到端加密";
+"share.fact.deleted_on_stop" = "停止即删除";
+"share.fact.kept_24h" = "停止后保留约 24 小时";
+"share.fact.expires_24h" = "24 小时后失效";
+"share.live.keep_short" = "保留文字稿";
+"share.live.start_short" = "开始";
+"share.live.stop_short" = "停止";
+"share.live.replace_short" = "换链接";
+"share.live.ended" = "已停止给观众看字幕";
+"share.qr.show" = "二维码";
+"share.copy.sent" = "已发送";
+"nearby.pill.count_format" = "附近 · %lld";
+"nearby.send.empty" = "附近没有打开接收的 Mac";
+"subtitle.overlay.menu.banner" = "顶部字幕带";
+"subtitle.overlay.menu.backdrop" = "背景";
+/* 0.8.3 settings */
+"settings.switch.on" = "开";
+"settings.switch.off" = "关";
+"settings.action.copy" = "复制";
+"settings.action.copied" = "已复制";
+"settings.action.replace" = "更换";
+"settings.action.stop" = "停止";
+"settings.action.create" = "生成";
+"settings.group.devices" = "设备";
+"settings.group.updates" = "更新";
+"settings.group.shortcuts" = "快捷键";
+"settings.general.appearance" = "外观";
+"settings.updates.check" = "检查";
+"settings.devices.this_mac_label" = "这台 Mac";
+"settings.devices.pairing_code" = "配对码";
+"settings.devices.online" = "在线";
+"settings.backup.code" = "备份码";
+"settings.live_text.status.spent" = "已用完";
+"settings.live_text.status.own_key" = "自己的密钥";
+"settings.credentials.status.saved" = "已保存";
+"settings.credentials.status.verified" = "已验证";
+"settings.credentials.status.invalid" = "无效";
+"onboarding.start" = "开始";
+"onboarding.back" = "返回";
+"onboarding.skip" = "跳过";
+"onboarding.finish" = "进入 ZuTalk";
+"onboarding.permissions.allow" = "允许";
+"onboarding.permissions.allowed" = "已允许";
+"settings.credentials.key_placeholder" = "API 密钥";
+/* 0.8.3 recording */
+"recording.word.copy" = "复制";
+"recording.word.share" = "分享";
+"recording.word.rename" = "改名";
+"recording.word.delete_audio" = "删音频";
+"recording.word.version" = "版本";
+"recording.word.read_only" = "只读";
+"recording.word.open" = "打开";
+"recording.word.verify" = "核验";
+"recording.word.select" = "选择";
+"recording.word.select_all" = "全选";
+"recording.details.files" = "文件";
+"recording.details.info" = "信息";
+"recording.details.setup" = "配置";
+"recording.city.waiting" = "排队";
+"recording.city.filed" = "已交";
+"recording.city.changed" = "待更新";
+"recording.city.event_gone" = "活动已删";
+"recording.marks.empty_live" = "听到要紧处按 ⌃⌥S。";
+/* 0.8.3 city */
+"city.word.chosen" = "已选";
+"city.word.waiting" = "排队";
+"city.word.waiting_offline" = "没联网";
+"city.word.filed" = "已交";
+"city.word.event_gone" = "活动已删";
+"city.identity.word" = "身份";
+"city.what.text_word" = "文字";
+"city.what.speakers_word" = "说话人";
+"city.when.word" = "时机";
+"city.when.auto_word" = "自动";
+"city.when.ask_word" = "先问";
+"city.filings.word" = "录音";
+"city.picker.search_word" = "搜索";
+"city.audio.off" = "不交音频";
+"city.audio.included" = "带音频";
+"city.audio.absent" = "音频没交";
+"city.audio.queued" = "音频排队";
+"city.audio.uploading" = "正在交音频";
+"city.audio.progress_format" = "音频 %1$lld/%2$lld";
+"city.audio.filed" = "音频已交";
+"city.audio.refused" = "音频被拒";
+"city.audio.too_big" = "音频太大";
+"city.audio.capped" = "音频稍后再交";
+"city.audio.missing" = "没有音频";
+"city.audio.unreadable" = "音频没导出";
+"city.audio.retained" = "音频仍在城里";
+"city.audio.file" = "补交音频";
+"city.audio.disclosure" = "连音频一起交。交上去的音频是公开的，任何人凭地址都能取到，删不掉；城里的主办可以拿它重新转写。";
+"city.audio.public" = "交上去的音频是公开的，删不掉。";
+"city.audio.reason.withheld" = "这一场设成了不交音频。";
+"city.audio.reason.setting_off" = "「设置 › 账号 › 档案馆」里关着音频。";
+"city.audio.reason.absent" = "文字交了，音频没有交。要交的话点「补交音频」。";
+"city.audio.reason.capped_format" = "今天往城里放的音频到上限了。%@ 以后自动接着交。";
+"city.audio.reason.missing" = "这台 Mac 上已经没有这场录音的音频，没有可交的。";
+"city.audio.reason.retained_format" = "已经交上去的 %lld 段音频留在城的服务器上，删不掉。";
+"city.summary.names" = "带说话人的名字。";
+"city.summary.no_names" = "不写说话人的名字。";
+"city.summary.audio_included" = "连音频一起交：交上去是公开的，删不掉。";
+"city.signin.disclosure" = "登录以后，这台 Mac 能以你的名义做你在城里能做的任何事。你交到活动的录音默认带音频。交上去的文字和音频是公开的，删不掉。公用电脑用完请退出登录。";
+"city.withdraw.confirm_one" = "档案馆的页面不再显示它；已经交上去的文字和音频留在城的记录里，删不掉。";
+"city.signout.confirm_one" = "登录信息从这台 Mac 删掉；已经交上去的留在城里，还在排队的文字和音频不再交。";
+"city.toast.audio_filed" = "音频已交到档案馆";
+"city.toast.audio_stopped_format" = "音频没交完 · %@";
+"city.toast.audio_failed" = "没能交音频";
+"city.error.audio_not_filed" = "先把这场录音的文字稿交上去，才能交音频。";
+"city.error.audio_off" = "「设置 › 账号 › 档案馆」里关着音频。打开以后再交。";
+"city.error.audio_withheld" = "这一场设成了不交音频。改回来以后再交。";
+"city.error.audio_bad_part" = "这场录音的音频没能导出来，没有发出去。再试一次。";
+"city.error.audio_refused" = "城没有收下音频。它只收这座城的居民交的音频，而且活动得是居民建的，或者由你主办、记录。文字稿已经交上去了。";
+"city.error.audio_too_big" = "有一段音频超过了城收的大小。文字稿已经交上去了。";
+"city.error.audio_daily_cap" = "今天往城里放的音频到上限了。到时候会自动接着交。";
+"city.error.audio_server_full" = "城的服务器放不下了。过一会儿会自动再试。";
+"city.tally.audio_sending_format" = "%lld 场音频在交";
+"city.tally.audio_stuck_format" = "%lld 场音频没交上";
+"city.sidebar.audio_stuck_format" = "档案馆：%lld 场音频没交上";
+"city.sidebar.audio_sending_format" = "档案馆：%lld 场正在交音频";
+"city.switch.on" = "开";
+"city.switch.off" = "关";
+"city.withdraw.confirm_short" = "从档案馆撤下？";
+
+/* 0.8.3 integration */
+"resources.audio.destroy.confirm_filed" = "已经交到档案馆的那份音频还在城里，这里删不掉。";

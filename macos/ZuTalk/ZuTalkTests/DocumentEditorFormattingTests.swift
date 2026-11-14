@@ -12,7 +12,7 @@ final class DocumentEditorExportEntryTests: XCTestCase {
         XCTAssertTrue(source.contains("ExportSheet(sessionId: sessionId)"))
         // Export sits in the recording's ⋯ menu, beside sharing and its files.
         XCTAssertTrue(source.contains("Button(action: onExport)"))
-        XCTAssertTrue(source.contains("editor.export.menu"))
+        XCTAssertTrue(source.contains("common.export.action"))
         XCTAssertTrue(source.contains("private var recordingMenu: some View"))
     }
 
@@ -166,7 +166,7 @@ final class DocumentEditorTabLayoutTests: XCTestCase {
         XCTAssertTrue(settings.contains("isEmbedded: true"))
         XCTAssertTrue(settings.contains("SessionResourceSettingsView("))
         XCTAssertTrue(settings.contains("onOpen: onOpenResource"))
-        XCTAssertTrue(source.contains("session.settings.workspace.snapshot"))
+        XCTAssertTrue(source.contains("recording.details.setup"))
         XCTAssertTrue(captureViews.contains("enum NotebookCaptureSettingsScope"))
         XCTAssertTrue(captureViews.contains("capture.settings.subtitle.topic"))
         XCTAssertTrue(captureViews.contains("capture.settings.subtitle.quick_capture"))

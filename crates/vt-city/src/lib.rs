@@ -15,11 +15,17 @@
 //!   [`channels`] reduce what was read to the events and channels a recorder
 //!   chooses between;
 //! - [`publish`] turns a finished recording's transcript and translations
-//!   into the records the city's archive page reads.
+//!   into the records the city's archive page reads, and describes each
+//!   part of its audio in one more record; [`hub`] uploads the part's file.
 //!
 //! Everything a reader would refuse is refused here first, before signing:
 //! a city's log is public and append-only, and a record that should not have
-//! been written cannot be taken back.
+//! been written cannot be taken back. The same goes for an uploaded file.
+//!
+//! Audio reaches this crate only as files somebody else encoded: a name, a
+//! size, bytes to pass on. It depends on nothing that can read a recording
+//! as it is stored on this device, and whether a recording's audio should
+//! leave the device at all is not decided here.
 
 mod didlog;
 mod ed;

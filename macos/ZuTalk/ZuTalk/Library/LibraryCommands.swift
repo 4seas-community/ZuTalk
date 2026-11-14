@@ -125,7 +125,7 @@ enum LibraryCommands {
     }
 }
 
-/// One text field and Save, for naming a recording or a topic.
+/// A title, one text field and Save, for naming a recording or a topic.
 struct RenameSheet: View {
     let title: String
     let placeholder: String
@@ -152,18 +152,15 @@ struct RenameSheet: View {
                 .focused($isFocused)
                 .onSubmit(save)
                 .frame(minWidth: 320)
-            HStack {
-                Spacer()
-                Button(String(localized: "common.cancel")) {
-                    presentationMode.wrappedValue.dismiss()
-                }
-                .keyboardShortcut(.cancelAction)
-                Button(String(localized: "common.save"), action: save)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(allowsEmpty == false && trimmed.isEmpty)
-            }
+            SheetButtons(
+                confirm: String(localized: "common.save"),
+                isEnabled: allowsEmpty || trimmed.isEmpty == false,
+                onCancel: { presentationMode.wrappedValue.dismiss() },
+                onConfirm: save
+            )
         }
         .padding(Spacing.lg)
+        .background(Color.bgRoot)
         .onAppear {
             text = initialText
             isFocused = true
@@ -178,10 +175,14 @@ struct RenameSheet: View {
     }
 }
 
-/// 「放进主题…」 for one recording: choose a topic, make a new one here, or
+/// 「放进主题」 for one recording: choose a topic, make a new one here, or
 /// take the recording back out. The destination is always chosen, never
 /// assumed from whichever topic happens to be open — a recording filed in the
 /// wrong place is silent and easy to miss.
+///
+/// A title, the pill that holds the choice, a name field when the choice is
+/// a new topic, and the two buttons. What goes along with the recording is
+/// the pill's tooltip.
 struct FileIntoTopicSheet: View {
     /// Every topic the recording is not already in.
     let topics: [TopicFilingChoice]
@@ -206,34 +207,24 @@ struct FileIntoTopicSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Spacing.lg) {
-            VStack(alignment: .leading, spacing: Spacing.sm) {
-                Text(String(localized: "library.file.title"))
-                    .font(.titleMD)
-                    .foregroundColor(.textPrimary)
-                Text(String(localized: "library.file.message"))
-                    .font(.bodySM)
-                    .foregroundColor(.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+        VStack(alignment: .leading, spacing: Spacing.md) {
+            Text(String(localized: "library.file.title"))
+                .font(.titleMD)
+                .foregroundColor(.textPrimary)
 
-            Picker("", selection: $choice) {
-                ForEach(topics, id: \.self) { topic in
-                    if case .topic(_, let title) = topic {
-                        Text(title).tag(topic)
-                    }
+            HStack(spacing: 0) {
+                MenuPill(
+                    FileIntoTopicSheet.title(of: choice),
+                    titleIsName: FileIntoTopicSheet.isName(choice),
+                    systemImage: "folder",
+                    help: String(localized: "library.file.message"),
+                    accessibilityLabel: String(localized: "library.file.title")
+                ) {
+                    menuItems
                 }
-                if topics.isEmpty == false {
-                    Divider()
-                }
-                Text(String(localized: "library.file.new_topic")).tag(TopicFilingChoice.newTopic)
-                if isInTopic {
-                    Text(String(localized: "library.file.no_topic")).tag(TopicFilingChoice.none)
-                }
+                .accessibilityIdentifier("library.file.picker")
+                Spacer(minLength: 0)
             }
-            .labelsHidden()
-            .accessibilityLabel(String(localized: "library.file.title"))
-            .accessibilityIdentifier("library.file.picker")
 
             if choice == .newTopic {
                 TextField(String(localized: "library.file.new_topic_placeholder"), text: $newTopicName)
@@ -243,24 +234,18 @@ struct FileIntoTopicSheet: View {
                     .accessibilityIdentifier("library.file.new_topic_name")
             }
 
-            HStack(spacing: Spacing.sm) {
-                Spacer()
-                Button(String(localized: "common.cancel")) {
-                    presentationMode.wrappedValue.dismiss()
-                }
-                .keyboardShortcut(.cancelAction)
-                Button(
-                    String(localized: choice == .none
-                        ? "library.file.take_out"
-                        : "library.file.action"),
-                    action: confirm
-                )
-                .keyboardShortcut(.defaultAction)
-                .disabled(canConfirm == false)
-                .accessibilityIdentifier("library.file.confirm")
-            }
+            SheetButtons(
+                confirm: String(localized: choice == .none
+                    ? "library.file.take_out"
+                    : "library.file.action"),
+                systemImage: choice == .none ? "arrow.uturn.backward" : "folder.badge.plus",
+                identifier: "library.file.confirm",
+                isEnabled: canConfirm,
+                onCancel: { presentationMode.wrappedValue.dismiss() },
+                onConfirm: confirm
+            )
         }
-        .padding(Spacing.xl)
+        .padding(Spacing.lg)
         .frame(width: 440)
         .background(Color.bgRoot)
         .onAppear {
@@ -275,6 +260,46 @@ struct FileIntoTopicSheet: View {
         .montereyOnChange(of: choice) { _, newChoice in
             if newChoice == .newTopic { isNameFocused = true }
         }
+    }
+
+    /// The topics, then — past a line — a new one, and taking it out.
+    private var menuItems: [PillMenuItem] {
+        var items = topics.map { topic in
+            PillMenuItem(FileIntoTopicSheet.title(of: topic), isOn: choice == topic) {
+                choice = topic
+            }
+        }
+        if items.isEmpty == false {
+            items.append(.separator)
+        }
+        items.append(PillMenuItem(
+            FileIntoTopicSheet.title(of: .newTopic),
+            isOn: choice == .newTopic
+        ) { choice = .newTopic })
+        if isInTopic {
+            items.append(PillMenuItem(
+                FileIntoTopicSheet.title(of: TopicFilingChoice.none),
+                isOn: choice == TopicFilingChoice.none
+            ) { choice = TopicFilingChoice.none })
+        }
+        return items
+    }
+
+    /// What the pill shows for a choice: the topic's own name, or the word
+    /// for the other two.
+    static func title(of choice: TopicFilingChoice) -> String {
+        switch choice {
+        case .topic(_, let title): return title
+        case .newTopic: return String(localized: "library.file.new_topic")
+        case .none: return String(localized: "library.file.no_topic")
+        }
+    }
+
+    /// A topic's name is somebody's own word: it gives way when the row is
+    /// short of room, and ours do not.
+    static func isName(_ choice: TopicFilingChoice) -> Bool {
+        if case .topic = choice { return true }
+        return false
     }
 
     private func confirm() {
@@ -306,7 +331,7 @@ struct TopicActionsMenu: View {
         Button {
             renaming = topic
         } label: {
-            Label(String(localized: "library.rename.topic"), systemImage: "pencil")
+            Label(String(localized: "recording.word.rename"), systemImage: "pencil")
         }
         Button {
             collaborating = topic
@@ -335,7 +360,7 @@ extension View {
         }
         .sheet(item: renaming) { topic in
             RenameSheet(
-                title: String(localized: "library.rename.topic"),
+                title: String(localized: "recording.word.rename"),
                 placeholder: String(localized: "home.notebook.new.help"),
                 initialText: topic.title,
                 allowsEmpty: false

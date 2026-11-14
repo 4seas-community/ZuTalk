@@ -93,14 +93,10 @@ struct ManualNotesTimelineView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Spacing.lg) {
-                VStack(alignment: .leading, spacing: Spacing.xs) {
-                    Text(String(localized: "manual_note.timeline.title"))
-                        .font(.titleMD)
-                        .foregroundColor(.textPrimary)
-                    Text(String(localized: "manual_note.timeline.subtitle"))
-                        .font(.bodySM)
-                        .foregroundColor(.textSecondary)
-                }
+                Text(String(localized: "manual_note.timeline.title"))
+                    .font(.titleMD)
+                    .foregroundColor(.textPrimary)
+                    .pillExplained(help: String(localized: "manual_note.timeline.subtitle"))
 
                 if viewModel.isLoading {
                     ProgressView()
@@ -224,15 +220,12 @@ private struct ManualTimeNoteCard: View {
 
                 Spacer()
 
-                Button(action: onOpen) {
-                    Label(
-                        String(localized: "manual_note.timeline.open"),
-                        systemImage: "arrow.right"
-                    )
-                    .font(.bodyMedium)
-                    .foregroundColor(.brandAccent)
-                }
-                .buttonStyle(.plain)
+                ActionPill(
+                    String(localized: "recording.word.open"),
+                    systemImage: "arrow.right",
+                    help: String(localized: "manual_note.timeline.open"),
+                    action: onOpen
+                )
                 .accessibilityIdentifier("manual_note.timeline.open.\(note.id)")
             }
         }

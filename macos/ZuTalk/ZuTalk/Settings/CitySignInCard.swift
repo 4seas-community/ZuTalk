@@ -4,9 +4,12 @@
 // (或粘贴它),两边核对同一个六位数,人在那台设备上确认。没有别的设备在手边时
 // 填恢复密钥。
 //
-// 「用你的 Zu 身份登录」和登录今天能做什么的那一句在卡片上面
-// (`CityIdentitySection`);卡片自己照实写两件事:登录以后这台 Mac 能以你的
-// 名义做什么,以及音频不外传。
+// 卡片上只有控件和状态:网址栏和「继续」;然后是码、「复制登录码」、倒计时、
+// 六位核对数,底下一排安静的「恢复密钥」「换一座城」。
+//
+// 必须让人读到的在 ⓘ 里(`CityText.signInDisclosure`),每一步都点得到:登录
+// 以后这台 Mac 能以你的名义做事;交到活动的录音默认带音频;交上去的是公开的,
+// 删不掉。怎么扫码的那两步在码旁边的 ⓘ 里。
 
 import SwiftUI
 
@@ -17,11 +20,53 @@ struct CitySignInCard: View {
     /// 只在这一栏里待到按下登录;交给核心以后立刻清掉。
     @State private var recoveryKey = ""
 
+    var body: some View {
+        CitySignInCardContent(
+            login: city.login,
+            problem: city.loginProblem,
+            server: $server,
+            showsRecoveryKey: $showsRecoveryKey,
+            recoveryKey: $recoveryKey,
+            onBegin: {
+                showsRecoveryKey = false
+                city.beginLogin(server: server)
+            },
+            onNewCode: { city.beginLogin(server: $0) },
+            onCopy: { city.copyLoginCode($0) },
+            onLapsed: { city.loginOfferLapsed($0) },
+            onChangeCity: {
+                showsRecoveryKey = false
+                recoveryKey = ""
+                city.cancelLogin()
+            },
+            onRecover: {
+                let key = recoveryKey
+                recoveryKey = ""
+                city.loginWithRecoveryKey(key)
+            }
+        )
+    }
+}
+
+/// 卡片本身:给什么画什么,所以每一步都能单独拿出来看。
+struct CitySignInCardContent: View {
+    let login: CityStore.Login
+    let problem: String?
+    @Binding var server: String
+    @Binding var showsRecoveryKey: Bool
+    @Binding var recoveryKey: String
+    let onBegin: () -> Void
+    let onNewCode: (String) -> Void
+    let onCopy: (FfiCityLoginOffer) -> Void
+    let onLapsed: (FfiCityLoginOffer) -> Void
+    let onChangeCity: () -> Void
+    let onRecover: () -> Void
+
     private static let qrSide: CGFloat = 136
 
     var body: some View {
-        SettingsCard(title: title, subtitle: subtitle) {
-            switch city.login {
+        SettingsCard(title: title) {
+            switch login {
             case .signedOut:
                 addressRow
             case .requesting:
@@ -34,14 +79,24 @@ struct CitySignInCard: View {
                 SettingsRowDivider()
                 alternativesRow
             case .lapsed(let lapsedServer):
-                SettingsRow(
-                    String(localized: "city.signin.lapsed_title"),
-                    description: String(localized: "city.signin.lapsed_detail")
-                ) {
-                    Button(String(localized: "city.signin.new_code")) {
-                        city.beginLogin(server: lapsedServer)
+                SettingsFullRow {
+                    HStack(spacing: Spacing.sm) {
+                        // 出了什么事,和唯一的动作。
+                        Label(String(localized: "city.signin.lapsed_title"), systemImage: "clock.badge.exclamationmark")
+                            .font(PillMetrics.font)
+                            .foregroundColor(.textPrimary)
+                            .lineLimit(1)
+                            .help(String(localized: "city.signin.lapsed_detail"))
+                        Spacer(minLength: Spacing.sm)
+                        ActionPill(
+                            String(localized: "city.signin.new_code"),
+                            systemImage: "arrow.clockwise",
+                            help: String(localized: "city.signin.lapsed_detail")
+                        ) {
+                            onNewCode(lapsedServer)
+                        }
+                        .accessibilityIdentifier(AccessibilityID.citySettingsNewCode)
                     }
-                    .accessibilityIdentifier(AccessibilityID.citySettingsNewCode)
                 }
                 SettingsRowDivider()
                 alternativesRow
@@ -49,7 +104,7 @@ struct CitySignInCard: View {
                 progressRow(String(localized: "city.signin.signing_in"))
             }
 
-            if let problem = city.loginProblem {
+            if let problem {
                 SettingsRowDivider()
                 SettingsFullRow {
                     Label {
@@ -61,68 +116,57 @@ struct CitySignInCard: View {
                             .foregroundColor(.error)
                     }
                     .font(Font.sans12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityIdentifier(AccessibilityID.citySettingsProblem)
                 }
-            }
-
-            SettingsRowDivider()
-            SettingsFullRow {
-                VStack(alignment: .leading, spacing: Spacing.sm) {
-                    Label(String(localized: "city.signin.trust"), systemImage: "person.badge.key")
-                    Label(String(localized: "share.audio_never"), systemImage: "waveform.slash")
-                }
-                .font(Font.sans11)
-                .foregroundColor(.textSecondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .fixedSize(horizontal: false, vertical: true)
             }
         }
         .accessibilityIdentifier(AccessibilityID.citySettingsSignIn)
     }
 
-    /// 还在填网址的时候没有小标题:上面已经写着「用你的 Zu 身份登录」,再写
-    /// 一遍「登录」是重复。码要来了才有:这时候要让人看见登录的是哪座城、
-    /// 哪个网址。
+    /// 码要来了才有小标题:这时候要让人看见登录的是哪座城、哪个网址。
     private var title: String? {
-        guard city.loginServer != nil else { return nil }
-        // 城的名字是服务器说的,码回来之前还不知道。
-        if case .offered(let offer, _) = city.login, offer.cityName.isEmpty == false {
-            return String(format: String(localized: "city.signin.title_format"), offer.cityName)
+        switch login {
+        case .signedOut:
+            return nil
+        case .offered(let offer, _):
+            // 城的名字是服务器说的,码回来之前还不知道。
+            return offer.cityName.isEmpty ? offer.server : offer.cityName + " · " + offer.server
+        case .requesting(let server), .lapsed(let server), .recovering(let server):
+            return server
         }
-        return String(localized: "city.signin.title")
     }
 
-    private var subtitle: String? {
-        city.loginServer
+    /// 登录意味着什么:每一步都点得到。
+    private var disclosure: some View {
+        InfoButton(
+            [String(localized: "settings.account.signin_detail"), CityText.signInDisclosure]
+                .joined(separator: "\n"),
+            accessibilityLabel: String(localized: "city.signin.title")
+        )
     }
 
     // MARK: - 填网址
 
     private var addressRow: some View {
         SettingsFullRow {
-            // 栏里预先填着默认的那座城,不写这是什么,人只看到一串网址。
-            Text(String(localized: "city.signin.address_label"))
-                .font(Font.sans12)
-                .foregroundColor(.textPrimary)
-                .accessibilityHidden(true)
             HStack(spacing: Spacing.sm) {
                 TextField(String(localized: "city.signin.address_placeholder"), text: $server)
-                    .textFieldStyle(.roundedBorder)
                     .disableAutocorrection(true)
-                    .onSubmit(begin)
+                    .onSubmit(onBegin)
+                    .modifier(CityFieldChrome())
                     .accessibilityLabel(Text(String(localized: "city.signin.address_label")))
                     .accessibilityIdentifier(AccessibilityID.citySettingsServer)
-                Button(String(localized: "city.signin.continue"), action: begin)
-                    .buttonStyle(.borderedProminent)
-                    .disabled(server.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .accessibilityIdentifier(AccessibilityID.citySettingsContinue)
+                disclosure
+                ActionPill(
+                    String(localized: "city.signin.continue"),
+                    systemImage: "arrow.right.circle",
+                    action: onBegin
+                )
+                .disabled(server.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityIdentifier(AccessibilityID.citySettingsContinue)
             }
         }
-    }
-
-    private func begin() {
-        showsRecoveryKey = false
-        city.beginLogin(server: server)
     }
 
     private func progressRow(_ text: String) -> some View {
@@ -130,9 +174,11 @@ struct CitySignInCard: View {
             HStack(spacing: Spacing.sm) {
                 ProgressView().controlSize(.small)
                 Text(text)
-                    .font(Font.sans12)
+                    .font(PillMetrics.font)
                     .foregroundColor(.textSecondary)
+                    .lineLimit(1)
             }
+            .frame(height: PillMetrics.height)
         }
     }
 
@@ -154,32 +200,42 @@ struct CitySignInCard: View {
                         .accessibilityIdentifier(AccessibilityID.citySettingsQRCode)
                 }
                 VStack(alignment: .leading, spacing: Spacing.xsm) {
-                    step(1, String(localized: "city.signin.step_scan"))
-                    step(2, String(localized: "city.signin.step_check"))
                     HStack(spacing: Spacing.sm) {
                         // 码也可以拷贝过去粘贴:旧设备是同一台电脑上的浏览器时,没法扫。
-                        Button {
-                            city.copyLoginCode(offer)
-                        } label: {
-                            Label(String(localized: "city.signin.copy_code"), systemImage: "doc.on.doc")
+                        ActionPill(
+                            String(localized: "city.signin.copy_code"),
+                            systemImage: "doc.on.doc"
+                        ) {
+                            onCopy(offer)
                         }
                         .accessibilityIdentifier(AccessibilityID.citySettingsCopyCode)
-                        TimelineView(.periodic(from: .now, by: 1)) { context in
-                            Text(String(
+                        // 怎么扫、怎么核对:两步,点开看。
+                        InfoButton(
+                            [String(localized: "city.signin.step_scan"), String(localized: "city.signin.step_check")]
+                                .joined(separator: "\n"),
+                            accessibilityLabel: String(localized: "city.signin.qr_label")
+                        )
+                    }
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        Label(
+                            String(
                                 format: String(localized: "city.signin.expires_format"),
                                 DevicesSettingsSection.countdown(
                                     until: Date(timeIntervalSince1970: TimeInterval(offer.expiresAtEpoch)),
                                     now: context.date
                                 )
-                            ))
-                            .font(Font.sans11)
-                            .foregroundColor(.textTertiary)
-                        }
+                            ),
+                            systemImage: "clock"
+                        )
+                        .font(Font.sans11)
+                        .foregroundColor(.textTertiary)
+                        .lineLimit(1)
                     }
                     if let digits, digits.isEmpty == false {
                         checkDigits(digits)
                     }
                 }
+                Spacer(minLength: 0)
             }
         }
         // 到点就收掉:过期的码留在屏幕上,人会对着一个扫不了的码等。
@@ -190,29 +246,13 @@ struct CitySignInCard: View {
             } catch {
                 return
             }
-            city.loginOfferLapsed(offer)
+            onLapsed(offer)
         }
-    }
-
-    private func step(_ number: Int, _ text: String) -> some View {
-        HStack(alignment: .top, spacing: Spacing.sm) {
-            Text(String(number))
-                .font(Font.mono10Medium)
-                .foregroundColor(.brandAccent)
-                .frame(width: 18, height: 18)
-                .background(Color.brandAccentSoft)
-                .clipShape(Circle())
-            Text(text)
-                .font(Font.sans12)
-                .foregroundColor(.textPrimary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .accessibilityElement(children: .combine)
     }
 
     /// 两边显示同一个六位数。数字大、等宽:人要隔着两块屏幕逐位对。
     private func checkDigits(_ digits: String) -> some View {
-        HStack(spacing: Spacing.xsm) {
+        VStack(alignment: .leading, spacing: Spacing.xs) {
             Text(String(localized: "city.signin.check_label"))
                 .font(Font.sans11)
                 .foregroundColor(.textTertiary)
@@ -220,20 +260,14 @@ struct CitySignInCard: View {
                 .font(Font.titleLG.monospacedDigit())
                 .foregroundColor(.textPrimary)
                 .textSelection(.enabled)
-            Spacer(minLength: Spacing.sm)
-            ProgressView().controlSize(.small)
-            Text(String(localized: "city.signin.check_waiting"))
-                .font(Font.sans11)
-                .foregroundColor(.textTertiary)
+            HStack(spacing: Spacing.xs) {
+                ProgressView().controlSize(.small)
+                Text(String(localized: "city.signin.check_waiting"))
+                    .font(Font.sans11)
+                    .foregroundColor(.textTertiary)
+                    .lineLimit(1)
+            }
         }
-        .padding(.horizontal, Spacing.xsm)
-        .padding(.vertical, Spacing.sm)
-        .surfaceCard(
-            fill: Color.bgRoot,
-            cornerRadius: Radius.sm,
-            border: Color.borderSubtle,
-            borderWidth: Stroke.thin
-        )
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier(AccessibilityID.citySettingsCheckDigits)
     }
@@ -242,48 +276,49 @@ struct CitySignInCard: View {
 
     private var alternativesRow: some View {
         SettingsFullRow {
-            HStack(spacing: Spacing.sm) {
-                Text(String(localized: "city.signin.no_device"))
-                    .font(Font.sans11)
-                    .foregroundColor(.textTertiary)
-                Spacer(minLength: Spacing.sm)
-                Button(String(localized: "city.signin.use_recovery_key")) {
+            HStack(spacing: Spacing.md) {
+                ActionPill(
+                    String(localized: "city.signin.recovery_placeholder"),
+                    systemImage: "key",
+                    style: .quiet,
+                    help: [String(localized: "city.signin.no_device"), String(localized: "city.signin.use_recovery_key")]
+                        .joined(separator: " ")
+                ) {
                     showsRecoveryKey.toggle()
                 }
-                .buttonStyle(.link)
                 .accessibilityIdentifier(AccessibilityID.citySettingsUseRecoveryKey)
-                Button(String(localized: "city.signin.change_city")) {
-                    showsRecoveryKey = false
-                    recoveryKey = ""
-                    city.cancelLogin()
-                }
-                .buttonStyle(.link)
+                ActionPill(
+                    String(localized: "city.signin.change_city"),
+                    systemImage: "arrow.uturn.backward",
+                    style: .quiet,
+                    action: onChangeCity
+                )
                 .accessibilityIdentifier(AccessibilityID.citySettingsChangeCity)
+                Spacer(minLength: 0)
+                disclosure
             }
-            .font(Font.sans11)
 
             if showsRecoveryKey {
                 HStack(spacing: Spacing.sm) {
                     SecureField(String(localized: "city.signin.recovery_placeholder"), text: $recoveryKey)
-                        .textFieldStyle(.roundedBorder)
-                        .onSubmit(signInWithRecoveryKey)
+                        .onSubmit(onRecover)
+                        .modifier(CityFieldChrome())
                         .accessibilityLabel(Text(String(localized: "city.signin.recovery_placeholder")))
                         .accessibilityIdentifier(AccessibilityID.citySettingsRecoveryKey)
-                    Button(String(localized: "city.signin.sign_in"), action: signInWithRecoveryKey)
-                        .disabled(recoveryKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        .accessibilityIdentifier(AccessibilityID.citySettingsRecoverySignIn)
+                    // 恢复密钥就是身份本身:填之前读得到。
+                    InfoButton(
+                        String(localized: "city.signin.recovery_hint"),
+                        accessibilityLabel: String(localized: "city.signin.recovery_placeholder")
+                    )
+                    ActionPill(
+                        String(localized: "city.signin.sign_in"),
+                        systemImage: "arrow.right.circle",
+                        action: onRecover
+                    )
+                    .disabled(recoveryKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityIdentifier(AccessibilityID.citySettingsRecoverySignIn)
                 }
-                Text(String(localized: "city.signin.recovery_hint"))
-                    .font(Font.sans11)
-                    .foregroundColor(.textTertiary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
         }
-    }
-
-    private func signInWithRecoveryKey() {
-        let key = recoveryKey
-        recoveryKey = ""
-        city.loginWithRecoveryKey(key)
     }
 }

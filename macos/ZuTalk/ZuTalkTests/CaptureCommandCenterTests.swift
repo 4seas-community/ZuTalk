@@ -446,7 +446,14 @@ final class RecordingResultCardModelTests: XCTestCase {
             marks: 0,
             changedSentences: 0,
             errorCode: nil,
-            webUrl: nil
+            webUrl: nil,
+            audioWanted: false,
+            audioWithheld: false,
+            audioDue: false,
+            audioPartsPlanned: 0,
+            audioPartsFiled: 0,
+            audioErrorCode: nil,
+            audioRetryAtEpoch: nil
         )
     }
 
@@ -524,10 +531,215 @@ final class TranscriptVersionButtonTests: XCTestCase {
             encoding: .utf8
         )
         XCTAssertTrue(strings.contains("\"session.version.show_refined\" = \"看精修稿\";"))
-        XCTAssertTrue(strings.contains("\"session.version.show_live\" = \"看边录边出的那一版\";"))
+        XCTAssertTrue(strings.contains("\"session.version.show_live\" = \"看现场稿\";"))
         XCTAssertTrue(strings.contains("\"transcript.copy_all\" = \"复制全文\";"))
         XCTAssertTrue(strings.contains(
             "\"recording.result.summary.audio_only\" = \"这一场只录了音。精修一遍就有文字稿。\";"
         ))
+    }
+}
+
+// MARK: - 0.8.3: one word per control in the recording area
+
+/// A recording's page says things in a word: the card after Stop, the tab
+/// bar, the details tab, the bar over a refined transcript. The sentences
+/// that used to be printed are tooltips now, and these pin which.
+final class RecordingAreaWordingTests: XCTestCase {
+    private func strings(_ language: String) throws -> [String: String] {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("ZuTalk/Resources/\(language).lproj/Localizable.strings")
+        return try XCTUnwrap(NSDictionary(contentsOf: url) as? [String: String])
+    }
+
+    private func source(_ file: String) throws -> String {
+        try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("ZuTalk/\(file)"),
+            encoding: .utf8
+        )
+    }
+
+    /// Where refining stands is the pill's word, icon and tone; why, its
+    /// tooltip. "Needs setup" still leads to Settings.
+    func testTheRefinePillSaysWhereRefiningStandsAndWhatAPressDoes() {
+        let available = RefinePillFace.resolve(.available, hasText: true)
+        XCTAssertEqual(available.press, .refine)
+        XCTAssertFalse(available.isPrimary, "Copy is the filled pill when there is text")
+        XCTAssertEqual(available.helpKeys, ["recording.result.refine.detail"])
+
+        // With no text yet, refining is the thing to do next.
+        let audioOnly = RefinePillFace.resolve(.available, hasText: false)
+        XCTAssertTrue(audioOnly.isPrimary)
+        XCTAssertEqual(audioOnly.helpKeys.first, "recording.result.summary.audio_only")
+
+        let needsSetup = RefinePillFace.resolve(.needsSetup, hasText: true)
+        XCTAssertEqual(needsSetup.press, .openSettings)
+        XCTAssertEqual(needsSetup.mark, .warning)
+        XCTAssertEqual(needsSetup.tone, .dimmed)
+        XCTAssertEqual(needsSetup.helpKeys, ["recording.result.refine.needs_setup"])
+
+        let running = RefinePillFace.resolve(.inProgress, hasText: true)
+        XCTAssertEqual(running.press, .nothing)
+        XCTAssertEqual(running.helpKeys, ["recording.result.refine.in_progress"])
+
+        let ready = RefinePillFace.resolve(.ready, hasText: true)
+        XCTAssertEqual(ready.press, .showRefined)
+        XCTAssertEqual(ready.tone, .on)
+        XCTAssertEqual(ready.titleKey, "resources.async")
+
+        let failed = RefinePillFace.resolve(.failed, hasText: true)
+        XCTAssertEqual(failed.press, .showRefined)
+        XCTAssertEqual(failed.tone, .warning)
+
+        // No two states look alike.
+        let faces = [available, needsSetup, running, ready, failed]
+        XCTAssertEqual(
+            Set(faces.map { "\($0.titleKey)|\($0.systemImage)|\($0.tone)|\($0.mark)" }).count,
+            faces.count
+        )
+    }
+
+    /// The version pill shows the version on screen, not the other one.
+    func testTheVersionPillNamesTheVersionOnScreen() {
+        XCTAssertEqual(TranscriptVersionButtonPolicy.titleKey(.realtimeTranscript), "resources.realtime")
+        XCTAssertEqual(TranscriptVersionButtonPolicy.titleKey(.asyncTranscript), "resources.async")
+        XCTAssertNil(TranscriptVersionButtonPolicy.titleKey(.manualNote))
+    }
+
+    func testEveryControlIsAWordOrTwoInEveryLanguage() throws {
+        let words: [(key: String, zh: String, en: String)] = [
+            ("recording.word.copy", "复制", "Copy"),
+            ("recording.word.share", "分享", "Share"),
+            ("common.export.action", "导出", "Export"),
+            ("recording.word.rename", "改名", "Rename"),
+            ("sidebar.notebook", "主题", "Topic"),
+            ("session.tab.settings", "详情", "Details"),
+            ("recording.word.delete_audio", "删音频", "Delete audio"),
+            ("common.delete", "删除", "Delete"),
+            ("refine.action", "精修", "Refine"),
+            ("recording.word.open", "打开", "Open"),
+            ("recording.word.verify", "核验", "Verify"),
+            ("recording.word.read_only", "只读", "Read-only"),
+            ("recording.word.select", "选择", "Select"),
+            ("recording.word.select_all", "全选", "Select all"),
+            ("recording.word.version", "版本", "Version"),
+            ("recording.details.files", "文件", "Files"),
+            ("recording.details.info", "信息", "Info"),
+            ("recording.details.setup", "配置", "Setup"),
+            ("recording.city.filed", "已交", "Filed"),
+            ("recording.city.waiting", "排队", "Queued"),
+        ]
+        let zh = try strings("zh-Hans")
+        let en = try strings("en")
+        for word in words {
+            XCTAssertEqual(zh[word.key], word.zh, word.key)
+            XCTAssertEqual(en[word.key], word.en, word.key)
+        }
+        // The archive's word for every state it can be in, too.
+        let kinds: [CityFilingStatus.Kind] = [
+            .notFiled, .chosen, .sending, .waiting, .filed, .changed, .eventGone, .failed, .withdrawn,
+        ]
+        let keys = words.map(\.key) + kinds.map(ResultCardCityWord.key)
+        for language in AppLanguage.allCases {
+            let table = try strings(language.rawValue)
+            for key in keys {
+                let value = try XCTUnwrap(table[key], "\(language.rawValue) \(key)")
+                XCTAssertLessThanOrEqual(value.count, 24, "\(language.rawValue) \(key): \(value)")
+                for stop in ["。", ". ", "，", ", ", "；", "：", ": "] {
+                    XCTAssertFalse(
+                        value.contains(stop),
+                        "\(language.rawValue) \(key) reads as a sentence: \(value)"
+                    )
+                }
+            }
+        }
+    }
+
+    /// The ⋯ of a recording: take away, then name and file, then remove.
+    func testTheRecordingMenuIsWordsWithTheRemovalsLast() throws {
+        let page = try source("Pages/DocumentEditorPage.swift")
+        let start = try XCTUnwrap(page.range(of: "private var recordingMenu: some View"))
+        let end = try XCTUnwrap(page.range(
+            of: ".accessibilityIdentifier(\"session.menu\")",
+            range: start.upperBound..<page.endIndex
+        ))
+        let menu = String(page[start.lowerBound..<end.lowerBound])
+        let order = [
+            "recording.word.copy", "recording.word.share", "common.export.action",
+            "recording.word.rename", "sidebar.notebook", "session.tab.settings",
+            "recording.word.delete_audio", "common.delete",
+        ]
+        var cursor = menu.startIndex
+        for key in order {
+            let found = try XCTUnwrap(
+                menu.range(of: "\"\(key)\"", range: cursor..<menu.endIndex),
+                "\(key) is missing or out of order"
+            )
+            cursor = found.upperBound
+        }
+        XCTAssertEqual(menu.components(separatedBy: "role: .destructive").count - 1, 2)
+        XCTAssertTrue(menu.contains("MorePill("))
+    }
+
+    /// The card after Stop is a title and one strip of the shared pills,
+    /// and prints no sentence. From this version audio can leave the Mac
+    /// (it may be filed to a city's archive), so nothing here says it stays.
+    func testTheResultCardIsATitleAndOneStripAndClaimsNothingAboutWhereAudioStays() throws {
+        let card = try source("Pages/RecordingResultCard.swift")
+        let start = try XCTUnwrap(card.range(of: "struct RecordingResultCard: View"))
+        let end = try XCTUnwrap(card.range(of: "enum TranscriptVersionButtonPolicy"))
+        let view = String(card[start.lowerBound..<end.lowerBound])
+        for used in ["PillStrip {", "PrimaryPill(", "ActionPill("] {
+            XCTAssertTrue(view.contains(used), "the card should use \(used)")
+        }
+        for own in ["Text(summaryText)", "refineDetail(", "Divider()", "RoundedRectangle"] {
+            XCTAssertFalse(view.contains(own), "the card should not have \(own)")
+        }
+        XCTAssertEqual(view.components(separatedBy: "PrimaryPill(").count - 1, 2,
+                       "Copy, or Refine in its place when there is no text")
+        XCTAssertTrue(view.contains(".pillExplained(help: summaryText)"))
+
+        for language in AppLanguage.allCases {
+            let table = try strings(language.rawValue)
+            for gone in [
+                "recording.result.summary.text_and_audio",
+                "captions_choice.off_hint",
+                "editor.transcript.async.failed_desc",
+            ] {
+                XCTAssertNil(table[gone], "\(language.rawValue) still has \(gone)")
+            }
+            // Where the audio goes when live text is on stays a disclosure,
+            // by name, in the ⓘ beside the pill.
+            let disclosure = try XCTUnwrap(table["home.card.live_text_disclosure"])
+            XCTAssertTrue(disclosure.contains("Soniox"), "\(language.rawValue): \(disclosure)")
+        }
+        let bar = try source("UIScenes/Main/RecordingBar.swift")
+        XCTAssertTrue(bar.contains("InfoButton(explanation, accessibilityLabel: name)"))
+        XCTAssertTrue(bar.contains("lines.append(String(localized: \"home.card.live_text_disclosure\"))"))
+    }
+
+    /// The recording bar, the tab bar and the sheets draw no capsule of
+    /// their own: they are the shared pills.
+    func testTheRecordingAreaDrawsNoPillsOfItsOwn() throws {
+        let bar = try source("UIScenes/Main/RecordingBar.swift")
+        let start = try XCTUnwrap(bar.range(of: "struct RecordingBarContent: View"))
+        let end = try XCTUnwrap(bar.range(of: "struct RecordingAttention: Equatable"))
+        let content = String(bar[start.lowerBound..<end.lowerBound])
+        XCTAssertTrue(content.contains("ActionPill("))
+        XCTAssertTrue(content.contains("MorePill("))
+        XCTAssertTrue(content.contains(".modifier(PillChrome())"))
+        for own in ["Capsule()", ".frame(minHeight: 30)", "tint.opacity("] {
+            XCTAssertFalse(content.contains(own), "the bar should not draw its own \(own)")
+        }
+        for file in ["Library/ExportSheet.swift", "Library/LibraryCommands.swift"] {
+            let sheet = try source(file)
+            XCTAssertTrue(sheet.contains("SheetButtons("), file)
+            XCTAssertFalse(sheet.contains("GroupBox("), file)
+            XCTAssertFalse(sheet.contains("library.file.message\"))\n                    .font"), file)
+        }
     }
 }

@@ -5,7 +5,7 @@
    only ever read. Nothing here talks to a deployed city. */
 import { pathToFileURL } from "node:url";
 import { join, resolve } from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createECDH } from "node:crypto";
 
 const root = process.env.CITY_SRC;
@@ -27,6 +27,34 @@ export const polis = await load("src/lib/polis.js");
 export const keyroot = await load("src/lib/keyroot.js");
 export const didwebvh = await load("src/lib/didwebvh.js");
 export const { Facts } = await load("src/kernel/facts-core.js");
+
+/* What the city's server and readers allow for a part of a recording's
+   audio, read out of the checkout's source rather than copied here: the
+   server is Python and is not loaded, so its rules are taken from the lines
+   that state them. A rule that moved or changed shape fails loudly. */
+const source = (path) => readFileSync(join(root, path), "utf8");
+const stated = (text, pattern, what) => {
+  const m = text.match(pattern);
+  if (!m) { console.error(`The city's source no longer states ${what} where this check reads it.`); process.exit(2); }
+  return m[1];
+};
+const product = (text) => text.split("*").reduce((a, b) => a * Number(b), 1);
+const fromEnv = (text, name) => product(stated(text, new RegExp(`^${name} = (?:int|float)\\(os\\.environ\\.get\\("[A-Z_]+"\\) or ([0-9 *]+)\\)`, "m"), name));
+export const fileRules = (() => {
+  const files = source("server/files.py"), sites = source("server/sites.py"), reader = source("src/lib/tape.js");
+  return {
+    /* The largest file the server stores for a recording, in bytes. */
+    fileMax: fromEnv(files, "FILE_MAX"),
+    /* The media types it serves a part as; anything else goes out as WebM. */
+    mime: new RegExp(stated(files, /^MIME = re\.compile\(r"(.+)"\)$/m, "the audio types")),
+    /* An upload's allowance: the bytes at this rate, plus this many seconds. */
+    uploadBytesPerSec: fromEnv(sites, "UPLOAD_RATE"),
+    uploadGraceSecs: fromEnv(sites, "UPLOAD_IDLE"),
+    /* How much of a part's type and loudness readers keep. */
+    mimeMax: Number(stated(reader, /mime: str\(b\.mime, (\d+)\)/, "how much of a type readers keep")),
+    levelsMax: Number(stated(reader, /lv: str\(b\.lv, (\d+)\)/, "how much loudness readers keep")),
+  };
+})();
 
 export const hex = (bytes) => Buffer.from(bytes).toString("hex");
 export const b64url = (bytes) => Buffer.from(bytes).toString("base64url");

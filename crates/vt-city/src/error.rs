@@ -33,6 +33,31 @@ pub enum CityError {
     #[error("the city could not be reached")]
     Offline,
 
+    /// The city would not store a file: none of the records it holds claims
+    /// these bytes for someone it stores audio for. Either the record that
+    /// names the file has not reached it, or its author may not add audio to
+    /// that event. Sending the same bytes again changes nothing.
+    #[error("the city would not store the file: nobody it serves has claimed it")]
+    Unclaimed,
+
+    /// The file is larger than the city stores.
+    #[error("the file is larger than the city stores")]
+    FileTooBig,
+
+    /// The city has taken as much from this person as it takes in a day.
+    /// `retry_after_secs` is how long it asked us to wait, when it said.
+    #[error("the city has taken as much from this person as it takes in a day")]
+    DailyCap { retry_after_secs: Option<u64> },
+
+    /// The city's server is short of disk and takes no more files for now.
+    #[error("the city's server has no room for the file")]
+    ServerFull,
+
+    /// The bytes that arrived were not the bytes the file's name promised:
+    /// cut short, or changed on the way.
+    #[error("the city did not receive the bytes the file's name promised")]
+    BadFile,
+
     /// The other side called the exchange off.
     #[error("cancelled")]
     Cancelled,

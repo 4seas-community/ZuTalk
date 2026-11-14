@@ -5,17 +5,70 @@
 // 表;录音页和列表上什么都看不出来。负责人用了以后要的就是这个:「素材弄完
 // 后,同步到城,应该有一个状态的管理。」
 //
-//   - `CityFilingChip`:录音页顶栏上,图标加一句短话;
+//   - `CityStatusWord`:状态的统一样子 —— 一个图标,一个词;要多说的那一句
+//     在悬停提示里。共享面板、设置里的表、这里的那一枚都用它;
+//   - `CityFilingChip`:录音页顶栏上,文字的状态,文字交上去以后旁边再有
+//     音频的状态(「已交 · 音频 3/24」);
 //   - `CityFilingMark`:录音列表的一行上,只有图标,悬停和旁白念出整句。
 //
-// 两处说的是同一套话(`CityFilingStatus`),点下去都是打开这场录音的共享
-// 面板 —— 交、重试、更新、换活动、撤下都在那里的「档案馆」一段。这里只说
+// 说的是同一套话(`CityFilingStatus`),点下去都是打开这场录音的共享面板 ——
+// 交、重试、更新、换活动、补交音频、撤下都在那里的「档案馆」一段。这里只说
 // 状态,不另起一套按钮。
 //
 // 没登录、或者这场录音没归过活动,两处都不出现,页面和原来一样。状态读的是
 // `CityStore` 里存的那一份,不为每一行去问核心。
 
 import SwiftUI
+
+/// 状态:一个图标,一个词。颜色只在图标上。
+struct CityStatusWord: View {
+    let symbol: String
+    let label: String
+    let tone: CityFilingStatus.Tone
+    /// 这个词展开来的那一句。
+    var help: String?
+
+    init(symbol: String, label: String, tone: CityFilingStatus.Tone, help: String? = nil) {
+        self.symbol = symbol
+        self.label = label
+        self.tone = tone
+        self.help = help
+    }
+
+    /// 文字这一路。
+    init(_ status: CityFilingStatus) {
+        self.init(
+            symbol: status.symbol,
+            label: status.label,
+            tone: status.tone,
+            help: [status.hint == status.label ? nil : status.hint, status.reason]
+                .compactMap { $0 }
+                .joined(separator: "\n")
+        )
+    }
+
+    /// 音频这一路。
+    init(_ audio: CityAudioStatus) {
+        self.init(symbol: audio.symbol, label: audio.label, tone: audio.tone, help: audio.reason)
+    }
+
+    var body: some View {
+        HStack(spacing: Spacing.xs) {
+            Image(systemName: symbol)
+                .iconSizeSmall()
+                .foregroundColor(tone.color)
+                .accessibilityHidden(true)
+            Text(label)
+                .font(.bodySM)
+                .foregroundColor(.textSecondary)
+                .lineLimit(1)
+        }
+        .fixedSize()
+        .help(help ?? "")
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(Text(help ?? ""))
+    }
+}
 
 /// 录音页顶栏上的那一枚。
 struct CityFilingChip: View {
@@ -29,20 +82,13 @@ struct CityFilingChip: View {
         if city.account != nil,
            city.filings[sessionId] != nil || city.busySessions.contains(sessionId) {
             let status = city.status(sessionId: sessionId)
-            let described = status.described(event: city.filings[sessionId]?.eventTitle)
+            let title = city.filings[sessionId]?.eventTitle
             Button(action: onOpen) {
-                HStack(spacing: Spacing.xs) {
-                    Image(systemName: status.symbol)
-                        .iconSizeSmall()
-                        .foregroundColor(status.tone.color)
-                        .accessibilityHidden(true)
-                    Text(status.label)
-                        .font(.bodySM)
-                        .foregroundColor(.textSecondary)
-                        .lineLimit(1)
-                        // 最长的一句(「排队中,这台 Mac 联网后自动交」的德文)
-                        // 也不把顶栏撑开;整句在悬停提示里。
-                        .frame(maxWidth: 220)
+                HStack(spacing: Spacing.sm) {
+                    CityStatusWord(symbol: status.symbol, label: status.label, tone: status.tone)
+                    if let audio = status.audioBeside {
+                        CityStatusWord(symbol: audio.symbol, label: audio.label, tone: audio.tone)
+                    }
                 }
                 .padding(.horizontal, Spacing.sm + 2)
                 .frame(minHeight: 24)
@@ -51,8 +97,8 @@ struct CityFilingChip: View {
             }
             .buttonStyle(.plain)
             .fixedSize()
-            .help([described, status.reason].compactMap { $0 }.joined(separator: "\n"))
-            .accessibilityLabel(Text(described))
+            .help(status.tooltip(event: title))
+            .accessibilityLabel(Text(status.described(event: title)))
             .accessibilityHint(Text(String(localized: "city.status.open_share_hint")))
             .accessibilityIdentifier(AccessibilityID.cityRecordingStatus)
             .task(id: sessionId) { await refresh() }
@@ -85,19 +131,21 @@ struct CityFilingMark: View {
     var body: some View {
         if isRecording == false, city.account != nil, let filing = city.filings[sessionId] {
             let status = city.status(sessionId: sessionId)
-            let described = status.described(event: filing.eventTitle)
+            // 一行只有一个图标的地方:音频要人看一眼(城没收、太大、没导出
+            // 来)时让给它,别的时候说文字这一路。
+            let audio = status.audioBeside.flatMap { $0.tone == .failure ? $0 : nil }
             Button {
                 ShareActivityStore.shared.presentRecordingShare(sessionId: sessionId, title: title)
             } label: {
-                Image(systemName: status.symbol)
+                Image(systemName: audio?.symbol ?? status.symbol)
                     .iconSizeSmall()
-                    .foregroundColor(status.tone.color)
+                    .foregroundColor((audio?.tone ?? status.tone).color)
                     .frame(width: 24, height: 36)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(described)
-            .accessibilityLabel(Text(described))
+            .help(status.tooltip(event: filing.eventTitle))
+            .accessibilityLabel(Text(status.described(event: filing.eventTitle)))
             .accessibilityHint(Text(String(localized: "city.status.open_share_hint")))
             .accessibilityIdentifier(AccessibilityID.cityRowMark(sessionId: sessionId))
         }

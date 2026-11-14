@@ -61,22 +61,26 @@ final class SettingsRouter: ObservableObject {
 struct FullSettingsView: View {
     @ObservedObject private var router = SettingsRouter.shared
 
+    /// The list of sections. Three short words: narrow, so the page beside it
+    /// keeps its width in the smallest window.
+    private static let sidebarWidth: CGFloat = 160
+
     var body: some View {
         HStack(spacing: 0) {
             // 左侧导航
             sidebar
-                .frame(width: 200)
+                .frame(width: Self.sidebarWidth)
                 .background(Color.bgRoot)
 
             Rectangle()
                 .fill(Color.borderSubtle)
-                .frame(width: 1)
+                .frame(width: Stroke.thin)
 
             // 右侧内容
             ScrollView {
                 content
-                    .padding(Spacing.xl)
-                    .frame(maxWidth: 760, alignment: .topLeading)
+                    .padding(Spacing.lg)
+                    .frame(maxWidth: 720, alignment: .topLeading)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
             }
             // 换一节就回到顶上。三节都比以前长,「用自己的密钥…」从「账号」
@@ -90,55 +94,39 @@ struct FullSettingsView: View {
     // MARK: - Sidebar
 
     private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: Spacing.xs) {
             ForEach(SettingsSection.allCases) { section in
                 sidebarItem(section)
             }
             Spacer(minLength: Spacing.xl)
         }
         .padding(.top, Spacing.lg)
+        .padding(.horizontal, Spacing.sm)
     }
 
     private func sidebarItem(_ section: SettingsSection) -> some View {
-        Button(action: { router.section = section }) {
-            HStack(spacing: 8) {
+        let isSelected = router.section == section
+        return Button(action: { router.section = section }) {
+            HStack(spacing: Spacing.sm) {
                 Image(systemName: section.icon)
-                    .font(.system(size: 11))
-                    .frame(width: 14)
-                    .foregroundColor(
-                        router.section == section
-                            ? Color.textSecondary
-                            : Color.textTertiary
-                    )
+                    .font(PillMetrics.iconFont)
+                    .frame(width: 18)
+                    .foregroundColor(isSelected ? Color.brandAccent : Color.textSecondary)
+                    .accessibilityHidden(true)
                 Text(section.displayName)
-                    .font(Font.sans11)
-                    .foregroundColor(
-                        router.section == section
-                            ? Color.textSecondary
-                            : Color.textTertiary
-                    )
-                Spacer()
+                    .font(PillMetrics.font)
+                    .foregroundColor(isSelected ? Color.textPrimary : Color.textSecondary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
             }
-            .padding(.horizontal, Spacing.md)
-            .padding(.vertical, 6)
-            .background(
-                router.section == section
-                    ? Color.bgElevated
-                    : Color.clear
-            )
-            .overlay(
-                HStack {
-                    if router.section == section {
-                        Rectangle()
-                            .fill(Color.brandAccent)
-                            .frame(width: 2)
-                    }
-                    Spacer()
-                }
-            )
+            .padding(.horizontal, Spacing.sm)
+            .frame(height: PillMetrics.height)
+            .background(isSelected ? Color.bgElevated : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: Radius.sm))
+            .contentShape(RoundedRectangle(cornerRadius: Radius.sm))
         }
         .buttonStyle(.plain)
-        .accessibilityAddTraits(router.section == section ? .isSelected : [])
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityIdentifier("settings.section.\(section.rawValue.lowercased())")
     }
 
@@ -150,7 +138,7 @@ struct FullSettingsView: View {
         case .account:
             AccountSettingsSection()
         case .general:
-            VStack(alignment: .leading, spacing: Spacing.xl) {
+            VStack(alignment: .leading, spacing: Spacing.lg) {
                 GeneralSettingsSection()
                 ShortcutsSection()
             }
@@ -160,69 +148,48 @@ struct FullSettingsView: View {
     }
 }
 
-// MARK: - Section Header
+// MARK: - 快捷键
 
-struct SettingsSectionHeader: View {
-    let title: String
-    let subtitle: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title.uppercased())
-                .font(Font.mono10Medium)
-                .foregroundColor(Color.textSecondary)
-                .tracking(0.5)
-            Text(subtitle)
-                .font(Font.sans11)
-                .foregroundColor(Color.textTertiary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.bottom, Spacing.md)
-    }
-}
-
-// MARK: - Service Connections
-
+/// 一行一个:做什么,按哪几个键。前三个在任何应用里都能用 —— 那一句在标题的
+/// 提示里。
 struct ShortcutsSection: View {
     var body: some View {
-        SettingsCard(
-            title: L("settings.shortcuts.title"),
+        SettingsGroup(
+            title: L("settings.group.shortcuts"),
             subtitle: L("settings.shortcuts.subtitle")
         ) {
-            SettingsFullRow {
-                VStack(alignment: .leading, spacing: 10) {
-                    // Only what is actually registered: see HotKeyManager
-                    // and the subtitle window's own buttons.
-                    shortcutRow(label: L("settings.shortcuts.toggle_recording"), keys: "⌃⌥R")
-                    shortcutRow(label: L("settings.shortcuts.pause"), keys: "⌃⌥P")
-                    shortcutRow(label: L("settings.shortcuts.mark"), keys: "⌃⌥S")
-                    shortcutRow(label: L("settings.shortcuts.overlay_banner"), keys: "⌃⌘B")
-                    shortcutRow(label: L("settings.shortcuts.overlay_maximize"), keys: "⌃⌘F")
-                    shortcutRow(label: L("settings.shortcuts.open_settings"), keys: "⌘,")
-                }
+            SettingsCard {
+                // Only what is actually registered: see HotKeyManager
+                // and the subtitle window's own buttons.
+                shortcutRow(label: L("settings.shortcuts.toggle_recording"), keys: "⌃⌥R")
+                SettingsRowDivider()
+                shortcutRow(label: L("settings.shortcuts.pause"), keys: "⌃⌥P")
+                SettingsRowDivider()
+                shortcutRow(label: L("settings.shortcuts.mark"), keys: "⌃⌥S")
+                SettingsRowDivider()
+                shortcutRow(label: L("settings.shortcuts.overlay_banner"), keys: "⌃⌘B")
+                SettingsRowDivider()
+                shortcutRow(label: L("settings.shortcuts.overlay_maximize"), keys: "⌃⌘F")
+                SettingsRowDivider()
+                shortcutRow(label: L("settings.shortcuts.open_settings"), keys: "⌘,")
             }
         }
     }
 
     private func shortcutRow(label: String, keys: String) -> some View {
-        HStack {
-            Text(label)
-                .font(Font.sans11)
-                .foregroundColor(Color.textTertiary)
-            Spacer()
+        SettingsRow(label) {
             Text(keys)
-                .font(Font.mono10Medium)
-                .foregroundColor(Color.textSecondary)
+                .font(Font.mono12)
+                .foregroundColor(Color.textPrimary)
+                .padding(.horizontal, Spacing.sm)
+                .frame(minWidth: 44, minHeight: 24)
+                .background(Color.bgRoot)
+                .overlay(
+                    RoundedRectangle(cornerRadius: Radius.xs)
+                        .strokeBorder(Color.borderGhost, lineWidth: Stroke.thin)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: Radius.xs))
+                .accessibilityLabel(Text(keys))
         }
-    }
-}
-
-@ViewBuilder
-private func placeholderPanel(_ message: String) -> some View {
-    InstrumentPanel(padding: Spacing.lg) {
-        Text(message)
-            .font(Font.sans11)
-            .foregroundColor(Color.textTertiary)
-            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

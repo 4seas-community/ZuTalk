@@ -162,7 +162,9 @@ struct ToastView: View {
                     Text(detail)
                         .font(Font.mono9)
                         .foregroundColor(Color.textTertiary)
-                        .lineLimit(3)
+                        // Five lines: a toast's detail now carries the full sentence
+                        // its short title replaced, and German runs long.
+                        .lineLimit(5)
                 }
             }
 

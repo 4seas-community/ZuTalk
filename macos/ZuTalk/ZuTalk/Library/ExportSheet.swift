@@ -1,6 +1,10 @@
 // ExportSheet.swift
-// 导出选项面板
+// 导出面板:标题、要哪几种文件、两颗按钮。
 // 权威：D5 §13
+//
+// 每一种文件是一颗点一下就切换的胶囊,上面只写格式的名字;「字幕」「纯文本」
+// 「包含音频文件」这些说明在各自的悬停提示里
+// (docs/product/interface-layers.md「界面怎么写」)。
 
 import SwiftUI
 import AppKit
@@ -19,44 +23,75 @@ struct ExportSheet: View {
     @State private var lastError: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("export.dialog.title")
-                .font(.title2)
+        VStack(alignment: .leading, spacing: Spacing.md) {
+            Text(String(localized: "common.export.action"))
+                .font(.titleMD)
+                .foregroundColor(.textPrimary)
 
-            GroupBox(String(localized: "export.dialog.text_format")) {
-                VStack(alignment: .leading) {
-                    Toggle("export.dialog.markdown", isOn: $includeMarkdown)
-                    Toggle("export.dialog.srt", isOn: $includeSrt)
-                    Toggle("export.dialog.vtt", isOn: $includeVtt)
-                    Toggle("export.dialog.txt", isOn: $includeTxt)
-                }
-            }
-
-            GroupBox(String(localized: "export.dialog.audio_group")) {
-                Toggle("export.dialog.audio_include", isOn: $includeAudio)
+            PillStrip {
+                formatPill("Markdown", help: "export.dialog.markdown", isOn: $includeMarkdown)
+                    .accessibilityIdentifier("export.format.markdown")
+                formatPill("SRT", help: "export.dialog.srt", isOn: $includeSrt)
+                    .accessibilityIdentifier("export.format.srt")
+                formatPill("VTT", help: "export.dialog.vtt", isOn: $includeVtt)
+                    .accessibilityIdentifier("export.format.vtt")
+                formatPill("TXT", help: "export.dialog.txt", isOn: $includeTxt)
+                    .accessibilityIdentifier("export.format.txt")
+                formatPill(
+                    String(localized: "export.dialog.audio_group"),
+                    help: "export.dialog.audio_include",
+                    isOn: $includeAudio
+                )
+                .accessibilityIdentifier("export.format.audio")
             }
 
             if isExporting {
-                ProgressView("export.progress")
+                StatusWord(
+                    String(localized: "export.progress"),
+                    systemImage: "tray.and.arrow.up",
+                    isBusy: true
+                )
             }
 
             if let err = lastError {
-                Text(err)
-                    .font(.caption)
-                    .foregroundColor(.red)
+                StatusWord(
+                    String(localized: "export.toast.failed"),
+                    systemImage: "exclamationmark.triangle.fill",
+                    tint: .signalRed,
+                    help: err
+                )
             }
 
-            HStack {
-                Spacer()
-                Button(String(localized: "common.cancel")) { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                Button(String(localized: "common.export.action")) { performExport() }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(isExporting || !hasSelection)
-            }
+            SheetButtons(
+                confirm: String(localized: "common.export.action"),
+                systemImage: "tray.and.arrow.up",
+                identifier: "export.confirm",
+                isEnabled: isExporting == false && hasSelection,
+                onCancel: { dismiss() },
+                onConfirm: performExport
+            )
         }
-        .padding()
-        .frame(width: 400)
+        .padding(Spacing.lg)
+        // Wide enough for the five formats side by side in every language.
+        .frame(width: 520)
+        .background(Color.bgRoot)
+    }
+
+    /// One kind of file: on is tinted and ticked. The pill carries the
+    /// format's own name; what it is for is its tooltip.
+    private func formatPill(
+        _ name: String,
+        help: String.LocalizationValue,
+        isOn: Binding<Bool>
+    ) -> some View {
+        TogglePill(
+            isOn: isOn.wrappedValue,
+            on: .init(name, systemImage: "checkmark.circle.fill"),
+            off: .init(name, systemImage: "circle"),
+            help: String(localized: help)
+        ) {
+            isOn.wrappedValue.toggle()
+        }
     }
 
     private var hasSelection: Bool {

@@ -1,30 +1,147 @@
 // CityDestinationRow.swift
-// 首页开始卡片上「归到活动」那一行,紧跟在「这一场会怎么录」那句话下面。
+// 这场录音归到哪场活动:每场录音的那一次确认。
 //
-// 这一行就是每场录音的那一次确认:归到哪场活动、以谁的名义、会交什么、音频
-// 不交,按下开始之前都摆在眼前。没有「记住以后自动发」的全局开关。所以它
-// 不收进「更改」里:在主持活动的人每次开始之前都看得到它。不主持的人看不到
-// 它,也就什么都不会交(`StartCardHosting`)。
+// 归到哪场活动、以谁的名义、会交什么、带不带音频,按下开始之前都要看得到。
+// 没有「记住以后自动发」的全局开关。在主持活动的人每次开始之前都看得到它;
+// 不主持的人看不到它,也就什么都不会交(`StartCardHosting`)。
 //
 //   - 只有一场活动在进行:替人选好,主办直接按开始;
-//   - 同时有好几场:不替人选,列出来让人挑;
+//   - 同时有好几场:不替人选,让人挑;
 //   - 一场都没有:这场先不交,录完可以再归。
 //
-// 三种情况下开始按钮都能按 —— 这一行从不挡录音。没登录时整行不出现。
+// 三种情况下开始按钮都能按 —— 它从不挡录音。没登录时不出现。
+//
+// 样子只有一个:`CityDestinationPill`,首页开始卡片上的一颗胶囊,写着活动的
+// 名字,点开是菜单 —— 正在进行的活动、日历、「不交」,最后一项「不交音频」
+// 管的是这一场带不带音频(交上去的音频是公开的,删不掉,所以默认带、可以
+// 单场不带)。以谁的名义、交哪几种语言、连不连音频,在它的悬停提示和旁边的
+// ⓘ 里。0.8.2 以前占一整行、把那一整句铺在页面上的样子不再有。
 
 import Combine
 import SwiftUI
 
-struct CityDestinationRow: View {
-    /// 开始卡片正在编辑的语言设置:那一句里要把这场录音的语言一个个念出来。
-    let editor: NotebookCaptureProfileEditorModel?
+// MARK: - 药丸
+
+/// What the event pill says.
+nonisolated enum CityDestinationPillLabel: Equatable, Sendable {
+    /// Filed under this event.
+    case event(String)
+    /// The person said this recording is not to be filed.
+    case notFiling
+    /// Nothing is chosen and nothing was chosen for them: the pill offers to.
+    case choose
+
+    static func resolve(chosenTitle: String?, explicitlyNotFiling: Bool) -> CityDestinationPillLabel {
+        if let title = chosenTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+           title.isEmpty == false {
+            return .event(title)
+        }
+        return explicitlyNotFiling ? .notFiling : .choose
+    }
+
+    /// The key of the words on the pill; nil when it shows an event's title.
+    var labelKey: String? {
+        switch self {
+        case .event: return nil
+        case .notFiling: return "home.card.dont_file"
+        case .choose: return "home.card.choose_event"
+        }
+    }
+
+    var title: String {
+        if case .event(let title) = self { return title }
+        return String(localized: String.LocalizationValue(labelKey ?? "home.card.choose_event"))
+    }
+}
+
+/// Whether the next recording goes without its audio, and whether that is
+/// the person's to choose right now.
+nonisolated struct CityDestinationAudioChoice: Equatable, Sendable {
+    /// Ticked: this recording is filed without audio.
+    var withheld: Bool
+    /// False when there is nothing to choose: no event, or the setting is
+    /// off (a recording cannot be switched on by itself).
+    var canChange: Bool
+
+    /// - Parameters:
+    ///   - settingOn: "Audio" in Settings › Account › Archive.
+    ///   - withheld: The person ticked "No audio" for the next recording.
+    ///   - filing: An event is chosen, so something will be filed.
+    static func resolve(settingOn: Bool, withheld: Bool, filing: Bool) -> CityDestinationAudioChoice {
+        CityDestinationAudioChoice(
+            // With the setting off no audio goes whatever is ticked: say so.
+            withheld: settingOn == false || withheld,
+            canChange: settingOn && filing
+        )
+    }
+
+    /// Whether the audio will be filed with this recording.
+    var filesAudio: Bool { withheld == false && canChange }
+}
+
+/// What the event pill's menu offers, top to bottom.
+nonisolated enum CityDestinationMenuEntry: Equatable, Sendable {
+    case event(id: String, title: String, isChosen: Bool)
+    case separator
+    case pickFromCalendar
+    case notFiling(isChosen: Bool)
+    /// "No audio": this recording is filed without its audio.
+    case withholdAudio(isChosen: Bool, isEnabled: Bool)
+
+    /// The events running now, the chosen one among them or ahead of them
+    /// when it is not running (picked from the calendar earlier), then the
+    /// calendar and "don't file"; and, when `audio` is given, "No audio"
+    /// below a line of its own.
+    static func entries(
+        running: [(id: String, title: String)],
+        chosen: (id: String, title: String)?,
+        explicitlyNotFiling: Bool,
+        audio: CityDestinationAudioChoice?
+    ) -> [CityDestinationMenuEntry] {
+        var entries = entries(running: running, chosen: chosen, explicitlyNotFiling: explicitlyNotFiling)
+        if let audio {
+            entries.append(.separator)
+            entries.append(.withholdAudio(isChosen: audio.withheld, isEnabled: audio.canChange))
+        }
+        return entries
+    }
+
+    /// The same list without the audio item.
+    static func entries(
+        running: [(id: String, title: String)],
+        chosen: (id: String, title: String)?,
+        explicitlyNotFiling: Bool
+    ) -> [CityDestinationMenuEntry] {
+        var entries: [CityDestinationMenuEntry] = []
+        if let chosen, running.contains(where: { $0.id == chosen.id }) == false {
+            entries.append(.event(id: chosen.id, title: chosen.title, isChosen: true))
+        }
+        for event in running {
+            entries.append(.event(id: event.id, title: event.title, isChosen: event.id == chosen?.id))
+        }
+        if entries.isEmpty == false {
+            entries.append(.separator)
+        }
+        entries.append(.pickFromCalendar)
+        entries.append(.notFiling(isChosen: explicitlyNotFiling))
+        return entries
+    }
+}
+
+/// The start card's event pill: the confirmation of where this recording
+/// goes, in the space of one word. Whose name it is filed under, which
+/// languages, and that its audio goes too and cannot be taken back, are its
+/// tooltip and the ⓘ beside it.
+struct CityDestinationPill: View {
+    /// 卡片上选的语言:提示里要把这场录音的语言一个个念出来。
+    let languages: [String]
     /// 放进哪个主题;不放时为 nil,也就没有频道。
     let topicId: String?
 
     @ObservedObject private var city = CityStore.shared
     @ObservedObject private var commands = CaptureCommandCenter.shared
     @State private var showsPicker = false
-    /// 这一行是按哪个时刻算的。活动会开场、散场:每分钟重算一次,页面开着
+    /// 这一颗是按哪个时刻算的。活动会开场、散场:每分钟重算一次,页面开着
     /// 不动也不会过时。
     @State private var now = Date()
 
@@ -32,30 +149,52 @@ struct CityDestinationRow: View {
 
     var body: some View {
         if let account = city.account {
-            // 上面那条分隔线由卡片画:这一行是卡片的最后一行还是中间一行,
-            // 只有卡片知道。
-            content(account: account, now: now)
-                .onAppear {
-                    city.prepareNextRecording()
-                    if let topicId { city.loadTopicChannel(notebookId: topicId) }
-                    showAsOfNow()
+            let event = city.nextEvent(now: now)
+            let label = CityDestinationPillLabel.resolve(
+                chosenTitle: event?.title,
+                explicitlyNotFiling: city.nextChoice == .notFiling
+            )
+            let explanation = explanation(account: account, event: event)
+            HStack(spacing: 2) {
+                MenuPill(
+                    label.title,
+                    titleIsName: label.labelKey == nil,
+                    systemImage: "archivebox",
+                    help: explanation,
+                    accessibilityLabel: String(localized: "city.record.title")
+                ) {
+                    menu(chosen: event)
                 }
-                .onReceive(everyMinute) { _ in showAsOfNow() }
-                .montereyOnChange(of: topicId) { _, topicId in
-                    if let topicId { city.loadTopicChannel(notebookId: topicId) }
+                .accessibilityIdentifier(AccessibilityID.cityRecordEvent)
+
+                // What will be filed, where and in whose name cannot be taken
+                // back once it is: it is one click away, not only a tooltip.
+                if event != nil {
+                    InfoButton(explanation, accessibilityLabel: String(localized: "city.record.title"))
+                        .accessibilityIdentifier(AccessibilityID.cityRecordSummary)
                 }
-                .montereyOnChange(of: commands.isStarting) { _, isStarting in
-                    // 开始没成(成了的话去向已经绑上):那次确认作废。
-                    if isStarting == false { city.cancelConfirmedDestination() }
+            }
+            .onAppear {
+                city.prepareNextRecording()
+                if let topicId { city.loadTopicChannel(notebookId: topicId) }
+                showAsOfNow()
+            }
+            .onReceive(everyMinute) { _ in showAsOfNow() }
+            .montereyOnChange(of: topicId) { _, topicId in
+                if let topicId { city.loadTopicChannel(notebookId: topicId) }
+            }
+            .montereyOnChange(of: commands.isStarting) { _, isStarting in
+                // 开始没成(成了的话去向已经绑上):那次确认作废。
+                if isStarting == false { city.cancelConfirmedDestination() }
+            }
+            .sheet(isPresented: $showsPicker) {
+                CityEventPickerSheet(
+                    selectedEventId: city.nextEvent(now: now)?.id,
+                    recording: nil
+                ) { event in
+                    city.chooseNext(event.map { .event($0) } ?? .notFiling)
                 }
-                .sheet(isPresented: $showsPicker) {
-                    CityEventPickerSheet(
-                        selectedEventId: city.nextEvent(now: now)?.id,
-                        recording: nil
-                    ) { event in
-                        city.chooseNext(event.map { .event($0) } ?? .notFiling)
-                    }
-                }
+            }
         }
     }
 
@@ -66,229 +205,88 @@ struct CityDestinationRow: View {
         city.noteNextDestinationShown(at: now)
     }
 
-    @ViewBuilder
-    private func content(account: FfiCityAccount, now: Date) -> some View {
-        let running = city.nextChoice == .automatic
-            ? CityEventMatching.runningNow(city.calendar.events, now: now)
-            : []
-        VStack(alignment: .leading, spacing: 0) {
-            if let event = city.nextEvent(now: now) {
-                chosen(event, account: account, now: now)
-            } else if running.count > 1 {
-                several(running)
-            } else {
-                notFiling(explicit: city.nextChoice == .notFiling)
-            }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier(AccessibilityID.cityRecordRow)
+    private var running: [FfiCityEvent] {
+        CityEventMatching.runningNow(city.calendar.events, now: now)
     }
 
-    // MARK: 选好了一场
-
-    private func chosen(_ event: FfiCityEvent, account: FfiCityAccount, now: Date) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .center, spacing: Spacing.md) {
-                rowTitle(detail: String(
-                    format: String(localized: "city.record.detail_format"),
-                    account.cityName.isEmpty ? account.server : account.cityName
-                ))
-                Spacer(minLength: Spacing.md)
-                Button {
-                    showsPicker = true
-                } label: {
-                    HStack(spacing: Spacing.sm) {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(event.title)
-                                .font(.bodyMedium)
-                                .foregroundColor(.textPrimary)
-                                .lineLimit(1)
-                            Text(CityText.whenAndWhere(event, now: now))
-                                .font(.sans11)
-                                .foregroundColor(.textTertiary)
-                                .lineLimit(1)
-                        }
-                        Spacer(minLength: 0)
-                        Image(systemName: "chevron.up.chevron.down")
-                            .iconSizeSmall()
-                            .foregroundColor(.textTertiary)
-                            .accessibilityHidden(true)
-                    }
-                    .padding(.leading, Spacing.xsm)
-                    .padding(.trailing, Spacing.sm)
-                    .padding(.vertical, Spacing.sm)
-                    .frame(maxWidth: 280, alignment: .leading)
-                    .surfaceCard(
-                        fill: Color.bgRoot,
-                        cornerRadius: Radius.sm,
-                        border: Color.borderSubtle,
-                        borderWidth: Stroke.thin
-                    )
-                    .contentShape(RoundedRectangle(cornerRadius: Radius.sm))
-                }
-                .buttonStyle(.plain)
-                .help(String(localized: "city.record.change_hint"))
-                .accessibilityLabel(Text(event.title + ", " + CityText.whenAndWhere(event, now: now)))
-                .accessibilityHint(Text(String(localized: "city.record.change_hint")))
-                .accessibilityIdentifier(AccessibilityID.cityRecordEvent)
-            }
-            .padding(Spacing.md)
-
-            Group {
-                let channel = topicId.flatMap { city.topicChannels[$0]?.title }
-                if let editor {
-                    CityRecordSummary(editor: editor, signer: account.personName, channel: channel)
-                } else {
-                    CityRecordSummaryBox(text: CityText.summary(
-                        signer: account.personName,
-                        languages: [],
-                        options: city.options,
-                        channel: channel
-                    ))
-                }
-            }
-            .padding(.horizontal, Spacing.md)
-            .padding(.bottom, Spacing.md)
-        }
-    }
-
-    // MARK: 同时有好几场
-
-    private func several(_ running: [FfiCityEvent]) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .center, spacing: Spacing.md) {
-                rowTitle(detail: String(
-                    format: String(localized: "city.record.several_format"),
-                    Int64(running.count)
-                ))
-                Spacer(minLength: Spacing.md)
-                pickButton
-            }
-            .padding(Spacing.md)
-
-            VStack(spacing: Spacing.sm) {
-                ForEach(running, id: \.id) { event in
-                    Button {
+    private func menu(chosen: FfiCityEvent?) -> [PillMenuItem] {
+        let running = running
+        let audio = audioChoice(filing: chosen != nil)
+        let entries = CityDestinationMenuEntry.entries(
+            running: running.map { ($0.id, $0.title) },
+            chosen: chosen.map { ($0.id, $0.title) },
+            explicitlyNotFiling: city.nextChoice == .notFiling,
+            audio: audio
+        )
+        return entries.map { entry in
+            switch entry {
+            case .event(let id, let title, let isChosen):
+                return PillMenuItem(title, isOn: isChosen) {
+                    if let event = running.first(where: { $0.id == id }) ?? chosen {
                         city.chooseNext(.event(event))
-                    } label: {
-                        HStack(alignment: .top, spacing: Spacing.sm) {
-                            Image(systemName: "circle")
-                                .iconSizeMedium()
-                                .foregroundColor(.textTertiary)
-                                .accessibilityHidden(true)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(event.title)
-                                    .font(.bodySM)
-                                    .foregroundColor(.textPrimary)
-                                    .multilineTextAlignment(.leading)
-                                Text(Self.timeAndPlace(event))
-                                    .font(.sans11)
-                                    .foregroundColor(.textTertiary)
-                                    .multilineTextAlignment(.leading)
-                            }
-                            Spacer(minLength: 0)
-                        }
-                        .padding(.horizontal, Spacing.xsm)
-                        .padding(.vertical, Spacing.sm)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .surfaceCard(
-                            fill: Color.bgRoot,
-                            cornerRadius: Radius.sm,
-                            border: Color.borderSubtle,
-                            borderWidth: Stroke.thin
-                        )
-                        .contentShape(RoundedRectangle(cornerRadius: Radius.sm))
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(Text(event.title + ", " + Self.timeAndPlace(event)))
-                    .accessibilityIdentifier(AccessibilityID.cityRecordChoice(eventId: event.id))
+                }
+            case .separator:
+                return .separator
+            case .pickFromCalendar:
+                return PillMenuItem(String(localized: "city.action.pick_from_calendar")) {
+                    // The menu is still closing; the sheet waits a turn.
+                    DispatchQueue.main.async { showsPicker = true }
+                }
+            case .notFiling(let isChosen):
+                return PillMenuItem(String(localized: "home.card.dont_file"), isOn: isChosen) {
+                    city.chooseNext(.notFiling)
+                }
+            case .withholdAudio(let isChosen, let isEnabled):
+                return PillMenuItem(
+                    String(localized: "city.audio.off"),
+                    isOn: isChosen,
+                    isEnabled: isEnabled
+                ) {
+                    city.setNextWithholdsAudio(city.nextWithholdsAudio == false)
                 }
             }
-            .padding(.horizontal, Spacing.md)
-            .padding(.bottom, Spacing.md)
         }
     }
 
-    // MARK: 不交
+    private func audioChoice(filing: Bool) -> CityDestinationAudioChoice {
+        .resolve(
+            settingOn: city.options.audio,
+            withheld: city.nextWithholdsAudio,
+            filing: filing
+        )
+    }
 
-    private func notFiling(explicit: Bool) -> some View {
-        HStack(alignment: .center, spacing: Spacing.md) {
-            rowTitle(detail: String(localized: explicit
-                ? "city.record.none_chosen_detail"
-                : "city.record.none_running_detail"))
-            Spacer(minLength: Spacing.md)
-            Text(String(localized: "city.action.not_filing"))
-                .font(.bodySM)
-                .foregroundColor(.textTertiary)
-            pickButton
+    /// Why the pill says what it says, and — for a chosen event — everything
+    /// that has to be readable before pressing Start: when and where, which
+    /// archive, in whose name, which languages, and, when this recording
+    /// carries its audio, that it does and that what is filed stays public.
+    private func explanation(account: FfiCityAccount, event: FfiCityEvent?) -> String {
+        guard let event else {
+            if city.nextChoice == .notFiling {
+                return String(localized: "city.record.none_chosen_detail")
+            }
+            let runningCount = running.count
+            return runningCount > 1
+                ? String(
+                    format: String(localized: "city.record.several_format"),
+                    Int64(runningCount)
+                )
+                : String(localized: "city.record.none_running_detail")
         }
-        .padding(Spacing.md)
-    }
-
-    // MARK: 零件
-
-    private var pickButton: some View {
-        Button(String(localized: "city.action.pick_from_calendar")) {
-            showsPicker = true
-        }
-        .accessibilityIdentifier(AccessibilityID.cityRecordPick)
-    }
-
-    /// 和页面上别的行同一个样子:标题一行,说明一行。
-    private func rowTitle(detail: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(String(localized: "city.record.title"))
-                .font(.bodyMedium)
-                .foregroundColor(.textPrimary)
-            Text(detail)
-                .font(.bodySM)
-                .foregroundColor(.textTertiary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private static func timeAndPlace(_ event: FfiCityEvent) -> String {
-        let time = CityText.timeRange(startMs: event.startMs, endMs: event.endMs)
-        return event.place.isEmpty ? time : time + " · " + event.place
-    }
-}
-
-/// 那一整句:以谁的名义、哪几种语言、带不带说话人和标记、放不放进频道、音频
-/// 不交。语言就在同一页上改,改了这一句要跟着变,所以它自己盯着语言设置。
-private struct CityRecordSummary: View {
-    @ObservedObject var editor: NotebookCaptureProfileEditorModel
-    let signer: String
-    let channel: String?
-    @ObservedObject private var city = CityStore.shared
-
-    var body: some View {
-        CityRecordSummaryBox(text: CityText.summary(
-            signer: signer,
-            languages: editor.draft.selectedLanguages,
-            options: city.options,
-            channel: channel
-        ))
-    }
-}
-
-private struct CityRecordSummaryBox: View {
-    let text: String
-
-    var body: some View {
-        HStack(alignment: .top, spacing: Spacing.sm) {
-            Image(systemName: "archivebox")
-                .iconSizeSmall()
-                .foregroundColor(.brandAccent)
-                .accessibilityHidden(true)
-            Text(text)
-                .font(.bodySM)
-                .foregroundColor(.textSecondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(.horizontal, Spacing.xsm)
-        .padding(.vertical, Spacing.sm)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .surfaceCard(fill: Color.brandAccentSoft, cornerRadius: Radius.sm)
-        .accessibilityIdentifier(AccessibilityID.cityRecordSummary)
+        return [
+            event.title + " · " + CityText.whenAndWhere(event, now: now),
+            String(
+                format: String(localized: "city.record.detail_format"),
+                account.cityName.isEmpty ? account.server : account.cityName
+            ),
+            CityText.summary(
+                signer: account.personName,
+                languages: languages,
+                options: city.options,
+                channel: topicId.flatMap { city.topicChannels[$0]?.title },
+                audio: audioChoice(filing: true).filesAudio
+            ),
+        ].joined(separator: "\n")
     }
 }

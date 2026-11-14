@@ -3,11 +3,62 @@ import SwiftUI
 /// The languages a recording captures: chosen, ordered, and — with three —
 /// marked as spoken, or as one everything is also translated into.
 ///
-/// Home's start card and a topic's recording settings each had their own
-/// copy of this, and only one of them could mark a language as translated
-/// into only.
+/// There is one way of choosing them in the whole app: a pill per language
+/// (`CaptureLanguagePills`) — × takes one away, ＋ opens the search, the icon
+/// in front says spoken or only translated into once there are three, and
+/// the order is changed from a pill's context menu.
+///   - Home's start card lays the pills out in its own strip;
+///   - `CaptureLanguageEditor` is that same strip for everywhere else: a
+///     topic's options, and the console a topic's recordings start from.
 struct CaptureLanguageEditor: View {
     @ObservedObject var editor: NotebookCaptureProfileEditorModel
+
+    var body: some View {
+        PillStrip {
+            CaptureLanguagePills(editor: editor)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text(String(localized: "home.record.languages.picker")))
+        .accessibilityHint(Text(Self.rolesSummary(
+            selected: editor.draft.selectedLanguages,
+            translatedOnly: editor.draft.subtitleOnlyLanguages
+        ) ?? ""))
+    }
+
+    /// With three languages, which are spoken and which everything is also
+    /// translated into, in one sentence: what used to be printed under the
+    /// chips, now said to whoever asks (a tooltip, VoiceOver). Nil with one
+    /// or two, where there is nothing to tell apart. How many connections
+    /// that opens is the app's business, not something to weigh before
+    /// recording (docs/product/interface-layers.md keeps that number in
+    /// Settings).
+    static func rolesSummary(selected: [String], translatedOnly: [String]) -> String? {
+        guard selected.count > 2 else { return nil }
+        let translated = selected.filter(translatedOnly.contains)
+        let spoken = selected.filter { translated.contains($0) == false }
+        guard translated.isEmpty == false else {
+            return String(localized: "capture.languages.roles.all_spoken")
+        }
+        return RecordingPlanSentence.spacedBetweenScripts(String(
+            format: String(localized: "capture.languages.roles.some_translated_format"),
+            ListFormatter.localizedString(byJoining: spoken.map(RecordingPresentation.languageName)),
+            ListFormatter.localizedString(byJoining: translated.map(RecordingPresentation.languageName))
+        ))
+    }
+}
+
+// MARK: - Finding a language to add
+
+/// The search field, what it finds, and — before anything is typed — the
+/// languages people add most: what the popover behind a strip's ＋ shows.
+struct CaptureLanguageSearch: View {
+    @ObservedObject var editor: NotebookCaptureProfileEditorModel
+    /// Puts the keyboard in the field as soon as it shows: in a popover the
+    /// person opened it to type.
+    var focusesOnAppear = false
+    /// Called once a language has been added.
+    var onAdd: () -> Void = {}
+
     @State private var languageSearch = ""
     @FocusState private var isSearchFocused: Bool
 
@@ -19,21 +70,6 @@ struct CaptureLanguageEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.xs) {
-            ScrollView(.horizontal) {
-                HStack(spacing: Spacing.sm) {
-                    ForEach(Array(draft.selectedLanguages.enumerated()), id: \.element) {
-                        index,
-                        language in
-                        selectedLanguageChip(language: language, index: index)
-                    }
-                }
-            }
-            .montereyScrollIndicators(true)
-
-            if draft.selectedLanguages.count > 2 {
-                languageRolesSummary
-            }
-
             HStack(spacing: Spacing.sm) {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.textTertiary)
@@ -61,10 +97,14 @@ struct CaptureLanguageEditor: View {
                 languageSearchResults
             }
         }
-        // On Home this editor sits under the Start button, the window's
-        // default action: Return while searching for a language must not
-        // start a recording.
+        // Where this field shares a window with a default button (Home's
+        // Start), Return while searching for a language must not press it.
         .preference(key: TextEntryFocusKey.self, value: isSearchFocused)
+        .onAppear {
+            guard focusesOnAppear else { return }
+            // The popover is still coming up; focus takes once it has.
+            DispatchQueue.main.async { isSearchFocused = true }
+        }
     }
 
     private var languageSearchResults: some View {
@@ -141,103 +181,6 @@ struct CaptureLanguageEditor: View {
         .montereyScrollIndicators(true)
     }
 
-    /// With three languages, says which are spoken and which everything is
-    /// also translated into. How many connections that opens is the app's
-    /// business, not something to weigh before recording
-    /// (docs/product/interface-layers.md keeps that number in Settings).
-    private var languageRolesSummary: some View {
-        let subtitleOnly = draft.subtitleOnlyLanguages
-        let spoken = draft.selectedLanguages.filter { subtitleOnly.contains($0) == false }
-        let text = subtitleOnly.isEmpty
-            ? String(localized: "capture.languages.roles.all_spoken")
-            : RecordingPlanSentence.spacedBetweenScripts(String(
-                format: String(localized: "capture.languages.roles.some_translated_format"),
-                ListFormatter.localizedString(byJoining: spoken.map(languageLabel)),
-                ListFormatter.localizedString(byJoining: subtitleOnly.map(languageLabel))
-            ))
-        return Label(text, systemImage: "captions.bubble")
-            .font(.system(size: 10))
-            .foregroundColor(.textTertiary)
-            .fixedSize(horizontal: false, vertical: true)
-            .accessibilityElement(children: .combine)
-    }
-
-    private func selectedLanguageChip(language: String, index: Int) -> some View {
-        let subtitleOnly = draft.subtitleOnlyLanguages.contains(language)
-        let spokenCount = draft.selectedLanguages.count - draft.subtitleOnlyLanguages.count
-        let role = RecordingPlanSentence.spacedBetweenScripts(String(
-            format: String(
-                localized: subtitleOnly
-                    ? "capture.languages.role.translated_format"
-                    : "capture.languages.role.spoken_format"
-            ),
-            languageLabel(language)
-        ))
-        return HStack(spacing: 2) {
-            if draft.selectedLanguages.count > 2 {
-                languageChipButton(
-                    systemImage: subtitleOnly ? "captions.bubble" : "waveform",
-                    label: role,
-                    disabled: subtitleOnly == false && spokenCount <= 1,
-                    action: {
-                        editor.scheduleUpdate(.setSubtitleOnly(language, subtitleOnly == false))
-                    }
-                )
-                .help(role)
-            }
-            Text(languageLabel(language))
-                .font(.captionMedium)
-                .foregroundColor(subtitleOnly ? .textSecondary : .textPrimary)
-                .padding(.leading, draft.selectedLanguages.count > 2 ? 0 : Spacing.sm)
-                .padding(.trailing, Spacing.xs)
-
-            languageChipButton(
-                systemImage: "chevron.left",
-                label: String(localized: "capture.settings.languages.move_earlier"),
-                disabled: index == 0,
-                action: { moveLanguage(at: index, offset: -1) }
-            )
-            languageChipButton(
-                systemImage: "chevron.right",
-                label: String(localized: "capture.settings.languages.move_later"),
-                disabled: index == draft.selectedLanguages.count - 1,
-                action: { moveLanguage(at: index, offset: 1) }
-            )
-            languageChipButton(
-                systemImage: "xmark",
-                label: String(localized: "capture.settings.languages.remove"),
-                disabled: draft.selectedLanguages.count <= 1,
-                action: { removeLanguage(at: index) }
-            )
-        }
-        .frame(minHeight: 36)
-        .background(Color.bgElevated.opacity(0.42))
-        .overlay(
-            Capsule()
-                .strokeBorder(Color.borderGhost.opacity(0.3), lineWidth: 0.5)
-        )
-        .clipShape(Capsule())
-        .accessibilityElement(children: .contain)
-    }
-
-    private func languageChipButton(
-        systemImage: String,
-        label: String,
-        disabled: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: 9, weight: .semibold))
-                .frame(width: 28, height: 32)
-        }
-        .buttonStyle(.plain)
-        .foregroundColor(.textSecondary)
-        .contentShape(Rectangle())
-        .disabled(disabled)
-        .accessibilityLabel(Text(label))
-    }
-
     private func addLanguage(_ language: String) {
         guard draft.selectedLanguages.count
                 < NotebookCaptureSupportedLanguages.maximumSelectedCount,
@@ -245,26 +188,147 @@ struct CaptureLanguageEditor: View {
         else { return }
         editor.scheduleUpdate(.addLanguage(language))
         languageSearch = ""
+        onAdd()
+    }
+}
+
+// MARK: - Pills
+
+/// What one language pill offers. Plain values, so the rules — when a
+/// language can be removed, when its role can change — are checked on their
+/// own.
+nonisolated struct CaptureLanguagePillState: Equatable, Sendable {
+    nonisolated enum Role: Equatable, Sendable {
+        /// Someone will speak it.
+        case spoken
+        /// Nobody speaks it; everything is also translated into it.
+        case translatedInto
     }
 
-    private func removeLanguage(at index: Int) {
-        guard draft.selectedLanguages.count > 1,
-              draft.selectedLanguages.indices.contains(index)
-        else { return }
-        editor.scheduleUpdate(.removeLanguage(draft.selectedLanguages[index]))
+    let code: String
+    /// Nil with one or two languages: two translate into each other, and
+    /// there is nothing to tell apart.
+    let role: Role?
+    /// Someone has to be speaking: the last spoken language stays spoken.
+    let canToggleRole: Bool
+    /// A recording has at least one language.
+    let canRemove: Bool
+    let canMoveEarlier: Bool
+    let canMoveLater: Bool
+
+    static func pills(selected: [String], translatedOnly: [String]) -> [CaptureLanguagePillState] {
+        let hasRoles = selected.count > 2
+        let translated = hasRoles ? selected.filter(translatedOnly.contains) : []
+        let spokenCount = selected.count - translated.count
+        return selected.enumerated().map { index, code in
+            let role: Role? = hasRoles
+                ? (translated.contains(code) ? .translatedInto : .spoken)
+                : nil
+            return CaptureLanguagePillState(
+                code: code,
+                role: role,
+                canToggleRole: role == .translatedInto || (role == .spoken && spokenCount > 1),
+                canRemove: selected.count > 1,
+                canMoveEarlier: index > 0,
+                canMoveLater: index < selected.count - 1
+            )
+        }
     }
 
-    private func moveLanguage(at index: Int, offset: Int) {
-        let destination = index + offset
-        guard draft.selectedLanguages.indices.contains(index),
-              draft.selectedLanguages.indices.contains(destination)
-        else { return }
-        editor.scheduleUpdate(.moveLanguage(draft.selectedLanguages[index], offset: offset))
+    /// The ＋ is offered until the most a recording can carry is chosen.
+    static func canAdd(selectedCount: Int, maximum: Int) -> Bool {
+        selectedCount < maximum
     }
 
-    /// A chosen language by its own name; the search results keep the full
-    /// "native · localized · code" label for finding one.
-    private func languageLabel(_ code: String) -> String {
-        RecordingPresentation.languageName(code)
+    /// The role, said in a sentence for a tooltip: which it is, and how to
+    /// change it.
+    static func roleDescription(_ role: Role, language: String) -> String {
+        RecordingPlanSentence.spacedBetweenScripts(String(
+            format: String(
+                localized: role == .translatedInto
+                    ? "capture.languages.role.translated_format"
+                    : "capture.languages.role.spoken_format"
+            ),
+            RecordingPresentation.languageName(language)
+        ))
+    }
+}
+
+/// The languages as pills: each shows its own name, drops out with its ×,
+/// and — once there are three — carries the icon that says whether it is
+/// spoken or only translated into. A ＋ opens the search. Reordering is in
+/// each pill's context menu.
+struct CaptureLanguagePills: View {
+    @ObservedObject var editor: NotebookCaptureProfileEditorModel
+    @State private var showsSearch = false
+
+    private var draft: NotebookCaptureProfileDTO { editor.draft }
+
+    var body: some View {
+        let pills = CaptureLanguagePillState.pills(
+            selected: draft.selectedLanguages,
+            translatedOnly: draft.subtitleOnlyLanguages
+        )
+        HStack(spacing: PillMetrics.spacing) {
+            ForEach(pills, id: \.code) { pill in
+                languagePill(pill)
+            }
+            if CaptureLanguagePillState.canAdd(
+                selectedCount: pills.count,
+                maximum: NotebookCaptureSupportedLanguages.maximumSelectedCount
+            ) {
+                addPill
+            }
+        }
+    }
+
+    private func languagePill(_ pill: CaptureLanguagePillState) -> some View {
+        ValuePill(
+            RecordingPresentation.languageName(pill.code),
+            isMuted: pill.role == .translatedInto,
+            leading: pill.role.map { role in
+                ValuePill.Leading(
+                    systemImage: role == .translatedInto ? "captions.bubble" : "waveform",
+                    tint: role == .translatedInto ? .textTertiary : .brandAccent,
+                    help: CaptureLanguagePillState.roleDescription(role, language: pill.code),
+                    isEnabled: pill.canToggleRole
+                ) {
+                    editor.scheduleUpdate(.setSubtitleOnly(pill.code, role == .spoken))
+                }
+            },
+            removeLabel: String(localized: "capture.settings.languages.remove"),
+            onRemove: pill.canRemove
+                ? { editor.scheduleUpdate(.removeLanguage(pill.code)) }
+                : nil
+        )
+        .contextMenu {
+            Button(String(localized: "home.card.move_earlier")) {
+                editor.scheduleUpdate(.moveLanguage(pill.code, offset: -1))
+            }
+            .disabled(pill.canMoveEarlier == false)
+            Button(String(localized: "home.card.move_later")) {
+                editor.scheduleUpdate(.moveLanguage(pill.code, offset: 1))
+            }
+            .disabled(pill.canMoveLater == false)
+        }
+    }
+
+    private var addPill: some View {
+        ActionPill(
+            nil,
+            systemImage: "plus",
+            help: String(localized: "home.options.languages_detail"),
+            accessibilityLabel: String(localized: "capture.settings.languages.search")
+        ) {
+            showsSearch = true
+        }
+        .accessibilityIdentifier("record.page.languages.add")
+        .popover(isPresented: $showsSearch, arrowEdge: .bottom) {
+            CaptureLanguageSearch(editor: editor, focusesOnAppear: true) {
+                showsSearch = false
+            }
+            .padding(Spacing.md)
+            .frame(width: 340)
+        }
     }
 }

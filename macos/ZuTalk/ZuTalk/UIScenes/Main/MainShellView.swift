@@ -258,6 +258,8 @@ struct MainShellView: View {
                 store.openSettings(section: .account)
             }
 
+            // Invite time left: the gift and how long. What the number
+            // means, and how it is spent, is the tooltip.
             if communityInvite.isEnabled, communityInvite.isActive {
                 Label(
                     communityTimeLabel,
@@ -265,7 +267,9 @@ struct MainShellView: View {
                 )
                 .font(.bodySM)
                 .foregroundColor(.textSecondary)
-                .help(String(localized: "community_invite.remaining_recordable_hint"))
+                .help(communityTimeExplanation)
+                .accessibilityLabel(Text(communityTimeSentence ?? communityTimeLabel))
+                .accessibilityHint(Text(String(localized: "community_invite.remaining_recordable_hint")))
                 .accessibilityIdentifier("sidebar.community-invite.remaining")
                 .task { await communityInvite.refreshQuota() }
             }
@@ -365,19 +369,39 @@ struct MainShellView: View {
         .accessibilityLabel(label)
     }
 
-    private var communityTimeLabel: String {
-        guard let seconds = communityInvite.remainingSeconds else {
-            return String(localized: "community_invite.active")
-        }
-        let recordable = CommunityInviteSession.wallClockRecordableSeconds(
+    /// How long the invite can still record with the languages chosen now;
+    /// nil until the server has said how much is left.
+    private var communityRecordableSeconds: Int64? {
+        guard let seconds = communityInvite.remainingSeconds else { return nil }
+        return Int64(CommunityInviteSession.wallClockRecordableSeconds(
             remainingSeconds: seconds,
             laneCount: communityInvite.plannedLaneCount
-        )
-        return String(
-            format: String(localized: "community_invite.remaining_recordable_format"),
-            Int64(recordable / 3_600),
-            Int64((recordable % 3_600) / 60)
-        )
+        ))
+    }
+
+    /// The word beside the gift: just the time ("3h 20m").
+    private var communityTimeLabel: String {
+        guard let recordable = communityRecordableSeconds else {
+            return String(localized: "community_invite.active")
+        }
+        return SidebarInviteTime.word(seconds: recordable)
+    }
+
+    /// "About 3 h 20 min of recording left" — what the word stands for.
+    private var communityTimeSentence: String? {
+        communityRecordableSeconds.map { recordable in
+            String(
+                format: String(localized: "community_invite.remaining_recordable_format"),
+                recordable / 3_600,
+                (recordable % 3_600) / 60
+            )
+        }
+    }
+
+    private var communityTimeExplanation: String {
+        [communityTimeSentence, String(localized: "community_invite.remaining_recordable_hint")]
+            .compactMap { $0 }
+            .joined(separator: "\n")
     }
 
     private var contentArea: some View {
@@ -645,6 +669,21 @@ struct MainShellView: View {
         case .config:
             return String(localized: "sidebar.tab.settings")
         }
+    }
+}
+
+/// The invite's remaining recording time as the sidebar shows it: hours and
+/// minutes in the system's short form, nothing around them.
+nonisolated enum SidebarInviteTime {
+    static func word(seconds: Int64, locale: Locale = .current) -> String {
+        let formatter = DateComponentsFormatter()
+        var calendar = Calendar.current
+        calendar.locale = locale
+        formatter.calendar = calendar
+        formatter.unitsStyle = .abbreviated
+        formatter.allowedUnits = [.hour, .minute]
+        formatter.zeroFormattingBehavior = .dropLeading
+        return formatter.string(from: TimeInterval(max(0, seconds))) ?? ""
     }
 }
 

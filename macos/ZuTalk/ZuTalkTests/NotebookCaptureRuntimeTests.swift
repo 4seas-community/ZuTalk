@@ -8446,8 +8446,9 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertTrue(captureViews.contains("capture.transcript.waiting_lane"))
         XCTAssertTrue(captureViews.contains("capture.transcript.unselected_language"))
         XCTAssertFalse(captureViews.contains("【超出当前语言对】"))
-        XCTAssertTrue(captureViews.contains("capture.settings.context.selected"))
-        XCTAssertTrue(captureViews.contains("capture.settings.context.not_selected"))
+        // Which audio choice is current is the tick in the pill's menu, and
+        // the value VoiceOver reads from the pill.
+        XCTAssertTrue(captureViews.contains("isOn: editor.draft.privacyLevel == level"))
         XCTAssertTrue(captureViews.contains("NotebookCaptureProfileEditorModel"))
         XCTAssertTrue(captureViews.contains(
             "func prepareForCaptureStart(realtime: Bool = true) async throws"
@@ -8630,9 +8631,13 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
         XCTAssertTrue(realtimeConsole.contains("CaptureLanguageEditor(editor: editor)"))
         XCTAssertTrue(captureViews.contains("languageSearchResults"))
         XCTAssertTrue(captureViews.contains("addLanguage("))
-        XCTAssertTrue(captureViews.contains("removeLanguage(at:"))
-        XCTAssertTrue(captureViews.contains("moveLanguage(at:"))
-        XCTAssertTrue(captureViews.contains("draft.selectedLanguages.count > 1"))
+        // Removing and reordering belong to the pills (× and the context
+        // menu): the editor is the same pill strip as Home's card, and a
+        // recording keeps at least one language.
+        XCTAssertTrue(captureViews.contains("CaptureLanguagePills(editor: editor)"))
+        XCTAssertTrue(captureViews.contains(".removeLanguage(pill.code)"))
+        XCTAssertTrue(captureViews.contains(".moveLanguage(pill.code, offset:"))
+        XCTAssertTrue(captureViews.contains("canRemove: selected.count > 1"))
         XCTAssertTrue(captureViews.contains("maximumSelectedCount = 3"))
         XCTAssertFalse(realtimeConsole.contains("isCommonCaption"))
         XCTAssertFalse(realtimeConsole.contains("capture.settings.languages.common_caption"))
@@ -8926,8 +8931,6 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
                 "capture.settings.languages.no_results",
                 "capture.settings.languages.maximum_reached",
                 "capture.settings.languages.add_format",
-                "capture.settings.languages.move_earlier",
-                "capture.settings.languages.move_later",
                 "capture.settings.languages.remove",
                 "capture.transcript.unselected_language",
                 "capture.transcript.presentation.timeline",
@@ -8936,8 +8939,6 @@ final class NotebookCaptureRuntimeTests: XCTestCase {
                 "capture.transcript.presentation.language_columns_detail",
                 "capture.transcript.failed_lane",
                 "capture.error.profile_snapshot_unavailable",
-                "capture.settings.context.selected",
-                "capture.settings.context.not_selected",
                 "capture.settings.context.current_notebook_detail",
                 "capture.settings.tab",
                 "capture.settings.tab_hint",

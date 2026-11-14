@@ -61,25 +61,17 @@ struct NotebookCaptureToolbar: View {
 
     private var startButton: some View {
         let disabledReason = profileEditor.captureStartDisabledReason
-        return Button {
+        // The same filled pill as every other screen's one main action; red is
+        // kept for a recording in progress.
+        return PrimaryPill(
+            commands.isStarting
+                ? String(localized: "capture.toolbar.starting")
+                : String(localized: "capture.toolbar.start"),
+            systemImage: commands.isStarting ? "ellipsis" : "record.circle"
+        ) {
             guard commands.isStarting == false, disabledReason == nil else { return }
             commands.start(notebookId: notebookId, profileEditor: profileEditor)
-        } label: {
-            Label(
-                commands.isStarting
-                    ? String(localized: "capture.toolbar.starting")
-                    : String(localized: "capture.toolbar.start"),
-                systemImage: commands.isStarting ? "ellipsis" : "record.circle"
-            )
-            .font(.bodyMedium)
-            .padding(.horizontal, Spacing.md)
-            .frame(minHeight: 36)
         }
-        .buttonStyle(.plain)
-        .foregroundColor(.signalRed)
-        .background(Color.signalRed.opacity(0.1))
-        .overlay(Capsule().strokeBorder(Color.signalRed.opacity(0.3), lineWidth: 0.5))
-        .clipShape(Capsule())
         .disabled(commands.isStarting || disabledReason != nil)
         .accessibilityLabel(Text(String(localized: "capture.toolbar.start")))
         .accessibilityHint(Text(disabledReason ?? String(localized: "capture.toolbar.start_hint")))
