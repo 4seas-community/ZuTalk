@@ -1,7 +1,10 @@
 //! Fixed Notebook capture engine contract for the minimal MVP.
 //!
 //! This is deliberately a singular build-time descriptor, not a provider
-//! registry or a user-selectable model catalogue. Realtime capture streams to
+//! registry or a user-selectable model catalogue. A recording stores the
+//! model ids it was made with; the store admits any listed in
+//! `vt_store::notebook_capture_store::SONIOX_*_MODEL_IDS` for a new claim, so
+//! moving to a newer Soniox model is a change here plus one entry there. Realtime capture streams to
 //! the Soniox realtime WebSocket; the post-stop path uses the Soniox async
 //! file REST API with its own model role.
 
@@ -35,8 +38,8 @@ pub const CURRENT_NOTEBOOK_CAPTURE_ENGINE: NotebookCaptureEngine = NotebookCaptu
     provider_id: "soniox",
     provider_display_name: "Soniox",
     credential_scope: "soniox",
-    realtime_model_id: "stt-rt-v5",
-    post_stop_model_id: "stt-async-v5",
+    realtime_model_id: "stt-rt-v6",
+    post_stop_model_id: "stt-async-v6",
     realtime_endpoint: "wss://stt-rt.soniox.com/transcribe-websocket",
     async_api_base_url: "https://api.soniox.com",
     audio_format: "pcm_s16le",
@@ -54,14 +57,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn current_notebook_capture_engine_is_fixed_soniox_v5() {
+    fn current_notebook_capture_engine_is_fixed_soniox_v6() {
         let engine = CURRENT_NOTEBOOK_CAPTURE_ENGINE;
 
         assert_eq!(engine.provider_id, "soniox");
         assert_eq!(engine.provider_display_name, "Soniox");
         assert_eq!(engine.credential_scope, "soniox");
-        assert_eq!(engine.realtime_model_id, "stt-rt-v5");
-        assert_eq!(engine.post_stop_model_id, "stt-async-v5");
+        assert_eq!(engine.realtime_model_id, "stt-rt-v6");
+        assert_eq!(engine.post_stop_model_id, "stt-async-v6");
         assert_eq!(
             engine.realtime_endpoint,
             "wss://stt-rt.soniox.com/transcribe-websocket"

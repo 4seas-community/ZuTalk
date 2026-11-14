@@ -1880,6 +1880,40 @@ mod tests {
         assert_eq!(pending, 0, "没变的事实不该惊动触发器");
     }
 
+    /// 另一台 Mac 升级得更早,用了这一版还不认识的 Soniox 模型。录音照样收下,
+    /// 记的模型原样保留:库只按种类认模型(schema v37),认不认识是代码的事。
+    #[test]
+    fn a_recording_made_with_a_newer_model_is_still_received() {
+        let origin = database();
+        topic(&origin, "topic-1", "周会");
+        topic(&origin, UNFILED, "__zutalk_internal_quick_capture__");
+        let sid = recorded(&origin, "topic-1");
+        let mut facts = read_recording(&origin, &sid, UNFILED).unwrap().unwrap();
+        let topic_facts = read_topic(&origin, "topic-1").unwrap().unwrap();
+        let run = facts.origin.run.as_mut().unwrap();
+        run.insert("realtime_model_id".into(), Json::from("stt-rt-v9"));
+        run.insert("post_stop_model_id".into(), Json::from("stt-async-v9"));
+
+        let mut replica = database();
+        topic(
+            &replica,
+            "local-unfiled",
+            "__zutalk_internal_quick_capture__",
+        );
+        let outcome = apply_all(&mut replica, &facts, Some(&topic_facts), None);
+        assert!(outcome.created);
+        assert!(outcome.refined_arrived);
+        let models: (String, String) = replica
+            .query_row(
+                "SELECT realtime_model_id, post_stop_model_id
+                 FROM notebook_capture_runs WHERE session_id = ?1",
+                [&sid],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(models, ("stt-rt-v9".into(), "stt-async-v9".into()));
+    }
+
     #[test]
     fn a_refinement_that_finishes_later_steps_the_replica_forward() {
         let origin = database();

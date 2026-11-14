@@ -6,7 +6,7 @@
 //! transcription group), or a revision that reported a live row as deleted.
 
 use vt_store::notebook_capture_store::{
-    CaptureProviderRole, SONIOX_PROVIDER_ID, SONIOX_STT_RT_V5_MODEL_ID,
+    CaptureProviderRole, SONIOX_PROVIDER_ID, SONIOX_REALTIME_MODEL_IDS,
 };
 use vt_store::*;
 
@@ -47,7 +47,7 @@ fn fixture(suffix: &str) -> (tempfile::TempDir, NotebookCaptureStore, String) {
             &session_id,
             CaptureProviderRole::Realtime,
             SONIOX_PROVIDER_ID,
-            SONIOX_STT_RT_V5_MODEL_ID,
+            SONIOX_REALTIME_MODEL_IDS.last().unwrap(),
         )
         .unwrap();
     (temp, store, session_id)

@@ -175,7 +175,7 @@ fn request<'a>(base_url: &'a str) -> SonioxAsyncRequest<'a> {
     SonioxAsyncRequest {
         base_url,
         api_key: "test-api-key",
-        model: "stt-async-v5",
+        model: "stt-async-v6",
         language_hints: vec!["en".to_string()],
         enable_language_identification: false,
         context_json: None,
@@ -238,7 +238,7 @@ async fn async_flow_uploads_transcribes_and_deletes_remote_artifacts() {
 
     // 创建请求必须选定异步模型并引用上传的文件。
     let create: serde_json::Value = serde_json::from_slice(&recorded[1].body).unwrap();
-    assert_eq!(create["model"], "stt-async-v5");
+    assert_eq!(create["model"], "stt-async-v6");
     assert_eq!(create["file_id"], "file-1");
     assert_eq!(create["language_hints"], serde_json::json!(["en"]));
     assert_eq!(

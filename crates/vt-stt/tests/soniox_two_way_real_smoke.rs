@@ -97,7 +97,7 @@ fn safe_provider_metadata(value: Option<String>) -> Option<String> {
 
 #[tokio::test]
 #[ignore = "requires an explicitly supplied real Soniox API key"]
-async fn soniox_v5_two_way_real_smoke_redacts_content() {
+async fn soniox_two_way_real_smoke_redacts_content() {
     let api_key = load_api_key()
         .expect("SONIOX_API_KEY must be supplied through the environment or ignored local .env");
 

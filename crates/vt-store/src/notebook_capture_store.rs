@@ -16,8 +16,34 @@ use vt_model::{text::is_wide_punctuation, Token};
 use crate::{notebook_store::BuiltinNotebookTab, session_query::SessionRecord};
 
 pub const SONIOX_PROVIDER_ID: &str = "soniox";
-pub const SONIOX_STT_RT_V5_MODEL_ID: &str = "stt-rt-v5";
-pub const SONIOX_STT_ASYNC_V5_MODEL_ID: &str = "stt-async-v5";
+
+/// The Soniox models a new recording may claim, one list per role, oldest
+/// first. A list only grows: Soniox retires a name by routing it to its
+/// successor, and a recording keeps the name it was made with. Which entry a
+/// build actually uses is `vt_stt::CURRENT_NOTEBOOK_CAPTURE_ENGINE`; moving to
+/// a newer model is that line plus one entry here, and no schema change.
+pub const SONIOX_REALTIME_MODEL_IDS: &[&str] = &["stt-rt-v5", "stt-rt-v6"];
+pub const SONIOX_ASYNC_MODEL_IDS: &[&str] = &["stt-async-v5", "stt-async-v6"];
+
+/// Whether a recorded realtime model is one at all, judged by Soniox's naming
+/// (`stt-rt-…`), the same rule the schema enforces. Facts already recorded —
+/// here, or by a newer build and brought by device sync — are checked this
+/// way and never against the lists above, so a model this build has not heard
+/// of stays readable.
+pub fn is_soniox_realtime_model(model_id: &str) -> bool {
+    model_id
+        .strip_prefix("stt-rt-")
+        .is_some_and(|rest| !rest.is_empty())
+}
+
+/// The post-stop counterpart: `stt-async-…`, or `stt-rt-…` for receipts the
+/// restream path left before the async file API (schema v30).
+pub fn is_soniox_post_stop_model(model_id: &str) -> bool {
+    is_soniox_realtime_model(model_id)
+        || model_id
+            .strip_prefix("stt-async-")
+            .is_some_and(|rest| !rest.is_empty())
+}
 pub const MAX_CAPTURE_LANGUAGES: usize = 3;
 
 fn attach_new_capture_membership_tx(
@@ -1806,13 +1832,13 @@ impl NotebookCaptureStore {
         require_nonempty("provider_id", provider_id)?;
         require_nonempty("model_id", model_id)?;
         // Realtime 只允许 RT 流模型;post-stop 自 v30 起走异步文件 API 模型。
-        // 旧 restream 收据里的 stt-rt-v5 post-stop 值仍是合法的历史事实,但
-        // 新认领不再接受它。
-        let role_model_id = match role {
-            CaptureProviderRole::Realtime => SONIOX_STT_RT_V5_MODEL_ID,
-            CaptureProviderRole::PostStop => SONIOX_STT_ASYNC_V5_MODEL_ID,
+        // 旧 restream 收据里的 stt-rt-… post-stop 值仍是合法的历史事实,但
+        // 新认领不再接受它。新认领只认清单里的名字,已记下的事实按种类认。
+        let role_models = match role {
+            CaptureProviderRole::Realtime => SONIOX_REALTIME_MODEL_IDS,
+            CaptureProviderRole::PostStop => SONIOX_ASYNC_MODEL_IDS,
         };
-        if provider_id != SONIOX_PROVIDER_ID || model_id != role_model_id {
+        if provider_id != SONIOX_PROVIDER_ID || !role_models.contains(&model_id) {
             return Err(NotebookCaptureStoreError::Validation(format!(
                 "unsupported capture provider/model pair {provider_id}/{model_id}"
             )));
@@ -2381,11 +2407,10 @@ impl NotebookCaptureStore {
             )));
         }
         let (provider_id, model_id) = match (provider_id, model_id) {
-            // 收据可绑定当前的异步文件 API 模型,或升级前落库的 restream 模型。
+            // 收据绑定这一场认领的模型:异步文件 API 的任一版,或升级前落库的
+            // restream 模型。认领时已按清单把过关,这里按种类认历史。
             (Some(provider_id), Some(model_id))
-                if provider_id == SONIOX_PROVIDER_ID
-                    && (model_id == SONIOX_STT_ASYNC_V5_MODEL_ID
-                        || model_id == SONIOX_STT_RT_V5_MODEL_ID) =>
+                if provider_id == SONIOX_PROVIDER_ID && is_soniox_post_stop_model(&model_id) =>
             {
                 (provider_id, model_id)
             }
@@ -8378,7 +8403,7 @@ fn ensure_active_realtime_session(
         realtime_provider_id.as_deref(),
         realtime_model_id.as_deref(),
     ) {
-        (Some(SONIOX_PROVIDER_ID), Some(SONIOX_STT_RT_V5_MODEL_ID)) => Ok(()),
+        (Some(SONIOX_PROVIDER_ID), Some(model_id)) if is_soniox_realtime_model(model_id) => Ok(()),
         (None, None) => Err(NotebookCaptureStoreError::Conflict(
             "realtime utterance requires claimed provider provenance".into(),
         )),
@@ -8429,7 +8454,7 @@ fn ensure_realtime_session_provenance(
             NotebookCaptureStoreError::NotFound(format!("capture session {session_id}"))
         })?;
     match (provenance.0.as_deref(), provenance.1.as_deref()) {
-        (Some(SONIOX_PROVIDER_ID), Some(SONIOX_STT_RT_V5_MODEL_ID)) => Ok(()),
+        (Some(SONIOX_PROVIDER_ID), Some(model_id)) if is_soniox_realtime_model(model_id) => Ok(()),
         (None, None) => Err(NotebookCaptureStoreError::Conflict(
             "realtime utterance requires claimed provider provenance".into(),
         )),
@@ -8607,10 +8632,8 @@ fn validate_async_provider_receipt(
             raw.session_id
         ))
     })?;
-    // 异步文件 API 收据用 stt-async-v5;升级前的 restream 收据仍是 stt-rt-v5。
-    if provider_id != SONIOX_PROVIDER_ID
-        || (model_id != SONIOX_STT_ASYNC_V5_MODEL_ID && model_id != SONIOX_STT_RT_V5_MODEL_ID)
-    {
+    // 异步文件 API 收据用 stt-async-…;升级前的 restream 收据仍是 stt-rt-…。
+    if provider_id != SONIOX_PROVIDER_ID || !is_soniox_post_stop_model(&model_id) {
         return Err(NotebookCaptureStoreError::CorruptData(format!(
             "provider receipt for session {} has unsupported provider provenance",
             raw.session_id
@@ -9267,6 +9290,16 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
+    /// The newest model of each role — what the current engine claims.
+    const RT_MODEL: &str = "stt-rt-v6";
+    const ASYNC_MODEL: &str = "stt-async-v6";
+
+    #[test]
+    fn the_newest_listed_models_are_the_ones_these_tests_claim() {
+        assert_eq!(SONIOX_REALTIME_MODEL_IDS.last(), Some(&RT_MODEL));
+        assert_eq!(SONIOX_ASYNC_MODEL_IDS.last(), Some(&ASYNC_MODEL));
+    }
+
     /// Auxiliary segments are joined by us, not by the provider — it never
     /// emitted the boundary between two of its own segments. The join used to
     /// be script-blind, so a Chinese or Thai lane composed from two segments
@@ -9437,7 +9470,7 @@ mod tests {
                 session_id,
                 CaptureProviderRole::Realtime,
                 SONIOX_PROVIDER_ID,
-                SONIOX_STT_RT_V5_MODEL_ID,
+                RT_MODEL,
             )
             .unwrap()
     }
@@ -9448,7 +9481,7 @@ mod tests {
                 session_id,
                 CaptureProviderRole::PostStop,
                 SONIOX_PROVIDER_ID,
-                SONIOX_STT_ASYNC_V5_MODEL_ID,
+                ASYNC_MODEL,
             )
             .unwrap()
     }
@@ -9861,7 +9894,7 @@ mod tests {
                 "session-provenance",
                 CaptureProviderRole::PostStop,
                 SONIOX_PROVIDER_ID,
-                SONIOX_STT_ASYNC_V5_MODEL_ID,
+                ASYNC_MODEL,
             ),
             Err(NotebookCaptureStoreError::Conflict(_))
         ));
@@ -9871,10 +9904,7 @@ mod tests {
             claimed.realtime_provider_id.as_deref(),
             Some(SONIOX_PROVIDER_ID)
         );
-        assert_eq!(
-            claimed.realtime_model_id.as_deref(),
-            Some(SONIOX_STT_RT_V5_MODEL_ID)
-        );
+        assert_eq!(claimed.realtime_model_id.as_deref(), Some(RT_MODEL));
         assert_eq!(
             claim_realtime(&store, "session-provenance").realtime_model_id,
             claimed.realtime_model_id
@@ -9899,7 +9929,7 @@ mod tests {
                 "session-provenance",
                 CaptureProviderRole::Realtime,
                 SONIOX_PROVIDER_ID,
-                SONIOX_STT_RT_V5_MODEL_ID,
+                RT_MODEL,
             ),
             Err(NotebookCaptureStoreError::Conflict(_))
         ));
@@ -9908,10 +9938,7 @@ mod tests {
             claimed.post_stop_provider_id.as_deref(),
             Some(SONIOX_PROVIDER_ID)
         );
-        assert_eq!(
-            claimed.post_stop_model_id.as_deref(),
-            Some(SONIOX_STT_ASYNC_V5_MODEL_ID)
-        );
+        assert_eq!(claimed.post_stop_model_id.as_deref(), Some(ASYNC_MODEL));
         assert_eq!(
             claim_post_stop(&store, "session-provenance").post_stop_model_id,
             claimed.post_stop_model_id
@@ -9946,7 +9973,7 @@ mod tests {
                 "session-provenance-purge",
                 CaptureProviderRole::PostStop,
                 SONIOX_PROVIDER_ID,
-                SONIOX_STT_ASYNC_V5_MODEL_ID,
+                ASYNC_MODEL,
             ),
             Err(NotebookCaptureStoreError::Conflict(_))
         ));
@@ -10414,14 +10441,14 @@ mod tests {
             )
             .unwrap();
         assert_eq!(receipt.provider_id, SONIOX_PROVIDER_ID);
-        assert_eq!(receipt.model_id, SONIOX_STT_ASYNC_V5_MODEL_ID);
+        assert_eq!(receipt.model_id, ASYNC_MODEL);
         assert_eq!(
             receipt.output_sha256,
             async_provider_output_digest(
                 "session-provider-binding",
                 "provider-binding-task",
                 SONIOX_PROVIDER_ID,
-                SONIOX_STT_ASYNC_V5_MODEL_ID,
+                ASYNC_MODEL,
                 &tokens_json,
                 &result_json,
             )

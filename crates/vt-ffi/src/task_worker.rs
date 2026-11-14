@@ -2274,11 +2274,12 @@ fn verify_post_stop_provider_receipt(
         run.post_stop_model_id.as_deref(),
     );
     let receipt_pair = (receipt.provider_id.as_str(), receipt.model_id.as_str());
-    // 收据是不可变的历史事实：升级前用 restream 跑出来的 post-stop 收据带
-    // `stt-rt-v5`，它仍然必须可恢复，否则升级会把已完成的转录扔进隔离。
-    // 新认领只接受当前模型（由 claim_provider_provenance 把关）。
-    let receipt_model_supported = receipt_pair.1 == engine.post_stop_model_id
-        || receipt_pair.1 == vt_store::notebook_capture_store::SONIOX_STT_RT_V5_MODEL_ID;
+    // 收据是不可变的历史事实：它带着这一场认领时的模型，可能是升级前的
+    // 异步模型，也可能是更早 restream 留下的 `stt-rt-…`。只要和这一场记下的
+    // 认领一致、是 post-stop 种类的模型，就必须可恢复，否则换模型会把已完成的
+    // 转录扔进隔离。新认领只接受当前模型（由 claim_provider_provenance 把关）。
+    let receipt_model_supported =
+        vt_store::notebook_capture_store::is_soniox_post_stop_model(receipt_pair.1);
     if stored_pair != (Some(receipt_pair.0), Some(receipt_pair.1))
         || receipt_pair.0 != engine.provider_id
         || !receipt_model_supported
@@ -2433,6 +2434,23 @@ impl FfiTaskCallback for NoopCallback {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+    /// The engine names the model a new recording claims; the store refuses a
+    /// claim it does not list. A bump that changes one and forgets the other
+    /// would stop every recording at its first claim.
+    #[test]
+    fn the_engine_claims_only_models_the_store_lists() {
+        use vt_store::notebook_capture_store::{SONIOX_ASYNC_MODEL_IDS, SONIOX_REALTIME_MODEL_IDS};
+        let engine = CURRENT_NOTEBOOK_CAPTURE_ENGINE;
+        assert_eq!(
+            SONIOX_REALTIME_MODEL_IDS.last(),
+            Some(&engine.realtime_model_id)
+        );
+        assert_eq!(
+            SONIOX_ASYNC_MODEL_IDS.last(),
+            Some(&engine.post_stop_model_id)
+        );
+    }
 
     struct RacingApiKeyStore {
         value: Mutex<Option<String>>,

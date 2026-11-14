@@ -1,9 +1,8 @@
-//! ZuTalk SQLite v34 schema.
+//! ZuTalk SQLite schema.
 //!
-//! Fresh databases are installed directly at v34. The eleven immediately
-//! preceding Notebook schemas (v23 through v33) are migrated in place so
-//! existing capture data remains available; older retired product schemas are
-//! still rejected.
+//! Fresh databases are installed directly at `CURRENT_VERSION`. Every Notebook
+//! schema from v23 on is migrated in place so existing capture data remains
+//! available; older retired product schemas are still rejected.
 //!
 //! Every constant below is named for what its version introduced, not for
 //! where it sits in the chain — positional names go stale on the next bump.
@@ -25,7 +24,8 @@ const SAMPLE_FORMAT_VERSION: i32 = 32;
 const MARKS_VERSION: i32 = 33;
 const MARK_DIGESTS_VERSION: i32 = 34;
 const SUBTITLE_ONLY_VERSION: i32 = 35;
-const CURRENT_VERSION: i32 = 36;
+const LIBRARY_SYNC_VERSION: i32 = 36;
+const CURRENT_VERSION: i32 = 37;
 
 const V23_TABLES: &[&str] = &[
     "audio_retention_chunks",
@@ -684,7 +684,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v34_to_v35(conn)?;
             validate_v35_baseline(conn)?;
             migrate_v35_to_v36(conn)?;
-            validate_v36_baseline(conn)
+            validate_v36_baseline(conn)?;
+            migrate_v36_to_v37(conn)?;
+            validate_v37_baseline(conn)
         }
         SPEAKER_VERSION => {
             validate_v24_baseline(conn)?;
@@ -711,7 +713,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v34_to_v35(conn)?;
             validate_v35_baseline(conn)?;
             migrate_v35_to_v36(conn)?;
-            validate_v36_baseline(conn)
+            validate_v36_baseline(conn)?;
+            migrate_v36_to_v37(conn)?;
+            validate_v37_baseline(conn)
         }
         SELECTED_LANGUAGES_VERSION => {
             validate_v25_baseline(conn)?;
@@ -736,7 +740,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v34_to_v35(conn)?;
             validate_v35_baseline(conn)?;
             migrate_v35_to_v36(conn)?;
-            validate_v36_baseline(conn)
+            validate_v36_baseline(conn)?;
+            migrate_v36_to_v37(conn)?;
+            validate_v37_baseline(conn)
         }
         MULTILINGUAL_VERSION => {
             validate_v26_baseline(conn)?;
@@ -759,7 +765,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v34_to_v35(conn)?;
             validate_v35_baseline(conn)?;
             migrate_v35_to_v36(conn)?;
-            validate_v36_baseline(conn)
+            validate_v36_baseline(conn)?;
+            migrate_v36_to_v37(conn)?;
+            validate_v37_baseline(conn)
         }
         REALTIME_LORO_VERSION => {
             validate_v27_baseline(conn)?;
@@ -780,7 +788,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v34_to_v35(conn)?;
             validate_v35_baseline(conn)?;
             migrate_v35_to_v36(conn)?;
-            validate_v36_baseline(conn)
+            validate_v36_baseline(conn)?;
+            migrate_v36_to_v37(conn)?;
+            validate_v37_baseline(conn)
         }
         TRANSLATION_INBOX_VERSION => {
             validate_v28_baseline(conn)?;
@@ -799,7 +809,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v34_to_v35(conn)?;
             validate_v35_baseline(conn)?;
             migrate_v35_to_v36(conn)?;
-            validate_v36_baseline(conn)
+            validate_v36_baseline(conn)?;
+            migrate_v36_to_v37(conn)?;
+            validate_v37_baseline(conn)
         }
         TRANSCRIPT_GAPS_VERSION => {
             validate_v29_baseline(conn)?;
@@ -816,7 +828,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v34_to_v35(conn)?;
             validate_v35_baseline(conn)?;
             migrate_v35_to_v36(conn)?;
-            validate_v36_baseline(conn)
+            validate_v36_baseline(conn)?;
+            migrate_v36_to_v37(conn)?;
+            validate_v37_baseline(conn)
         }
         INBOX_MULTI_SEGMENT_VERSION => {
             validate_v31_baseline(conn)?;
@@ -829,7 +843,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v34_to_v35(conn)?;
             validate_v35_baseline(conn)?;
             migrate_v35_to_v36(conn)?;
-            validate_v36_baseline(conn)
+            validate_v36_baseline(conn)?;
+            migrate_v36_to_v37(conn)?;
+            validate_v37_baseline(conn)
         }
         SAMPLE_FORMAT_VERSION => {
             validate_v32_baseline(conn)?;
@@ -840,7 +856,9 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v34_to_v35(conn)?;
             validate_v35_baseline(conn)?;
             migrate_v35_to_v36(conn)?;
-            validate_v36_baseline(conn)
+            validate_v36_baseline(conn)?;
+            migrate_v36_to_v37(conn)?;
+            validate_v37_baseline(conn)
         }
         MARKS_VERSION => {
             validate_v33_baseline(conn)?;
@@ -849,21 +867,32 @@ pub fn run_migrations(conn: &Connection) -> SqlResult<()> {
             migrate_v34_to_v35(conn)?;
             validate_v35_baseline(conn)?;
             migrate_v35_to_v36(conn)?;
-            validate_v36_baseline(conn)
+            validate_v36_baseline(conn)?;
+            migrate_v36_to_v37(conn)?;
+            validate_v37_baseline(conn)
         }
         MARK_DIGESTS_VERSION => {
             validate_v34_baseline(conn)?;
             migrate_v34_to_v35(conn)?;
             validate_v35_baseline(conn)?;
             migrate_v35_to_v36(conn)?;
-            validate_v36_baseline(conn)
+            validate_v36_baseline(conn)?;
+            migrate_v36_to_v37(conn)?;
+            validate_v37_baseline(conn)
         }
         SUBTITLE_ONLY_VERSION => {
             validate_v35_baseline(conn)?;
             migrate_v35_to_v36(conn)?;
-            validate_v36_baseline(conn)
+            validate_v36_baseline(conn)?;
+            migrate_v36_to_v37(conn)?;
+            validate_v37_baseline(conn)
         }
-        CURRENT_VERSION => validate_v36_baseline(conn),
+        LIBRARY_SYNC_VERSION => {
+            validate_v36_baseline(conn)?;
+            migrate_v36_to_v37(conn)?;
+            validate_v37_baseline(conn)
+        }
+        CURRENT_VERSION => validate_v37_baseline(conn),
         unsupported => Err(schema_reset_required(unsupported)),
     }?;
 
@@ -897,7 +926,7 @@ fn schema_reset_required(version: i32) -> rusqlite::Error {
     rusqlite::Error::SqliteFailure(
         rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_SCHEMA),
         Some(format!(
-            "unsupported schema {version}; reset required (ZuTalk accepts only an empty database, schema {OLDEST_SUPPORTED_VERSION}, schema {SPEAKER_VERSION}, schema {SELECTED_LANGUAGES_VERSION}, schema {MULTILINGUAL_VERSION}, schema {REALTIME_LORO_VERSION}, schema {TRANSLATION_INBOX_VERSION}, schema {TRANSCRIPT_GAPS_VERSION}, schema {REMOTE_ARTIFACTS_VERSION}, schema {INBOX_MULTI_SEGMENT_VERSION}, schema {SAMPLE_FORMAT_VERSION}, schema {MARKS_VERSION}, schema {MARK_DIGESTS_VERSION}, schema {SUBTITLE_ONLY_VERSION}, or schema {CURRENT_VERSION})"
+            "unsupported schema {version}; reset required (ZuTalk accepts only an empty database, schema {OLDEST_SUPPORTED_VERSION}, schema {SPEAKER_VERSION}, schema {SELECTED_LANGUAGES_VERSION}, schema {MULTILINGUAL_VERSION}, schema {REALTIME_LORO_VERSION}, schema {TRANSLATION_INBOX_VERSION}, schema {TRANSCRIPT_GAPS_VERSION}, schema {REMOTE_ARTIFACTS_VERSION}, schema {INBOX_MULTI_SEGMENT_VERSION}, schema {SAMPLE_FORMAT_VERSION}, schema {MARKS_VERSION}, schema {MARK_DIGESTS_VERSION}, schema {SUBTITLE_ONLY_VERSION}, schema {LIBRARY_SYNC_VERSION}, or schema {CURRENT_VERSION})"
         )),
     )
 }
@@ -1077,9 +1106,30 @@ fn validate_v35_baseline_objects(conn: &Connection, claimed_version: i32) -> Sql
 /// `validate_v24_or_later_baseline` already requires every sync table,
 /// index and trigger by name; this adds the one column a rename could lose.
 fn validate_v36_baseline(conn: &Connection) -> SqlResult<()> {
-    validate_v35_baseline_objects(conn, CURRENT_VERSION)?;
+    validate_v36_baseline_objects(conn, LIBRARY_SYNC_VERSION)
+}
+
+fn validate_v36_baseline_objects(conn: &Connection, claimed_version: i32) -> SqlResult<()> {
+    validate_v35_baseline_objects(conn, claimed_version)?;
     let table_sql = schema_object_sql(conn, "table", "sync_documents")?.to_ascii_lowercase();
     if !table_sql.contains("snapshot") {
+        return Err(schema_reset_required(claimed_version));
+    }
+    Ok(())
+}
+
+/// v37: a recording's model is admitted by its kind, not by one version's
+/// name. `validate_v30_baseline_objects` checks the table; this adds the
+/// trigger that guards realtime sentences, which named a version too.
+fn validate_v37_baseline(conn: &Connection) -> SqlResult<()> {
+    validate_v36_baseline_objects(conn, CURRENT_VERSION)?;
+    let trigger_sql = schema_object_sql(
+        conn,
+        "trigger",
+        "realtime_utterances_require_realtime_provenance",
+    )?
+    .to_ascii_lowercase();
+    if !trigger_sql.contains("glob 'stt-rt-?*'") {
         return Err(schema_reset_required(CURRENT_VERSION));
     }
     Ok(())
@@ -1122,7 +1172,18 @@ fn validate_v31_baseline_objects(conn: &Connection, claimed_version: i32) -> Sql
 fn validate_v30_baseline_objects(conn: &Connection, claimed_version: i32) -> SqlResult<()> {
     validate_v24_or_later_baseline(conn, claimed_version)?;
     let table_sql = schema_object_sql(conn, "table", "notebook_capture_runs")?.to_ascii_lowercase();
-    if !table_sql.contains("'stt-async-v5'") {
+    // v30–v36 name the model each role may record; v37 admits a model by its
+    // kind and names none. A database stamped before v37 may already carry
+    // the v37 table (the rebuild is safe to repeat), but a database stamped
+    // v37 must not still name a version.
+    let names_a_version = table_sql.contains("'stt-async-v5'");
+    let admits_by_kind = table_sql.contains("glob 'stt-async-?*'");
+    let expected = if claimed_version >= CURRENT_VERSION {
+        admits_by_kind && !names_a_version
+    } else {
+        names_a_version || admits_by_kind
+    };
+    if !expected {
         return Err(schema_reset_required(claimed_version));
     }
     Ok(())
@@ -1138,7 +1199,8 @@ fn validate_v24_or_later_baseline(conn: &Connection, claimed_version: i32) -> Sq
     let has_transcript_gaps = claimed_version >= TRANSCRIPT_GAPS_VERSION;
     let has_remote_artifact_journal = claimed_version >= REMOTE_ARTIFACTS_VERSION;
     let (tables, indexes, triggers) = match claimed_version {
-        CURRENT_VERSION => (V36_TABLES, V36_INDEXES, V36_TRIGGERS),
+        // v37 rebuilt one table; the object set is v36's.
+        CURRENT_VERSION | LIBRARY_SYNC_VERSION => (V36_TABLES, V36_INDEXES, V36_TRIGGERS),
         // v35 added a column; the object set is v34's.
         SUBTITLE_ONLY_VERSION | MARK_DIGESTS_VERSION => (V34_TABLES, V33_INDEXES, V29_TRIGGERS),
         MARKS_VERSION => (V33_TABLES, V33_INDEXES, V29_TRIGGERS),
@@ -2155,18 +2217,6 @@ fn install_current_baseline(conn: &Connection) -> SqlResult<()> {
         CREATE UNIQUE INDEX idx_realtime_utterances_id_sequence
             ON realtime_utterances(id, sequence);
 
-        CREATE TRIGGER realtime_utterances_require_realtime_provenance
-        BEFORE INSERT ON realtime_utterances
-        WHEN NOT EXISTS (
-            SELECT 1 FROM notebook_capture_runs
-            WHERE session_id = NEW.session_id
-              AND realtime_provider_id = 'soniox'
-              AND realtime_model_id = 'stt-rt-v5'
-        )
-        BEGIN
-            SELECT RAISE(ABORT, 'realtime utterance requires provider provenance');
-        END;
-
         CREATE TABLE realtime_utterance_variants (
             utterance_id  TEXT NOT NULL
                                REFERENCES realtime_utterances(id) ON DELETE CASCADE,
@@ -2408,7 +2458,8 @@ fn install_current_baseline(conn: &Connection) -> SqlResult<()> {
 
         "#,
     )?;
-    tx.execute_batch(notebook_capture_runs_schema())?;
+    tx.execute_batch(&notebook_capture_runs_schema())?;
+    tx.execute_batch(&realtime_utterance_provenance_trigger(ModelRule::Kind))?;
     tx.execute_batch(realtime_transcript_gaps_schema())?;
     tx.execute_batch(provider_remote_artifacts_schema())?;
     tx.execute_batch(session_marks_schema())?;
@@ -2790,13 +2841,78 @@ fn provider_remote_artifacts_schema() -> &'static str {
     "#
 }
 
-/// `notebook_capture_runs` 的完整 schema(表 + 索引 + 自身触发器)。
+/// How the capture tables admit the model a recording names.
 ///
-/// v30 起 post-stop 允许 `stt-async-v5`(异步文件 API),同时保留
-/// `stt-rt-v5` 让升级前落库的 restream 收据保持合法。全新安装与
-/// v29→v30 重建迁移共用这一份定义。
-fn notebook_capture_runs_schema() -> &'static str {
-    r#"
+/// Which model a new recording uses is the code's decision
+/// (`vt_stt::CURRENT_NOTEBOOK_CAPTURE_ENGINE`, checked against
+/// `notebook_capture_store::SONIOX_*_MODEL_IDS`). The database only refuses a
+/// name that cannot be a Soniox model of that role, so moving to a newer model
+/// needs no rebuild, and a recording made by a newer build can still be stored
+/// here when device sync brings it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ModelRule {
+    /// v30–v36: each role names the one model those builds used. Kept so the
+    /// v29 → v30 rebuild still produces the table it produced then.
+    NamedV5,
+    /// v37 on: realtime admits `stt-rt-…`; post-stop admits `stt-async-…`, or
+    /// `stt-rt-…` for receipts left by the restream path before v30.
+    Kind,
+}
+
+impl ModelRule {
+    fn realtime(self) -> &'static str {
+        match self {
+            ModelRule::NamedV5 => "realtime_model_id = 'stt-rt-v5'",
+            ModelRule::Kind => "realtime_model_id GLOB 'stt-rt-?*'",
+        }
+    }
+
+    fn post_stop(self) -> &'static str {
+        match self {
+            ModelRule::NamedV5 => "post_stop_model_id IN ('stt-rt-v5', 'stt-async-v5')",
+            ModelRule::Kind => {
+                "(post_stop_model_id GLOB 'stt-async-?*' OR post_stop_model_id GLOB 'stt-rt-?*')"
+            }
+        }
+    }
+}
+
+/// `notebook_capture_runs` 的完整 schema(表 + 索引 + 自身触发器),按当前规则。
+///
+/// 全新安装与 v36→v37 重建共用这一份定义。
+fn notebook_capture_runs_schema() -> String {
+    notebook_capture_runs_schema_under(ModelRule::Kind)
+}
+
+/// The same table under a given model rule. v30 起 post-stop 允许异步文件 API
+/// 模型,同时保留 restream 模型让升级前落库的收据保持合法。
+fn notebook_capture_runs_schema_under(rule: ModelRule) -> String {
+    NOTEBOOK_CAPTURE_RUNS_SCHEMA_TEMPLATE
+        .replace("@realtime_model_rule@", rule.realtime())
+        .replace("@post_stop_model_rule@", rule.post_stop())
+}
+
+/// A realtime sentence may only be written once its recording has claimed a
+/// realtime model. Lives beside `realtime_utterances`, but names the model the
+/// way the capture table does, so it changes with the rule.
+fn realtime_utterance_provenance_trigger(rule: ModelRule) -> String {
+    format!(
+        "CREATE TRIGGER realtime_utterances_require_realtime_provenance
+        BEFORE INSERT ON realtime_utterances
+        WHEN NOT EXISTS (
+            SELECT 1 FROM notebook_capture_runs
+            WHERE session_id = NEW.session_id
+              AND realtime_provider_id = 'soniox'
+              AND {}
+        )
+        BEGIN
+            SELECT RAISE(ABORT, 'realtime utterance requires provider provenance');
+        END;",
+        rule.realtime()
+    )
+}
+
+const NOTEBOOK_CAPTURE_RUNS_SCHEMA_TEMPLATE: &str = r#"
         CREATE TABLE notebook_capture_runs (
             id                          TEXT PRIMARY KEY,
             notebook_id                 TEXT NOT NULL REFERENCES notebooks(id) ON DELETE CASCADE,
@@ -2884,14 +3000,14 @@ fn notebook_capture_runs_schema() -> &'static str {
                 OR
                 (realtime_provider_id IS NOT NULL AND realtime_model_id IS NOT NULL
                     AND realtime_provider_id = 'soniox'
-                    AND realtime_model_id = 'stt-rt-v5')
+                    AND @realtime_model_rule@)
             ),
             CHECK(
                 (post_stop_provider_id IS NULL AND post_stop_model_id IS NULL)
                 OR
                 (post_stop_provider_id IS NOT NULL AND post_stop_model_id IS NOT NULL
                     AND post_stop_provider_id = 'soniox'
-                    AND post_stop_model_id IN ('stt-rt-v5', 'stt-async-v5'))
+                    AND @post_stop_model_rule@)
             ),
             CHECK(
                 context_applied_at IS NULL
@@ -2899,7 +3015,7 @@ fn notebook_capture_runs_schema() -> &'static str {
                 (realtime_provider_id IS NOT NULL
                     AND realtime_model_id IS NOT NULL
                     AND realtime_provider_id = 'soniox'
-                    AND realtime_model_id = 'stt-rt-v5')
+                    AND @realtime_model_rule@)
             ),
             CHECK(
                 (async_task_state = 'none'
@@ -3091,8 +3207,7 @@ fn notebook_capture_runs_schema() -> &'static str {
         BEGIN
             SELECT RAISE(ABORT, 'post-stop provider provenance is immutable');
         END;
-    "#
-}
+    "#;
 
 /// v29 → v30:重建 `notebook_capture_runs`,把 post-stop 模型 CHECK 从
 /// 仅 `stt-rt-v5` 放宽为 `stt-rt-v5` / `stt-async-v5`(SQLite 无法原地修改
@@ -3120,7 +3235,7 @@ fn migrate_v29_to_v30(conn: &Connection) -> SqlResult<()> {
              DROP INDEX idx_notebook_capture_runs_single_active;
              ALTER TABLE notebook_capture_runs RENAME TO notebook_capture_runs_v29_legacy;",
         )?;
-        tx.execute_batch(notebook_capture_runs_schema())?;
+        tx.execute_batch(&notebook_capture_runs_schema_under(ModelRule::NamedV5))?;
         tx.execute(
             "INSERT INTO notebook_capture_runs (
                  id, notebook_id, session_id, profile_revision, profile_snapshot_json,
@@ -3308,10 +3423,142 @@ fn migrate_v34_to_v35(conn: &Connection) -> SqlResult<()> {
 fn migrate_v35_to_v36(conn: &Connection) -> SqlResult<()> {
     let tx = conn.unchecked_transaction()?;
     tx.execute_batch(library_sync_schema())?;
-    tx.pragma_update(None, "user_version", CURRENT_VERSION)?;
+    tx.pragma_update(None, "user_version", LIBRARY_SYNC_VERSION)?;
     tx.commit()?;
-    tracing::info!("migrated ZuTalk schema v{SUBTITLE_ONLY_VERSION} to v{CURRENT_VERSION}");
+    tracing::info!("migrated ZuTalk schema v{SUBTITLE_ONLY_VERSION} to v{LIBRARY_SYNC_VERSION}");
     Ok(())
+}
+
+/// v36 → v37: a recording's model is admitted by its kind, not by one
+/// version's name.
+///
+/// Through v36 the capture table and the trigger guarding realtime sentences
+/// named `stt-rt-v5` / `stt-async-v5`. Moving to a newer Soniox model meant
+/// rebuilding the table, and a Mac on the older schema would refuse, through
+/// device sync, every recording a newer Mac made. From v37 the database admits
+/// any model of the right kind (`ModelRule::Kind`) and the code decides which
+/// one a new recording uses. Provenance stays immutable, and a realtime
+/// sentence still needs a claimed realtime model.
+///
+/// Rebuilt by SQLite's twelve-step procedure, as v30 was. Every recorded model
+/// is copied unchanged: it is history. A post-stop claim with no provider
+/// result is cleared — refining always starts again from the audio, and a
+/// claim left in place would pin the retry to the old model, which the
+/// immutability trigger would then refuse to change.
+///
+/// Indexes and triggers on the table are read from the database rather than
+/// listed here, so ones added later by another schema (device sync's) are
+/// dropped and put back too.
+fn migrate_v36_to_v37(conn: &Connection) -> SqlResult<()> {
+    rebuild_notebook_capture_runs(conn, ModelRule::Kind, CURRENT_VERSION)?;
+    tracing::info!("migrated ZuTalk schema v{LIBRARY_SYNC_VERSION} to v{CURRENT_VERSION}");
+    Ok(())
+}
+
+/// Rebuilds `notebook_capture_runs` (and the realtime-sentence trigger) under
+/// `rule`, keeps every row, clears post-stop claims that have no provider
+/// result, and stamps `version` in the same transaction.
+fn rebuild_notebook_capture_runs(
+    conn: &Connection,
+    rule: ModelRule,
+    version: i32,
+) -> SqlResult<()> {
+    conn.pragma_update(None, "foreign_keys", "OFF")?;
+    conn.pragma_update(None, "legacy_alter_table", "ON")?;
+    let result = (|| {
+        let tx = conn.unchecked_transaction()?;
+        let attached: Vec<(String, String, String)> = {
+            let mut stmt = tx.prepare(
+                "SELECT type, name, sql FROM sqlite_schema
+                 WHERE tbl_name = 'notebook_capture_runs'
+                   AND type IN ('index', 'trigger') AND sql IS NOT NULL
+                 ORDER BY type, name",
+            )?;
+            let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?;
+            rows.collect::<SqlResult<_>>()?
+        };
+        for (kind, name, _) in &attached {
+            let kind = if kind == "index" { "INDEX" } else { "TRIGGER" };
+            tx.execute_batch(&format!("DROP {kind} \"{name}\";"))?;
+        }
+        tx.execute_batch(
+            "DROP TRIGGER realtime_utterances_require_realtime_provenance;
+             ALTER TABLE notebook_capture_runs RENAME TO notebook_capture_runs_rebuild_legacy;",
+        )?;
+        tx.execute_batch(&notebook_capture_runs_schema_under(rule))?;
+
+        let legacy = table_columns(&tx, "notebook_capture_runs_rebuild_legacy")?;
+        let mut current = table_columns(&tx, "notebook_capture_runs")?;
+        let mut sorted_legacy = legacy.clone();
+        sorted_legacy.sort();
+        current.sort();
+        if sorted_legacy != current {
+            return Err(rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_SCHEMA),
+                Some(format!(
+                    "notebook_capture_runs columns changed in the rebuild: {sorted_legacy:?} vs {current:?}"
+                )),
+            ));
+        }
+        let selected = legacy
+            .iter()
+            .map(|column| match column.as_str() {
+                "post_stop_provider_id" | "post_stop_model_id" => format!(
+                    "CASE WHEN async_provider_output_sha256 IS NULL THEN NULL ELSE {column} END"
+                ),
+                _ => column.clone(),
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        tx.execute(
+            &format!(
+                "INSERT INTO notebook_capture_runs ({}) SELECT {selected}
+                 FROM notebook_capture_runs_rebuild_legacy",
+                legacy.join(", ")
+            ),
+            [],
+        )?;
+        tx.execute_batch("DROP TABLE notebook_capture_runs_rebuild_legacy;")?;
+
+        // The table's own indexes and triggers came back with its schema; put
+        // back anything else that was attached to it.
+        for (kind, name, sql) in &attached {
+            let exists: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type = ?1 AND name = ?2)",
+                [kind.as_str(), name.as_str()],
+                |row| row.get(0),
+            )?;
+            if !exists {
+                tx.execute_batch(sql)?;
+            }
+        }
+        tx.execute_batch(&realtime_utterance_provenance_trigger(rule))?;
+
+        let violations: i64 =
+            tx.query_row("SELECT count(*) FROM pragma_foreign_key_check", [], |row| {
+                row.get(0)
+            })?;
+        if violations > 0 {
+            return Err(rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_CONSTRAINT),
+                Some(format!(
+                    "notebook_capture_runs rebuild left {violations} foreign key violations"
+                )),
+            ));
+        }
+        tx.pragma_update(None, "user_version", version)?;
+        tx.commit()?;
+        Ok(())
+    })();
+    conn.pragma_update(None, "legacy_alter_table", "OFF")?;
+    conn.pragma_update(None, "foreign_keys", "ON")?;
+    result
+}
+
+fn table_columns(conn: &Connection, table: &str) -> SqlResult<Vec<String>> {
+    let mut stmt = conn.prepare("SELECT name FROM pragma_table_info(?1) ORDER BY cid")?;
+    let rows = stmt.query_map([table], |row| row.get::<_, String>(0))?;
+    rows.collect()
 }
 
 #[cfg(test)]
@@ -3360,7 +3607,7 @@ mod tests {
     /// database is v30" — spelling the version at each one is what went stale
     /// across the last three bumps.
     fn validate_current_baseline(conn: &Connection) -> SqlResult<()> {
-        validate_v36_baseline(conn)
+        validate_v37_baseline(conn)
     }
 
     fn downgrade_v27_to_v26(conn: &Connection) {
@@ -3865,7 +4112,7 @@ mod tests {
     }
 
     #[test]
-    fn migration_provider_provenance_pairs_are_fixed_immutable_and_guard_facts() {
+    fn migration_provider_provenance_pairs_are_admitted_by_kind_immutable_and_guard_facts() {
         let conn = Connection::open_in_memory().unwrap();
         run_migrations(&conn).unwrap();
         insert_notebook(&conn, "provenance-notebook");
@@ -3878,14 +4125,25 @@ mod tests {
                 [],
             )
             .is_err());
-        assert!(conn
-            .execute(
-                "UPDATE notebook_capture_runs
-                 SET realtime_provider_id = 'soniox', realtime_model_id = 'stt-rt-v4'
-                 WHERE id = 'provenance-run'",
-                [],
-            )
-            .is_err());
+        // The database refuses what cannot be a realtime Soniox model; which
+        // one a recording uses is the code's decision, not the table's.
+        for (provider, model) in [
+            ("soniox", "stt-async-v6"),
+            ("soniox", "stt-rt-"),
+            ("soniox", "whisper-1"),
+            ("other", "stt-rt-v6"),
+        ] {
+            assert!(
+                conn.execute(
+                    "UPDATE notebook_capture_runs
+                     SET realtime_provider_id = ?1, realtime_model_id = ?2
+                     WHERE id = 'provenance-run'",
+                    [provider, model],
+                )
+                .is_err(),
+                "{provider}/{model} must be refused as a realtime model"
+            );
+        }
         assert!(conn
             .execute(
                 "INSERT INTO realtime_utterances
@@ -4011,6 +4269,228 @@ mod tests {
         .unwrap();
     }
 
+    fn insert_refine(conn: &Connection, id: &str, notebook_id: &str, model: &str, finished: bool) {
+        conn.execute(
+            "INSERT INTO notebook_capture_runs
+             (id, notebook_id, session_id, profile_revision, profile_snapshot_json,
+              capture_state, async_task_state, async_authorized_at_ms,
+              async_language_hint, created_at, updated_at)
+             VALUES (?1, ?2, ?3, 0, '{}', 'completed', 'pending', 1, 'en', 't', 't')",
+            rusqlite::params![id, notebook_id, format!("session-{id}")],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE notebook_capture_runs
+             SET async_task_state = 'reserved', async_task_id = ?2,
+                 async_task_payload_sha256 = ?3
+             WHERE id = ?1",
+            rusqlite::params![id, format!("task-{id}"), "a".repeat(64)],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE notebook_capture_runs SET async_task_state = 'enqueued' WHERE id = ?1",
+            [id],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE notebook_capture_runs
+             SET post_stop_provider_id = 'soniox', post_stop_model_id = ?2
+             WHERE id = ?1",
+            [id, model],
+        )
+        .unwrap();
+        if finished {
+            conn.execute(
+                "UPDATE notebook_capture_runs
+                 SET async_provider_output_sha256 = ?2,
+                     async_provider_result_json = '{}',
+                     async_provider_completed_at = 't',
+                     async_search_projection_state = 'pending'
+                 WHERE id = ?1",
+                rusqlite::params![id, "b".repeat(64)],
+            )
+            .unwrap();
+        }
+    }
+
+    fn insert_utterance(conn: &Connection, session_id: &str, id: &str) -> SqlResult<usize> {
+        conn.execute(
+            "INSERT INTO realtime_utterances
+             (id, session_id, sequence, source_language, source_text,
+              completion, alignment, created_at, updated_at)
+             VALUES (?1, ?2, 0, 'en', 'hello', 'complete', 'source_only', 't', 't')",
+            [id, session_id],
+        )
+    }
+
+    fn end_capture(conn: &Connection, id: &str) {
+        conn.execute(
+            "UPDATE notebook_capture_runs SET capture_state = 'interrupted' WHERE id = ?1",
+            [id],
+        )
+        .unwrap();
+    }
+
+    fn post_stop_model(conn: &Connection, id: &str) -> Option<String> {
+        conn.query_row(
+            "SELECT post_stop_model_id FROM notebook_capture_runs WHERE id = ?1",
+            [id],
+            |row| row.get(0),
+        )
+        .unwrap()
+    }
+
+    /// The upgrade every 0.8.4 installation runs. What a recording was made
+    /// with is kept; a refine that never got a result lets go of its claim so
+    /// the retry can name the current model; nothing is queued for sync; and
+    /// afterwards the table takes a newer model, or one this build has never
+    /// heard of, without another rebuild.
+    #[test]
+    fn migration_v36_to_v37_admits_models_by_kind_and_keeps_history() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        rebuild_notebook_capture_runs(&conn, ModelRule::NamedV5, LIBRARY_SYNC_VERSION).unwrap();
+        validate_v36_baseline(&conn).unwrap();
+        insert_notebook(&conn, "v37-notebook");
+
+        // v36 names v5 and nothing else, which is why this migration exists.
+        insert_run(&conn, "v37-live", "v37-notebook", "recording");
+        assert!(conn
+            .execute(
+                "UPDATE notebook_capture_runs
+                 SET realtime_provider_id = 'soniox', realtime_model_id = 'stt-rt-v6'
+                 WHERE id = 'v37-live'",
+                [],
+            )
+            .is_err());
+        conn.execute(
+            "UPDATE notebook_capture_runs
+             SET realtime_provider_id = 'soniox', realtime_model_id = 'stt-rt-v5'
+             WHERE id = 'v37-live'",
+            [],
+        )
+        .unwrap();
+        insert_utterance(&conn, "session-v37-live", "v37-live-sentence").unwrap();
+        // Only one capture may be active at a time.
+        end_capture(&conn, "v37-live");
+        insert_refine(&conn, "v37-refined", "v37-notebook", "stt-async-v5", true);
+        insert_refine(
+            &conn,
+            "v37-unfinished",
+            "v37-notebook",
+            "stt-async-v5",
+            false,
+        );
+        conn.execute("DELETE FROM sync_changes", []).unwrap();
+
+        run_migrations(&conn).unwrap();
+
+        assert_eq!(
+            conn.pragma_query_value(None, "user_version", |row| row.get::<_, i32>(0))
+                .unwrap(),
+            CURRENT_VERSION
+        );
+        validate_current_baseline(&conn).unwrap();
+        // History is copied as it was.
+        assert_eq!(
+            conn.query_row(
+                "SELECT realtime_model_id FROM notebook_capture_runs WHERE id = 'v37-live'",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .unwrap(),
+            "stt-rt-v5"
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT count(*) FROM realtime_utterances WHERE session_id = 'session-v37-live'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap(),
+            1
+        );
+        assert_eq!(
+            post_stop_model(&conn, "v37-refined").as_deref(),
+            Some("stt-async-v5")
+        );
+        assert_eq!(post_stop_model(&conn, "v37-unfinished"), None);
+        assert!(sync_changes(&conn).is_empty(), "the upgrade queues nothing");
+        assert!(
+            names(&conn, "trigger").contains(&"sync_mark_runs_update".to_string()),
+            "device sync's trigger on the table must come back with it"
+        );
+
+        // The unfinished refine can now claim the current model.
+        conn.execute(
+            "UPDATE notebook_capture_runs
+             SET post_stop_provider_id = 'soniox', post_stop_model_id = 'stt-async-v6'
+             WHERE id = 'v37-unfinished'",
+            [],
+        )
+        .unwrap();
+        // A model of the right kind is admitted even if this build has never
+        // heard of it: a newer Mac's recording must be storable here.
+        insert_run(&conn, "v37-next", "v37-notebook", "recording");
+        conn.execute(
+            "UPDATE notebook_capture_runs
+             SET realtime_provider_id = 'soniox', realtime_model_id = 'stt-rt-v9'
+             WHERE id = 'v37-next'",
+            [],
+        )
+        .unwrap();
+        insert_utterance(&conn, "session-v37-next", "v37-next-sentence").unwrap();
+        end_capture(&conn, "v37-next");
+        // A sentence still needs a claimed realtime model of the right kind.
+        insert_run(&conn, "v37-unclaimed", "v37-notebook", "recording");
+        assert!(insert_utterance(&conn, "session-v37-unclaimed", "v37-blocked").is_err());
+        assert!(conn
+            .execute(
+                "UPDATE notebook_capture_runs
+                 SET realtime_provider_id = 'soniox', realtime_model_id = 'stt-async-v6'
+                 WHERE id = 'v37-unclaimed'",
+                [],
+            )
+            .is_err());
+        // What was recorded still cannot be rewritten.
+        assert!(conn
+            .execute(
+                "UPDATE notebook_capture_runs SET realtime_model_id = 'stt-rt-v6'
+                 WHERE id = 'v37-live'",
+                [],
+            )
+            .is_err());
+        assert!(conn
+            .execute(
+                "UPDATE notebook_capture_runs SET post_stop_model_id = 'stt-async-v6'
+                 WHERE id = 'v37-refined'",
+                [],
+            )
+            .is_err());
+
+        // Relaunching validates rather than rebuilding again.
+        run_migrations(&conn).unwrap();
+        assert_eq!(
+            post_stop_model(&conn, "v37-unfinished").as_deref(),
+            Some("stt-async-v6")
+        );
+    }
+
+    /// A database stamped v37 that still names a version is not v37.
+    #[test]
+    fn migration_rejects_current_schema_that_still_names_a_model_version() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+        rebuild_notebook_capture_runs(&conn, ModelRule::NamedV5, CURRENT_VERSION).unwrap();
+        let error = run_migrations(&conn).unwrap_err();
+        assert!(
+            error.to_string().contains(&format!(
+                "unsupported schema {CURRENT_VERSION}; reset required"
+            )),
+            "{error}"
+        );
+    }
+
     #[test]
     fn migration_rejects_every_historical_or_future_nonzero_version() {
         for version in [1, 7, 21, 22, 30] {
@@ -4060,10 +4540,10 @@ mod tests {
              );",
         )
         .unwrap();
-        // v29 的表只在 post-stop CHECK 文本上不同:从共享 schema 反推出旧约束。
-        let v29_schema = notebook_capture_runs_schema()
-            .replace("IN ('stt-rt-v5', 'stt-async-v5')", "= 'stt-rt-v5'");
-        assert_ne!(v29_schema, notebook_capture_runs_schema());
+        // v29 的表只在 post-stop CHECK 文本上不同:从 v30 的 schema 反推出旧约束。
+        let v30_schema = notebook_capture_runs_schema_under(ModelRule::NamedV5);
+        let v29_schema = v30_schema.replace("IN ('stt-rt-v5', 'stt-async-v5')", "= 'stt-rt-v5'");
+        assert_ne!(v29_schema, v30_schema);
         conn.execute_batch(&v29_schema).unwrap();
         insert_notebook(&conn, "v30-notebook");
 

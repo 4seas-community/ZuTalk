@@ -202,13 +202,13 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
     func testEnginePresentationSeparatesRealtimeAndPostStopRoles() {
         let engine = NotebookCaptureEnginePresentation(
             providerDisplayName: "Soniox",
-            realtimeModelId: "stt-rt-v5",
-            postStopModelId: "stt-async-v5",
+            realtimeModelId: "stt-rt-v6",
+            postStopModelId: "stt-async-v6",
             postStopUsesAsyncFileApi: true
         )
 
-        XCTAssertEqual(engine.realtimeSummary, "Soniox · stt-rt-v5")
-        XCTAssertEqual(engine.postStopSummary, "Soniox · stt-async-v5")
+        XCTAssertEqual(engine.realtimeSummary, "Soniox · stt-rt-v6")
+        XCTAssertEqual(engine.postStopSummary, "Soniox · stt-async-v6")
         XCTAssertEqual(engine.postStopUsesAsyncFileApi, true)
         XCTAssertEqual(engine.postStopExecutionSummary, String(
             localized: "settings.services.engine.async_file_api"
@@ -279,7 +279,7 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
         // these values, but only as they come back from the core — two copies
         // drift, and the UI ends up naming a model the core does not use.
         for coreOwnedConstant in [
-            "stt-rt-v5", "stt-async-v5", "deepseek-", "soniox.com", "deepseek.com",
+            "stt-rt-", "stt-async-", "deepseek-", "soniox.com", "deepseek.com",
         ] {
             XCTAssertFalse(
                 providerSettings.contains(coreOwnedConstant),
@@ -303,7 +303,7 @@ final class LocalSystemSettingsViewModelTests: XCTestCase {
         XCTAssertTrue(advanced.contains("engineStore.engine"))
         XCTAssertTrue(advanced.contains("modelStore.engine"))
         for coreOwnedConstant in [
-            "stt-rt-v5", "stt-async-v5", "deepseek-", "soniox.com", "deepseek.com",
+            "stt-rt-", "stt-async-", "deepseek-", "soniox.com", "deepseek.com",
         ] {
             XCTAssertFalse(
                 advanced.contains(coreOwnedConstant),

@@ -2708,7 +2708,9 @@ mod tests {
                 "session-context",
                 crate::notebook_capture_store::CaptureProviderRole::Realtime,
                 crate::notebook_capture_store::SONIOX_PROVIDER_ID,
-                crate::notebook_capture_store::SONIOX_STT_RT_V5_MODEL_ID,
+                crate::notebook_capture_store::SONIOX_REALTIME_MODEL_IDS
+                    .last()
+                    .unwrap(),
             )
             .unwrap();
         let private = fixture
